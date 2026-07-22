@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Researcher Profile | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Researcher Profile</h1>
+        <p id="researcher-name">Loading…</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to view profiles.
+        </div>
+
+        <div id="detail" style="display:none;">
+          <p><a href="researchers.html">&larr; Back to researchers</a></p>
+
+          <!-- Productivity Summary Dashboard -->
+          <div id="summary-dashboard" class="grid grid-3" style="margin-bottom:28px;"></div>
+
+          <div class="grid grid-2">
+            <div class="card">
+              <h3 style="margin-top:0;">Profile Details</h3>
+              <div class="contact-row"><span class="label">Name</span><span id="d-name"></span></div>
+              <div class="contact-row"><span class="label">Type</span><span id="d-type"></span></div>
+              <div class="contact-row"><span class="label">Department</span><span id="d-dept"></span></div>
+              <div class="contact-row"><span class="label">Program</span><span id="d-program"></span></div>
+              <div class="contact-row"><span class="label">Research Interests</span><span id="d-interests"></span></div>
+              <div class="contact-row"><span class="label">Current Research</span><span id="d-research"></span></div>
+              <div class="contact-row"><span class="label">Adviser</span><span id="d-adviser"></span></div>
+              <div class="contact-row"><span class="label">Year Completed</span><span id="d-year"></span></div>
+              <div class="contact-row"><span class="label">Output Status</span><span id="d-status"></span></div>
+              <div class="contact-row"><span class="label">ORCID</span><span id="d-orcid"></span></div>
+              <div class="contact-row"><span class="label">Google Scholar</span><span id="d-scholar"></span></div>
+              <div class="contact-row"><span class="label">ResearchGate</span><span id="d-rg"></span></div>
+
+              <div id="admin-edit" style="display:none;border-top:1px solid var(--cpri-border);margin-top:22px;padding-top:18px;">
+                <h3>Manage Profile</h3>
+                <form id="edit-form">
+                  <div class="form-group">
+                    <label for="e-type">Type</label>
+                    <select id="e-type">
+                      <option value="faculty">Faculty Researcher</option>
+                      <option value="student">Student Researcher</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="e-dept">Department</label>
+                    <input type="text" id="e-dept">
+                  </div>
+                  <div class="form-group">
+                    <label for="e-program">Program</label>
+                    <input type="text" id="e-program">
+                  </div>
+                  <div class="form-group">
+                    <label for="e-status">Research Output Status</label>
+                    <select id="e-status">
+                      <option value="ongoing">Ongoing</option>
+                      <option value="completed">Completed</option>
+                      <option value="published">Published</option>
+                      <option value="presented">Presented</option>
+                      <option value="under_review">Under Review</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary">Save Changes</button>
+                  <button type="button" class="btn btn-navy" id="delete-btn" style="margin-left:8px;">Delete Profile</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3 style="margin-top:0;">Completed Researches</h3>
+              <div id="d-completed"></div>
+
+              <h3 style="margin-top:22px;">Published Works</h3>
+              <div id="d-published"></div>
+
+              <h3 style="margin-top:22px;">Presented Papers</h3>
+              <div id="d-presented"></div>
+
+              <h3 style="margin-top:22px;">Innovation Projects</h3>
+              <div id="d-innovation"></div>
+
+              <h3 style="margin-top:22px;">Awards / Recognitions</h3>
+              <div id="d-awards"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const detail = document.getElementById('detail');
+    const notLogged = document.getElementById('not-logged');
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+
+    const OUTPUT_LABELS = {
+      ongoing: 'Ongoing', completed: 'Completed', published: 'Published',
+      presented: 'Presented', under_review: 'Under Review', rejected: 'Rejected'
+    };
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    function renderList(elId, items) {
+      const el = document.getElementById(elId);
+      if (!items || !items.length) { el.innerHTML = '<p class="form-note">None</p>'; return; }
+      el.innerHTML = '<ul style="padding-left:18px;margin:0;">' + items.map(i => `<li style="padding:4px 0;">${escapeHtml(i)}</li>`).join('') + '</ul>';
+    }
+
+    (async () => {
+      const res = await fetch('/api/researchers/' + id);
+      if (!res.ok) { showMsg('error', (await res.json()).error || 'Not found.'); return; }
+      const { researcher: r } = await res.json();
+      detail.style.display = 'block';
+      document.getElementById('researcher-name').textContent = r.fullName;
+      document.getElementById('d-name').textContent = r.fullName;
+      document.getElementById('d-type').textContent = r.type === 'faculty' ? 'Faculty Researcher' : 'Student Researcher';
+      document.getElementById('d-dept').textContent = r.department || '—';
+      document.getElementById('d-program').textContent = r.program || '—';
+      document.getElementById('d-interests').textContent = r.researchInterests || '—';
+      document.getElementById('d-research').textContent = r.researchTitle || '—';
+      document.getElementById('d-adviser').textContent = r.adviser || '—';
+      document.getElementById('d-year').textContent = r.yearCompleted || '—';
+      document.getElementById('d-status').textContent = OUTPUT_LABELS[r.researchOutputStatus] || r.researchOutputStatus || '—';
+      document.getElementById('d-orcid').innerHTML = r.orcid ? `<a href="${escapeHtml(r.orcid)}" target="_blank">ORCID Profile</a>` : '—';
+      document.getElementById('d-scholar').innerHTML = r.googleScholar ? `<a href="${escapeHtml(r.googleScholar)}" target="_blank">Google Scholar</a>` : '—';
+      document.getElementById('d-rg').innerHTML = r.researchGate ? `<a href="${escapeHtml(r.researchGate)}" target="_blank">ResearchGate</a>` : '—';
+
+      renderList('d-completed', r.completedResearches);
+      renderList('d-published', r.publishedWorks);
+      renderList('d-presented', r.presentedPapers);
+      renderList('d-innovation', r.innovationProjects);
+      renderList('d-awards', r.awards);
+
+      document.getElementById('summary-dashboard').innerHTML = [
+        { label: 'Completed Researches', value: (r.completedResearches || []).length },
+        { label: 'Publications', value: (r.publishedWorks || []).length },
+        { label: 'Presentations', value: (r.presentedPapers || []).length },
+        { label: 'Innovation Projects', value: (r.innovationProjects || []).length },
+        { label: 'Awards', value: (r.awards || []).length },
+        { label: 'Citations', value: r.citations || 0 }
+      ].map(s => `<div class="card" style="text-align:center;padding:18px;">
+        <div style="font-size:1.6rem;font-weight:800;color:var(--cpri-accent);">${s.value}</div>
+        <div class="form-note" style="margin-top:4px;">${s.label}</div>
+      </div>`).join('');
+
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) {
+        const { user } = await meRes.json();
+        if (['admin', 'cpri_staff'].includes(user.role)) {
+          const ae = document.getElementById('admin-edit');
+          ae.style.display = 'block';
+          document.getElementById('e-type').value = r.type;
+          document.getElementById('e-dept').value = r.department || '';
+          document.getElementById('e-program').value = r.program || '';
+          document.getElementById('e-status').value = r.researchOutputStatus || 'ongoing';
+          document.getElementById('edit-form').addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const fd = Object.fromEntries(new FormData(ev.target).entries());
+            const patchRes = await fetch('/api/researchers/' + r.id, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(fd)
+            });
+            const out = await patchRes.json();
+            if (!patchRes.ok) return showMsg('error', out.error);
+            showMsg('success', 'Profile updated.');
+            location.reload();
+          });
+          document.getElementById('delete-btn').addEventListener('click', async () => {
+            if (!confirm('Delete this researcher profile?')) return;
+            const delRes = await fetch('/api/researchers/' + r.id, { method: 'DELETE' });
+            const out = await delRes.json();
+            if (!delRes.ok) return showMsg('error', out.error);
+            location.href = 'researchers.html';
+          });
+        }
+      }
+    })();
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

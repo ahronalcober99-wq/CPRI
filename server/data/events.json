@@ -1,0 +1,38 @@
+[
+  {
+    "id": 1,
+    "title": "2026 National Policy Research Conference",
+    "type": "Conference",
+    "date": "2026-09-18",
+    "location": "University Conference Center, Main Campus",
+    "description": "A two-day conference gathering researchers, policymakers, and practitioners to discuss evidence-based approaches to national development challenges.",
+    "photo": ""
+  },
+  {
+    "id": 2,
+    "title": "CPRI Research Symposium: Climate & Health",
+    "type": "Symposium",
+    "date": "2026-08-15",
+    "location": "Hybrid (On-site + Zoom)",
+    "description": "A focused symposium presenting interdisciplinary research at the intersection of climate change and public health.",
+    "photo": ""
+  },
+  {
+    "id": 3,
+    "title": "Research Methods Training Series",
+    "type": "Training",
+    "date": "2026-08-02",
+    "location": "CPRI Training Room 302",
+    "description": "A five-module capacity-building program on research design, data analysis, and academic writing.",
+    "photo": ""
+  },
+  {
+    "id": 4,
+    "title": "Workshop: Grant Writing for Early-Career Researchers",
+    "type": "Capability Building",
+    "date": "2026-07-25",
+    "location": "CPRI Training Room 302",
+    "description": "A hands-on workshop equipping early-career researchers with the skills to develop competitive research proposals.",
+    "photo": ""
+  }
+]

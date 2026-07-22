@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Registration | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Event Registration</h1>
+        <p>Register as a presenter or attendee.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to register.
+        </div>
+
+        <div id="form-area" style="display:none;max-width:700px;">
+          <p><a href="events-module.html">&larr; Back to events</a></p>
+
+          <div class="card">
+            <h3 style="margin-top:0;">Registration Form</h3>
+            <form id="reg-form">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="f-name">Participant Name *</label>
+                  <input type="text" id="f-name" name="participantName" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-institution">Institution *</label>
+                  <input type="text" id="f-institution" name="institution" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-email">Email *</label>
+                  <input type="email" id="f-email" name="email" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-type">Type of Participant *</label>
+                  <select id="f-type" name="participantType" required>
+                    <option value="presenter">Research Presenter</option>
+                    <option value="attendee">Attendee</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-role">Role</label>
+                  <select id="f-role" name="role">
+                    <option value="attendee">Attendee</option>
+                    <option value="presenter">Presenter</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-abstract">Upload Abstract (if applicable)</label>
+                  <input type="file" id="f-abstract" name="abstract" accept=".pdf,.doc,.docx">
+                </div>
+              </div>
+              <div style="margin-top:18px;">
+                <button type="submit" class="btn btn-primary">Register</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const formArea = document.getElementById('form-area');
+    const notLogged = document.getElementById('not-logged');
+    const params = new URLSearchParams(location.search);
+    const eventId = params.get('id');
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
+      formArea.style.display = 'block';
+    })();
+
+    document.getElementById('reg-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.target).entries());
+      const res = await fetch('/api/events-module/' + eventId + '/register', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fd)
+      });
+      const out = await res.json();
+      if (!res.ok) { showMsg('error', out.error); return; }
+      showMsg('success', out.message);
+      e.target.reset();
+    });
+  </script>
+</body>
+</html>

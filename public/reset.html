@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reset Password | CPRI Account</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Reset Password</h1>
+        <p>Choose a new password for your CPRI account.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container" style="max-width:480px;">
+        <div class="form-message" id="message"></div>
+        <form id="reset-form" class="card">
+          <div class="form-group">
+            <label for="password">New Password * (min 8 characters)</label>
+            <input type="password" id="password" name="password" required minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="confirm">Confirm New Password *</label>
+            <input type="password" id="confirm" name="confirm" required minlength="8">
+          </div>
+          <button type="submit" class="btn btn-primary" id="submit-btn" style="width:100%;">Reset Password</button>
+          <p class="form-note" style="margin-top:14px;">
+            <a href="login.html">Back to login</a>
+          </p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token');
+    const form = document.getElementById('reset-form');
+    const message = document.getElementById('message');
+    const btn = document.getElementById('submit-btn');
+
+    if (!token) {
+      message.className = 'form-message error';
+      message.textContent = 'Missing or invalid reset token. Please request a new link.';
+      btn.disabled = true;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      message.className = 'form-message';
+      if (!token) return;
+      const data = Object.fromEntries(new FormData(form).entries());
+      if (data.password !== data.confirm) {
+        message.className = 'form-message error';
+        message.textContent = 'Passwords do not match.';
+        return;
+      }
+      btn.disabled = true; btn.textContent = 'Resetting…';
+      try {
+        const res = await fetch('/api/auth/reset', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, password: data.password })
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || 'Reset failed');
+        message.className = 'form-message success';
+        message.textContent = out.message + ' Redirecting to login…';
+        setTimeout(() => (window.location.href = 'login.html'), 1500);
+      } catch (err) {
+        message.className = 'form-message error';
+        message.textContent = err.message;
+        btn.disabled = false; btn.textContent = 'Reset Password';
+      }
+    });
+  </script>
+</body>
+</html>

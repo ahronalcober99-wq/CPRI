@@ -1,0 +1,34 @@
+{
+  "institutional": "CPRI's institutional research agenda aligns research efforts with national development priorities, fostering a culture of evidence-informed decision-making across the university and its partner communities.",
+  "programBased": [
+    {
+      "program": "Governance & Public Policy",
+      "focus": "Transparent, accountable, and participatory governance mechanisms at national and local levels."
+    },
+    {
+      "program": "Health Systems & Well-being",
+      "focus": "Equitable access to health services and resilience of health systems to shocks."
+    },
+    {
+      "program": "Education & Human Capital",
+      "focus": "Quality, equity, and relevance of education across life stages."
+    },
+    {
+      "program": "Environment & Climate",
+      "focus": "Climate adaptation, disaster risk reduction, and sustainable resource management."
+    }
+  ],
+  "priorityAreas": [
+    "Evidence-based local governance",
+    "Climate risk and disaster resilience",
+    "Health equity and universal health care",
+    "Education quality and inclusion",
+    "Digital transformation of public services",
+    "Social protection and poverty reduction"
+  ],
+  "documents": [
+    { "title": "CPRI Institutional Research Agenda 2026–2030", "file": "cpri-institutional-agenda-2026.pdf" },
+    { "title": "Program-Based Research Framework", "file": "cpri-program-framework.pdf" },
+    { "title": "Priority Research Areas Brief", "file": "cpri-priority-areas.pdf" }
+  ]
+}

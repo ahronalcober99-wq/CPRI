@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login | CPRI Account</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Account Login</h1>
+        <p>Sign in to access CPRI system features.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container" style="max-width:480px;">
+        <div class="form-message" id="message"></div>
+        <form id="login-form" class="card">
+          <div class="form-group">
+            <label for="identifier">Username or Email</label>
+            <input type="text" id="identifier" name="identifier" required>
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" required>
+          </div>
+          <button type="submit" class="btn btn-primary" id="submit-btn" style="width:100%;">Log In</button>
+          <p class="form-note" style="margin-top:14px;">
+            <a href="forgot.html">Forgot password?</a> ·
+            <a href="register.html">Create an account</a>
+          </p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const API_BASE = location.protocol.startsWith('http') ? location.origin : 'http://localhost:3000';
+    const form = document.getElementById('login-form');
+    const message = document.getElementById('message');
+    const btn = document.getElementById('submit-btn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      message.className = 'form-message';
+      const data = Object.fromEntries(new FormData(form).entries());
+      btn.disabled = true; btn.textContent = 'Logging in…';
+      try {
+        const res = await fetch(API_BASE + '/api/auth/login', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || 'Login failed');
+        window.location.href = 'account.html';
+      } catch (err) {
+        message.className = 'form-message error';
+        message.textContent = err.message;
+        btn.disabled = false; btn.textContent = 'Log In';
+      }
+    });
+  </script>
+</body>
+</html>

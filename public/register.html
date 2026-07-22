@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register | CPRI Account</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Create an Account</h1>
+        <p>Register as faculty, student, adviser, or reviewer.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container" style="max-width:520px;">
+        <div class="form-message" id="message"></div>
+        <form id="register-form" class="card">
+          <div class="form-group">
+            <label for="fullName">Full Name</label>
+            <input type="text" id="fullName" name="fullName">
+          </div>
+          <div class="form-group">
+            <label for="username">Username *</label>
+            <input type="text" id="username" name="username" required>
+          </div>
+          <div class="form-group">
+            <label for="email">Email *</label>
+            <input type="email" id="email" name="email" required>
+          </div>
+          <div class="form-group">
+            <label for="role">Account Type *</label>
+            <select id="role" name="role" required>
+              <option value="">Select…</option>
+              <option value="faculty_researcher">Faculty Researcher</option>
+              <option value="student_researcher">Student Researcher</option>
+              <option value="adviser">Adviser</option>
+              <option value="ethics_reviewer">Ethics Reviewer (subject to admin approval)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="password">Password * (min 8 characters)</label>
+            <input type="password" id="password" name="password" required minlength="8">
+          </div>
+          <div class="form-group">
+            <label for="confirm">Confirm Password *</label>
+            <input type="password" id="confirm" name="confirm" required minlength="8">
+          </div>
+          <button type="submit" class="btn btn-primary" id="submit-btn" style="width:100%;">Register</button>
+          <p class="form-note" style="margin-top:14px;">
+            Already have an account? <a href="login.html">Log in</a>
+          </p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const API_BASE = location.protocol.startsWith('http') ? location.origin : 'http://localhost:3000';
+    const form = document.getElementById('register-form');
+    const message = document.getElementById('message');
+    const btn = document.getElementById('submit-btn');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      message.className = 'form-message';
+      const data = Object.fromEntries(new FormData(form).entries());
+      if (data.password !== data.confirm) {
+        message.className = 'form-message error';
+        message.textContent = 'Passwords do not match.';
+        return;
+      }
+      btn.disabled = true; btn.textContent = 'Registering…';
+      try {
+        const res = await fetch(API_BASE + '/api/auth/register', {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || 'Registration failed');
+        message.className = 'form-message success';
+        message.textContent = out.message + (res.status === 202 ? '' : ' Redirecting to login…');
+        if (res.status !== 202) setTimeout(() => (window.location.href = 'login.html'), 1200);
+        else form.reset();
+        btn.disabled = false; btn.textContent = 'Register';
+      } catch (err) {
+        message.className = 'form-message error';
+        message.textContent = err.message;
+        btn.disabled = false; btn.textContent = 'Register';
+      }
+    });
+  </script>
+</body>
+</html>

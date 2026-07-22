@@ -1,0 +1,23 @@
+[
+  {
+    "id": 1,
+    "title": "Barangay-Level Disaster Resilience Index",
+    "summary": "A composite index measuring local government disaster preparedness across 40 municipalities.",
+    "researchers": "Dr. A. Cruz, M. Reyes",
+    "year": 2026
+  },
+  {
+    "id": 2,
+    "title": "Education Equity in Rural Provinces",
+    "summary": "Mixed-methods study on learning outcome gaps and targeted intervention models.",
+    "researchers": "Prof. L. Mendoza",
+    "year": 2025
+  },
+  {
+    "id": 3,
+    "title": "Digital Public Services Adoption",
+    "summary": "Citizen adoption patterns of e-governance platforms and their equity implications.",
+    "researchers": "Dr. S. Tan, J. Dela Cruz",
+    "year": 2025
+  }
+]

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Innovation/Extension Record Detail | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1 id="record-title">Loading…</h1>
+        <p id="record-type">Loading…</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-found" class="empty-state" style="display:none;">Record not found.</div>
+
+        <div id="detail" style="display:none;">
+          <p><a href="innovation-extension.html">&larr; Back to records</a></p>
+
+          <div class="grid grid-2">
+            <div class="card">
+              <h3 style="margin-top:0;">Record Details</h3>
+              <div class="contact-row"><span class="label">Project Type</span><span id="d-type"></span></div>
+              <div class="contact-row"><span class="label">Proponent/s</span><span id="d-proponents"></span></div>
+              <div class="contact-row"><span class="label">Department</span><span id="d-dept"></span></div>
+              <div class="contact-row"><span class="label">Description</span><span id="d-desc" style="white-space:pre-wrap;"></span></div>
+              <div class="contact-row"><span class="label">Beneficiaries</span><span id="d-beneficiaries"></span></div>
+              <div class="contact-row"><span class="label">Implementation Date</span><span id="d-date"></span></div>
+              <div class="contact-row"><span class="label">Output / Product</span><span id="d-output" style="white-space:pre-wrap;"></span></div>
+
+              <div id="extension-details" style="display:none;border-top:1px solid var(--cpri-border);margin-top:14px;padding-top:14px;">
+                <h4>Extension-Based Research Details</h4>
+                <div class="contact-row"><span class="label">Community Partner</span><span id="d-partner"></span></div>
+                <div class="contact-row"><span class="label">Needs Assessment</span><span id="d-needs" style="white-space:pre-wrap;"></span></div>
+                <div class="contact-row"><span class="label">Intervention</span><span id="d-intervention" style="white-space:pre-wrap;"></span></div>
+                <div class="contact-row"><span class="label">Evaluation Result</span><span id="d-evaluation" style="white-space:pre-wrap;"></span></div>
+              </div>
+
+              <div id="impact-details" style="display:none;border-top:1px solid var(--cpri-border);margin-top:14px;padding-top:14px;">
+                <h4>Impact Documentation</h4>
+                <div class="contact-row"><span class="label">Community Outcome</span><span id="d-outcome" style="white-space:pre-wrap;"></span></div>
+                <div class="contact-row"><span class="label">Sustainability Plan</span><span id="d-sustainability" style="white-space:pre-wrap;"></span></div>
+              </div>
+
+              <div id="admin-edit" style="display:none;border-top:1px solid var(--cpri-border);margin-top:22px;padding-top:18px;">
+                <h3>Manage Record</h3>
+                <form id="edit-form">
+                  <div class="form-group">
+                    <label for="e-status">Status</label>
+                    <select id="e-status">
+                      <option value="ongoing">Ongoing</option>
+                      <option value="completed">Completed</option>
+                      <option value="published">Published</option>
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary">Save Changes</button>
+                  <button type="button" class="btn btn-navy" id="delete-btn" style="margin-left:8px;">Delete</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3 style="margin-top:0;">Supporting Documents</h3>
+              <div id="supporting-docs"></div>
+
+              <h3 style="margin-top:22px;">Impact Documentation Gallery</h3>
+              <div id="impact-gallery"></div>
+
+              <div id="admin-impact-upload" style="display:none;border-top:1px solid var(--cpri-border);margin-top:18px;padding-top:18px;">
+                <h4>Upload Impact Documents</h4>
+                <form id="impact-form">
+                  <div class="form-group">
+                    <label for="i-photo">Photo</label>
+                    <input type="file" id="i-photo" name="photo" accept="image/*">
+                  </div>
+                  <div class="form-group">
+                    <label for="i-report">Report</label>
+                    <input type="file" id="i-report" name="report" accept=".pdf,.doc,.docx">
+                  </div>
+                  <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const detail = document.getElementById('detail');
+    const notFound = document.getElementById('not-found');
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+
+    const PROJECT_TYPES = {
+      innovation_project: 'Innovation Project',
+      extension_research: 'Extension-Based Research'
+    };
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    function renderDocList(elId, docs) {
+      const el = document.getElementById(elId);
+      if (!docs || !docs.length) { el.innerHTML = '<p class="form-note">None</p>'; return; }
+      el.innerHTML = docs.map(d => `
+        <div style="border-bottom:1px solid var(--cpri-border);padding:6px 0;display:flex;justify-content:space-between;align-items:center;">
+          <div><strong>${d.type.replace(/_/g, ' ').toUpperCase()}</strong> — ${d.originalName}</div>
+          <a class="btn btn-navy" href="/api/innovation-extension/${id}/file/${encodeURIComponent(d.filename)}">Download</a>
+        </div>
+      `).join('');
+    }
+
+    (async () => {
+      const res = await fetch('/api/innovation-extension/' + id);
+      if (!res.ok) { notFound.style.display = 'block'; return; }
+      const { record: r } = await res.json();
+      detail.style.display = 'block';
+      document.getElementById('record-title').textContent = r.title;
+      document.getElementById('record-type').textContent = PROJECT_TYPES[r.projectType] || r.projectType;
+      document.getElementById('d-type').textContent = PROJECT_TYPES[r.projectType] || r.projectType;
+      document.getElementById('d-proponents').textContent = r.proponents;
+      document.getElementById('d-dept').textContent = r.department;
+      document.getElementById('d-desc').textContent = r.description || '—';
+      document.getElementById('d-beneficiaries').textContent = r.beneficiaries || 0;
+      document.getElementById('d-date').textContent = r.implementationDate || '—';
+      document.getElementById('d-output').textContent = r.outputProduct || '—';
+
+      if (r.projectType === 'extension_research') {
+        document.getElementById('extension-details').style.display = 'block';
+        document.getElementById('d-partner').textContent = r.communityPartner || '—';
+        document.getElementById('d-needs').textContent = r.needsAssessment || '—';
+        document.getElementById('d-intervention').textContent = r.interventionConducted || '—';
+        document.getElementById('d-evaluation').textContent = r.evaluationResult || '—';
+      }
+
+      if (r.communityOutcome || r.sustainabilityPlan) {
+        document.getElementById('impact-details').style.display = 'block';
+        document.getElementById('d-outcome').textContent = r.communityOutcome || '—';
+        document.getElementById('d-sustainability').textContent = r.sustainabilityPlan || '—';
+      }
+
+      renderDocList('supporting-docs', r.supportingDocuments);
+      renderDocList('impact-gallery', r.impactDocuments);
+
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) {
+        const { user } = await meRes.json();
+        if (['admin', 'cpri_staff'].includes(user.role)) {
+          document.getElementById('admin-edit').style.display = 'block';
+          document.getElementById('admin-impact-upload').style.display = 'block';
+
+          document.getElementById('impact-form').addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const fd = new FormData(ev.target);
+            const res = await fetch('/api/innovation-extension/' + r.id + '/impact-docs', { method: 'POST', body: fd });
+            const out = await res.json();
+            if (!res.ok) return showMsg('error', out.error);
+            showMsg('success', 'Impact documents uploaded.');
+            ev.target.reset();
+            location.reload();
+          });
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Repository | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Research Repository</h1>
+        <p>The institutional archive of CPRI research outputs.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+
+        <!-- Search & filter -->
+        <div class="card" style="margin-bottom:22px;">
+          <form id="filter-form">
+            <div class="grid grid-3" style="gap:14px;">
+              <div class="form-group" style="margin:0;">
+                <label for="f-title">Search by title</label>
+                <input type="text" id="f-title" name="title" placeholder="Title keyword">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-author">Author</label>
+                <input type="text" id="f-author" name="author" placeholder="Author name">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-dept">Department / Program</label>
+                <input type="text" id="f-dept" name="department" placeholder="Department">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-year">Year completed</label>
+                <input type="text" id="f-year" name="year" placeholder="e.g. 2025">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-keywords">Keywords</label>
+                <input type="text" id="f-keywords" name="keywords" placeholder="Keywords">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-category">Category</label>
+                <select id="f-category" name="category">
+                  <option value="">All</option>
+                  <option value="institutional">Institutional Research</option>
+                  <option value="faculty">Faculty Research</option>
+                  <option value="student_thesis">Student Thesis</option>
+                  <option value="capstone">Capstone</option>
+                  <option value="feasibility">Feasibility Study</option>
+                  <option value="action_research">Action Research</option>
+                  <option value="extension">Extension-Related Research</option>
+                  <option value="innovation">Innovation Project</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+              <button type="submit" class="btn btn-primary">Search</button>
+              <button type="button" class="btn btn-navy" id="clear-btn">Clear</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Admin: publish submission -->
+        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:#e6f4f1;">
+          <h3>CPRI Staff / Admin</h3>
+          <p class="form-note">Publish an approved submission to the repository by its ID.</p>
+          <form id="publish-form" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+            <div class="form-group" style="margin:0;flex:1;min-width:200px;">
+              <label for="p-sub">Submission ID</label>
+              <input type="text" id="p-sub" name="submissionId" required>
+            </div>
+            <div class="form-group" style="margin:0;">
+              <label for="p-access">Access level</label>
+              <select id="p-access" name="accessLevel">
+                <option value="downloadable">Full text downloadable</option>
+                <option value="viewable">Full text viewable</option>
+                <option value="public_abstract">Public (abstract only)</option>
+                <option value="restricted_institutional">Restricted to institutional users</option>
+                <option value="restricted_staff">Restricted to CPRI staff</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Publish</button>
+          </form>
+        </div>
+
+        <div id="records"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const recordsEl = document.getElementById('records');
+
+    const ACCESS_BADGE = {
+      public_abstract: 'Abstract only',
+      viewable: 'Viewable',
+      downloadable: 'Downloadable',
+      restricted_institutional: 'Institutional only',
+      restricted_staff: 'Staff only'
+    };
+
+    function buildQuery() {
+      const fd = new FormData(document.getElementById('filter-form'));
+      const p = new URLSearchParams();
+      for (const [k, v] of fd.entries()) if (v) p.set(k, v);
+      return p.toString();
+    }
+
+    async function load() {
+      const res = await fetch('/api/repository' + (buildQuery() ? '?' + buildQuery() : ''));
+      const { records } = await res.json();
+      if (!records.length) {
+        recordsEl.innerHTML = '<p class="empty-state">No research records found.</p>';
+        return;
+      }
+      recordsEl.innerHTML = records.map(r => `
+        <div class="card" style="margin-bottom:16px;">
+          <h3 style="margin:0 0 6px;"><a href="repository-detail.html?id=${r.id}">${r.title}</a></h3>
+          <div class="meta">${r.authors} · ${r.department} · ${r.categoryLabel} · ${r.yearCompleted}</div>
+          <p style="margin:8px 0;">${r.abstract ? r.abstract.slice(0, 200) + (r.abstract.length > 200 ? '…' : '') : ''}</p>
+          <div><span class="badge">${ACCESS_BADGE[r.accessLevel] || r.accessLevel}</span> ${r.fileAvailable ? '<span class="form-note">📄 File available</span>' : ''}</div>
+        </div>`).join('');
+    }
+
+    document.getElementById('filter-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
+    document.getElementById('clear-btn').addEventListener('click', () => {
+      document.getElementById('filter-form').reset();
+      load();
+    });
+
+    // Role-aware admin panel
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) {
+        const { user } = await meRes.json();
+        if (['admin', 'cpri_staff'].includes(user.role)) {
+          document.getElementById('admin-panel').style.display = 'block';
+        }
+      }
+    })();
+
+    document.getElementById('publish-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.target).entries());
+      const res = await fetch('/api/repository', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd)
+      });
+      const out = await res.json();
+      if (!res.ok) { message.className = 'form-message error'; message.textContent = out.error; return; }
+      message.className = 'form-message success';
+      message.textContent = out.message;
+      e.target.reset();
+      load();
+    });
+
+    load();
+  </script>
+</body>
+</html>

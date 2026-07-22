@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Agenda | CPRI</title>
+  <meta name="description" content="CPRI institutional and program-based research agenda, priority areas, and downloadable documents.">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Research Agenda</h1>
+        <p>Institutional and program-based priorities guiding CPRI's research.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">Institutional Research Agenda</h2>
+        <p class="lead" id="institutional">Loading…</p>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="container">
+        <h2 class="section-title">Program-Based Research Agenda</h2>
+        <div class="grid grid-2" id="programs"></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">Priority Research Areas</h2>
+        <ul class="feature-list" id="priority"></ul>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="container">
+        <h2 class="section-title">Downloadable Agenda Documents</h2>
+        <p class="section-sub">Reference documents describing CPRI's research framework and priorities.</p>
+        <div id="documents"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (async () => {
+      const agenda = await CPRI.fetchJson('/api/agenda');
+      if (!agenda) {
+        document.getElementById('institutional').textContent = 'Unable to load research agenda at this time.';
+        return;
+      }
+      if (agenda.institutional) document.getElementById('institutional').textContent = agenda.institutional;
+
+      const prog = document.getElementById('programs');
+      if (prog && agenda.programBased) {
+        prog.innerHTML = agenda.programBased.map(p => `
+          <div class="card">
+            <h3>${p.program}</h3>
+            <p>${p.focus}</p>
+          </div>`).join('');
+      }
+
+      const pri = document.getElementById('priority');
+      if (pri && agenda.priorityAreas) {
+        pri.innerHTML = agenda.priorityAreas.map(a => `<li>${a}</li>`).join('');
+      }
+
+      const docs = document.getElementById('documents');
+      if (docs && agenda.documents) {
+        docs.innerHTML = `
+          <table>
+            <thead><tr><th>Document</th><th>Download</th></tr></thead>
+            <tbody>
+              ${agenda.documents.map(d => `
+                <tr>
+                  <td>${d.title}</td>
+                  <td><a class="btn btn-navy" href="assets/docs/${d.file}" download>Download PDF</a></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+          <p class="form-note" style="margin-top:14px;">Note: Place the corresponding PDF files in <code>public/assets/docs/</code> to enable downloads.</p>`;
+      }
+    })();
+  </script>
+</body>
+</html>

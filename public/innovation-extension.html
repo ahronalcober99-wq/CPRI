@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Innovation and Extension Projects | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Innovation and Extension Projects</h1>
+        <p>Documentation of innovation-based and community-based outputs.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+
+        <!-- Impact Dashboard -->
+        <div id="dashboard" class="grid grid-3" style="margin-bottom:28px;"></div>
+
+        <!-- Admin: Add record -->
+        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:#e6f4f1;">
+          <h3>CPRI Staff / Admin</h3>
+          <p class="form-note">Register a new innovation project or extension-based research record.</p>
+          <a class="btn btn-primary" href="innovation-extension-form.html" style="display:inline-block;margin-top:8px;">+ Add Record</a>
+        </div>
+
+        <!-- Search & filter -->
+        <div class="card" style="margin-bottom:22px;">
+          <form id="filter-form">
+            <div class="grid grid-3" style="gap:14px;">
+              <div class="form-group" style="margin:0;">
+                <label for="f-title">Project title</label>
+                <input type="text" id="f-title" name="title" placeholder="Title keyword">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-proponents">Proponent/s</label>
+                <input type="text" id="f-proponents" name="proponents" placeholder="Proponent name">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-dept">Department</label>
+                <input type="text" id="f-dept" name="department" placeholder="Department">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-type">Project Type</label>
+                <select id="f-type" name="projectType">
+                  <option value="">All</option>
+                  <option value="innovation_project">Innovation Project</option>
+                  <option value="extension_research">Extension-Based Research</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-partner">Community Partner</label>
+                <input type="text" id="f-partner" name="communityPartner" placeholder="Partner name">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-year">Year</label>
+                <input type="text" id="f-year" name="year" placeholder="e.g. 2025">
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+              <button type="submit" class="btn btn-primary">Search</button>
+              <button type="button" class="btn btn-navy" id="clear-btn">Clear</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="records"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const dashboard = document.getElementById('dashboard');
+    const recordsEl = document.getElementById('records');
+
+    const TYPE_LABELS = {
+      innovation_project: 'Innovation Project',
+      extension_research: 'Extension-Based Research'
+    };
+
+    function buildQuery() {
+      const fd = new FormData(document.getElementById('filter-form'));
+      const p = new URLSearchParams();
+      for (const [k, v] of fd.entries()) if (v) p.set(k, v);
+      return p.toString();
+    }
+
+    async function loadStats() {
+      const res = await fetch('/api/innovation-extension/stats');
+      const { stats } = await res.json();
+      dashboard.innerHTML = [
+        { label: 'Total Records', value: stats.total, cls: '' },
+        { label: 'Innovation Projects', value: stats.innovation, cls: '' },
+        { label: 'Extension Research', value: stats.extension, cls: '' },
+        { label: 'Total Beneficiaries', value: stats.totalBeneficiaries, cls: '' },
+        { label: 'With Impact Docs', value: stats.withImpactDocs, cls: '' }
+      ].map(s => `<div class="card" style="text-align:center;padding:22px;">
+        <div style="font-size:2rem;font-weight:800;color:var(--cpri-accent);">${s.value}</div>
+        <div class="form-note" style="margin-top:4px;">${s.label}</div>
+      </div>`).join('');
+    }
+
+    async function load() {
+      const res = await fetch('/api/innovation-extension' + (buildQuery() ? '?' + buildQuery() : ''));
+      const { records } = await res.json();
+      if (!records.length) {
+        recordsEl.innerHTML = '<p class="empty-state">No records found.</p>';
+        return;
+      }
+      recordsEl.innerHTML = records.map(r => `
+        <div class="card" style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;">
+            <div style="flex:1;min-width:240px;">
+              <h3 style="margin:0 0 6px;"><a href="innovation-extension-detail.html?id=${r.id}">${escapeHtml(r.title)}</a></h3>
+              <div class="meta">${r.projectTypeLabel} · ${escapeHtml(r.proponents)} · ${escapeHtml(r.department)}</div>
+              <div class="meta" style="margin-top:4px;">${r.implementationDate ? 'Implemented: ' + r.implementationDate : ''} · Beneficiaries: ${r.beneficiaries || 0}</div>
+              ${r.communityPartner ? `<div class="meta" style="margin-top:4px;">Partner: ${escapeHtml(r.communityPartner)}</div>` : ''}
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.getElementById('filter-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
+    document.getElementById('clear-btn').addEventListener('click', () => {
+      document.getElementById('filter-form').reset();
+      load();
+    });
+
+    (async () => {
+      await loadStats();
+      await load();
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) {
+        const { user } = await meRes.json();
+        if (['admin', 'cpri_staff'].includes(user.role)) {
+          document.getElementById('admin-panel').style.display = 'block';
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Publications | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Publications</h1>
+        <p>Research outputs published in journals, conferences, and institutional proceedings.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+
+        <!-- Dashboard -->
+        <div id="dashboard" class="grid grid-3" style="margin-bottom:28px;"></div>
+        <div id="breakdown" class="grid grid-2" style="margin-bottom:28px;"></div>
+
+        <!-- Admin: Add publication -->
+        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:#e6f4f1;">
+          <h3>CPRI Staff / Admin</h3>
+          <p class="form-note">Register a new publication record.</p>
+          <a class="btn btn-primary" href="publication-form.html" style="display:inline-block;margin-top:8px;">+ Add Publication</a>
+        </div>
+
+        <!-- Search & filter -->
+        <div class="card" style="margin-bottom:22px;">
+          <form id="filter-form">
+            <div class="grid grid-3" style="gap:14px;">
+              <div class="form-group" style="margin:0;">
+                <label for="f-title">Search title</label>
+                <input type="text" id="f-title" name="title" placeholder="Title keyword">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-authors">Author/s</label>
+                <input type="text" id="f-authors" name="authors" placeholder="Author name">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-venue">Journal / Conference</label>
+                <input type="text" id="f-venue" name="journalOrConference" placeholder="Venue name">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-type">Publication type</label>
+                <select id="f-type" name="pubType">
+                  <option value="">All</option>
+                  <option value="institutional_journal">Institutional Journal</option>
+                  <option value="local_journal">Local Journal</option>
+                  <option value="national_journal">National Journal</option>
+                  <option value="international_journal">International Journal</option>
+                  <option value="conference_paper">Conference Paper</option>
+                  <option value="book_chapter">Book Chapter</option>
+                  <option value="research_poster">Research Poster</option>
+                  <option value="proceedings_paper">Proceedings Paper</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-status">Status</label>
+                <select id="f-status" name="status">
+                  <option value="">All</option>
+                  <option value="submitted">Submitted</option>
+                  <option value="under_review">Under Review</option>
+                  <option value="accepted">Accepted</option>
+                  <option value="published">Published</option>
+                  <option value="presented">Presented</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-dept">Department</label>
+                <input type="text" id="f-dept" name="department" placeholder="Department">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-year">Year</label>
+                <input type="text" id="f-year" name="year" placeholder="e.g. 2025">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-sy">School Year</label>
+                <input type="text" id="f-sy" name="schoolYear" placeholder="e.g. 2025-2026">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-author-type">Author type</label>
+                <select id="f-author-type" name="authorType">
+                  <option value="">All</option>
+                  <option value="faculty">Faculty</option>
+                  <option value="student">Student</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+              <button type="submit" class="btn btn-primary">Search</button>
+              <button type="button" class="btn btn-navy" id="clear-btn">Clear</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="records"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const dashboard = document.getElementById('dashboard');
+    const breakdown = document.getElementById('breakdown');
+    const recordsEl = document.getElementById('records');
+
+    const TYPE_LABELS = {
+      institutional_journal: 'Institutional Journal', local_journal: 'Local Journal', national_journal: 'National Journal',
+      international_journal: 'International Journal', conference_paper: 'Conference Paper',
+      book_chapter: 'Book Chapter', research_poster: 'Research Poster', proceedings_paper: 'Proceedings Paper'
+    };
+    const STATUS_LABELS = {
+      submitted: 'Submitted', under_review: 'Under Review', accepted: 'Accepted',
+      published: 'Published', presented: 'Presented', rejected: 'Rejected'
+    };
+
+    function buildQuery() {
+      const fd = new FormData(document.getElementById('filter-form'));
+      const p = new URLSearchParams();
+      for (const [k, v] of fd.entries()) if (v) p.set(k, v);
+      return p.toString();
+    }
+
+    async function loadStats() {
+      const res = await fetch('/api/publications/stats');
+      const { stats } = await res.json();
+      dashboard.innerHTML = [
+        { label: 'Total Publications', value: stats.total, cls: '' },
+        { label: 'Faculty Publications', value: stats.faculty, cls: '' },
+        { label: 'Student Publications', value: stats.student, cls: '' },
+        { label: 'Published', value: stats.published, cls: '' },
+        { label: 'Local', value: stats.local, cls: '' },
+        { label: 'National', value: stats.national, cls: '' },
+        { label: 'International', value: stats.international, cls: '' }
+      ].map(s => `<div class="card" style="text-align:center;padding:22px;">
+        <div style="font-size:2rem;font-weight:800;color:var(--cpri-accent);">${s.value}</div>
+        <div class="form-note" style="margin-top:4px;">${s.label}</div>
+      </div>`).join('');
+
+      const depts = Object.entries(stats.byDepartment || {}).sort((a, b) => b[1] - a[1]);
+      const sys = Object.entries(stats.bySchoolYear || {}).sort((a, b) => b[1] - a[1]);
+      const types = Object.entries(stats.byPubType || {}).sort((a, b) => b[1] - a[1]);
+
+      breakdown.innerHTML = (depts.length ? `
+        <div class="card" style="margin-bottom:16px;">
+          <h3 style="margin-top:0;">Publications per Department</h3>
+          ${depts.map(([k, v]) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--cpri-border);">
+            <span>${k}</span><strong>${v}</strong>
+          </div>`).join('') || '<p class="form-note">No data.</p>'}
+        </div>` : '') + (sys.length ? `
+        <div class="card" style="margin-bottom:16px;">
+          <h3 style="margin-top:0;">Publications per School Year</h3>
+          ${sys.map(([k, v]) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--cpri-border);">
+            <span>${k}</span><strong>${v}</strong>
+          </div>`).join('') || '<p class="form-note">No data.</p>'}
+        </div>` : '') + (types.length ? `
+        <div class="card" style="margin-bottom:16px;">
+          <h3 style="margin-top:0;">Publications by Type</h3>
+          ${types.map(([k, v]) => `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--cpri-border);">
+            <span>${TYPE_LABELS[k] || k}</span><strong>${v}</strong>
+          </div>`).join('') || '<p class="form-note">No data.</p>'}
+        </div>` : '');
+    }
+
+    async function load() {
+      const res = await fetch('/api/publications' + (buildQuery() ? '?' + buildQuery() : ''));
+      const { publications } = await res.json();
+      if (!publications.length) {
+        recordsEl.innerHTML = '<p class="empty-state">No publications found.</p>';
+        return;
+      }
+      recordsEl.innerHTML = publications.map(p => `
+        <div class="card" style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;">
+            <div style="flex:1;min-width:240px;">
+              <h3 style="margin:0 0 6px;"><a href="publication-detail.html?id=${p.id}">${escapeHtml(p.title)}</a></h3>
+              <div class="meta">${escapeHtml(p.authors)} · ${escapeHtml(p.journalOrConference)} · ${p.pubTypeLabel} · ${p.statusLabel}</div>
+              <div class="meta" style="margin-top:4px;">${p.publicationDate} · Vol. ${p.volume || '—'} Issue ${p.issue || '—'} pp. ${p.pages || '—'} · ${p.authorTypeLabel}</div>
+              ${p.doi ? `<div class="meta" style="margin-top:4px;">DOI: ${escapeHtml(p.doi)}</div>` : ''}
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.getElementById('filter-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
+    document.getElementById('clear-btn').addEventListener('click', () => {
+      document.getElementById('filter-form').reset();
+      load();
+    });
+
+    (async () => {
+      await loadStats();
+      await load();
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) {
+        const { user } = await meRes.json();
+        if (['admin', 'cpri_staff'].includes(user.role)) {
+          document.getElementById('admin-panel').style.display = 'block';
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

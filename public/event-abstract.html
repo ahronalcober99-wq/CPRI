@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Abstract Submission | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Abstract Submission</h1>
+        <p>Submit your abstract for this event.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to submit an abstract.
+        </div>
+
+        <div id="form-area" style="display:none;max-width:700px;">
+          <p><a href="events-module.html">&larr; Back to events</a></p>
+
+          <div class="card">
+            <h3 style="margin-top:0;">Abstract Form</h3>
+            <form id="abstract-form">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="f-title">Title *</label>
+                  <input type="text" id="f-title" name="title" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-authors">Author/s *</label>
+                  <input type="text" id="f-authors" name="authors" required>
+                </div>
+                <div class="form-group" style="grid-column:span 2;">
+                  <label for="f-abstract">Abstract *</label>
+                  <textarea id="f-abstract" name="abstract" rows="6" required></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="f-keywords">Keywords</label>
+                  <input type="text" id="f-keywords" name="keywords" placeholder="Comma-separated">
+                </div>
+                <div class="form-group">
+                  <label for="f-strand">Strand or Category *</label>
+                  <input type="text" id="f-strand" name="strand" required placeholder="e.g. Policy, Education, Health">
+                </div>
+              </div>
+              <div style="margin-top:18px;">
+                <button type="submit" class="btn btn-primary">Submit Abstract</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const formArea = document.getElementById('form-area');
+    const notLogged = document.getElementById('not-logged');
+    const params = new URLSearchParams(location.search);
+    const eventId = params.get('id');
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
+      formArea.style.display = 'block';
+    })();
+
+    document.getElementById('abstract-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.target).entries());
+      const res = await fetch('/api/events-module/' + eventId + '/abstracts', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fd)
+      });
+      const out = await res.json();
+      if (!res.ok) { showMsg('error', out.error); return; }
+      showMsg('success', out.message);
+      e.target.reset();
+    });
+  </script>
+</body>
+</html>

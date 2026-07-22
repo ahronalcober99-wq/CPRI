@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>User Profile</h1>
+        <p>Manage your personal information, photo, and research records.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          You are not logged in. <a href="login.html">Log in here</a>.
+        </div>
+
+        <div id="profile-area" style="display:none;">
+          <div class="grid grid-3">
+            <!-- Photo + identity -->
+            <div class="card" style="grid-column: span 1;">
+              <div style="text-align:center;">
+                <img id="photo" alt="Profile photo" style="width:120px;height:120px;border-radius:50%;object-fit:cover;background:#e2e8f0;margin:0 auto 12px;display:block;">
+                <h3 id="p-name" style="margin:0 0 4px;">—</h3>
+                <div class="meta" id="p-role">—</div>
+              </div>
+              <form id="photo-form" style="margin-top:14px;">
+                <div class="form-group">
+                  <label for="photo-input">Profile photo</label>
+                  <input type="file" id="photo-input" name="photo" accept="image/*">
+                </div>
+                <button type="submit" class="btn btn-navy" style="width:100%;">Upload Photo</button>
+              </form>
+            </div>
+
+            <!-- Editable details -->
+            <div class="card" style="grid-column: span 2;">
+              <form id="profile-form">
+                <div class="form-group">
+                  <label for="fullName">Name</label>
+                  <input type="text" id="fullName" name="fullName">
+                </div>
+                <div class="grid grid-2" style="gap:16px;">
+                  <div class="form-group">
+                    <label for="department">Department / Program</label>
+                    <input type="text" id="department" name="department">
+                  </div>
+                  <div class="form-group">
+                    <label for="contactNumber">Contact Number</label>
+                    <input type="text" id="contactNumber" name="contactNumber">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="email">Email</label>
+                  <input type="email" id="email" name="email" disabled>
+                </div>
+                <div class="form-group">
+                  <label for="researchInterests">Research Interests</label>
+                  <textarea id="researchInterests" name="researchInterests"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Save Changes</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Researches -->
+          <div class="card" style="margin-top:22px;">
+            <h3>Submitted & Completed Researches</h3>
+            <div id="researches"></div>
+            <form id="research-form" style="margin-top:16px;border-top:1px solid var(--cpri-border);padding-top:16px;">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="r-title">Title</label>
+                  <input type="text" id="r-title" name="title" required>
+                </div>
+                <div class="form-group">
+                  <label for="r-authors">Authors</label>
+                  <input type="text" id="r-authors" name="authors">
+                </div>
+                <div class="form-group">
+                  <label for="r-year">Year</label>
+                  <input type="text" id="r-year" name="year">
+                </div>
+                <div class="form-group">
+                  <label for="r-status">Status</label>
+                  <select id="r-status" name="status">
+                    <option value="submitted">Submitted</option>
+                    <option value="completed">Completed</option>
+                  </select>
+                </div>
+              </div>
+              <button type="submit" class="btn btn-navy">Add Research</button>
+            </form>
+          </div>
+
+          <p style="margin-top:18px;"><a href="account.html">Back to account</a></p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const profileArea = document.getElementById('profile-area');
+    const notLogged = document.getElementById('not-logged');
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const res = await fetch('/api/auth/profile');
+      if (!res.ok) { notLogged.style.display = 'block'; return; }
+      const { profile } = await res.json();
+      profileArea.style.display = 'block';
+
+      document.getElementById('photo').src = profile.profilePhoto || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="120"%3E%3Crect width="120" height="120" fill="%23e2e8f0"/%3E%3Ctext x="50%25" y="52%25" dominant-baseline="middle" text-anchor="middle" font-size="44" fill="%235b6b7b"%3E%3C/text%3E%3C/svg%3E';
+      document.getElementById('p-name').textContent = profile.fullName || profile.username;
+      document.getElementById('p-role').textContent = profile.roleLabel + ' · ' + profile.status;
+      document.getElementById('fullName').value = profile.fullName || '';
+      document.getElementById('email').value = profile.email || '';
+      document.getElementById('department').value = profile.department || '';
+      document.getElementById('contactNumber').value = profile.contactNumber || '';
+      document.getElementById('researchInterests').value = profile.researchInterests || '';
+      renderResearches(profile.researches);
+    })();
+
+    function renderResearches(list) {
+      const wrap = document.getElementById('researches');
+      if (!list || !list.length) {
+        wrap.innerHTML = '<p class="form-note">No researches recorded yet.</p>';
+        return;
+      }
+      wrap.innerHTML = `<table><thead><tr><th>Title</th><th>Authors</th><th>Year</th><th>Status</th><th></th></tr></thead><tbody>` +
+        list.map(r => `<tr>
+          <td>${r.title}</td>
+          <td>${r.authors || '—'}</td>
+          <td>${r.year || '—'}</td>
+          <td><span class="badge">${r.status}</span></td>
+          <td><button class="btn btn-navy" data-del="${r.id}" style="padding:6px 12px;">Remove</button></td>
+        </tr>`).join('') + '</tbody></table>';
+      wrap.querySelectorAll('button[data-del]').forEach(btn => {
+        btn.addEventListener('click', () => removeResearch(btn.dataset.del));
+      });
+    }
+
+    // Save profile details
+    document.getElementById('profile-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      const res = await fetch('/api/auth/profile', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+      });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error || 'Update failed');
+      showMsg('success', out.message);
+      document.getElementById('p-name').textContent = out.profile.fullName || out.profile.username;
+    });
+
+    // Upload photo
+    document.getElementById('photo-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      if (!fd.get('photo') || !fd.get('photo').name) return showMsg('error', 'Choose an image first.');
+      const res = await fetch('/api/auth/profile/photo', { method: 'POST', body: fd });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error || 'Upload failed');
+      showMsg('success', out.message);
+      document.getElementById('photo').src = out.profilePhoto;
+    });
+
+    // Add research
+    document.getElementById('research-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      const res = await fetch('/api/auth/researches', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+      });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error || 'Add failed');
+      showMsg('success', out.message);
+      e.target.reset();
+      const me = await (await fetch('/api/auth/profile')).json();
+      renderResearches(me.profile.researches);
+    });
+
+    async function removeResearch(id) {
+      const res = await fetch('/api/auth/researches/' + id, { method: 'DELETE' });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error || 'Remove failed');
+      showMsg('success', out.message);
+      const me = await (await fetch('/api/auth/profile')).json();
+      renderResearches(me.profile.researches);
+    }
+  </script>
+</body>
+</html>

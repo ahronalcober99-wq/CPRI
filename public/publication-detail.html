@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Publication Detail | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Publication Record</h1>
+        <p id="pub-title">Loading…</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to view details.
+        </div>
+
+        <div id="detail" style="display:none;">
+          <p><a href="publications.html">&larr; Back to publications</a></p>
+
+          <div class="grid grid-2">
+            <div class="card">
+              <h3 style="margin-top:0;">Record Details</h3>
+              <div class="contact-row"><span class="label">Title</span><span id="d-title"></span></div>
+              <div class="contact-row"><span class="label">Author/s</span><span id="d-authors"></span></div>
+              <div class="contact-row"><span class="label">Journal / Conference</span><span id="d-venue"></span></div>
+              <div class="contact-row"><span class="label">Publication Date</span><span id="d-date"></span></div>
+              <div class="contact-row"><span class="label">Volume / Issue / Pages</span><span id="d-vol"></span></div>
+              <div class="contact-row"><span class="label">DOI / Link</span><span id="d-doi"></span></div>
+              <div class="contact-row"><span class="label">Indexing</span><span id="d-index"></span></div>
+              <div class="contact-row"><span class="label">Type</span><span id="d-type"></span></div>
+              <div class="contact-row"><span class="label">Status</span><span id="d-status"></span></div>
+              <div class="contact-row"><span class="label">Author Type</span><span id="d-authType"></span></div>
+              <div class="contact-row"><span class="label">Department</span><span id="d-dept"></span></div>
+              <div class="contact-row"><span class="label">School Year</span><span id="d-sy"></span></div>
+              <div class="contact-row"><span class="label">Submitted by</span><span id="d-submitter"></span></div>
+            </div>
+
+            <div class="card">
+              <h3 style="margin-top:0;">Proof Documents</h3>
+              <div id="proofs"></div>
+
+              <div id="admin-edit" style="display:none;border-top:1px solid var(--cpri-border);margin-top:22px;padding-top:18px;">
+                <h3>Manage Publication</h3>
+                <form id="edit-form">
+                  <div class="form-group">
+                    <label for="e-status">Status</label>
+                    <select id="e-status">
+                      <option value="submitted">Submitted</option>
+                      <option value="under_review">Under Review</option>
+                      <option value="accepted">Accepted</option>
+                      <option value="published">Published</option>
+                      <option value="presented">Presented</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="e-type">Type</label>
+                    <select id="e-type">
+                      <option value="institutional_journal">Institutional Journal</option>
+                      <option value="local_journal">Local Journal</option>
+                      <option value="national_journal">National Journal</option>
+                      <option value="international_journal">International Journal</option>
+                      <option value="conference_paper">Conference Paper</option>
+                      <option value="book_chapter">Book Chapter</option>
+                      <option value="research_poster">Research Poster</option>
+                      <option value="proceedings_paper">Proceedings Paper</option>
+                    </select>
+                  </div>
+                  <button type="submit" class="btn btn-primary">Save Changes</button>
+                  <button type="button" class="btn btn-navy" id="delete-btn" style="margin-left:8px;">Delete</button>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const detail = document.getElementById('detail');
+    const notLogged = document.getElementById('not-logged');
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+
+    const TYPE_LABELS = {
+      institutional_journal: 'Institutional Journal', local_journal: 'Local Journal',
+      national_journal: 'National Journal', international_journal: 'International Journal',
+      conference_paper: 'Conference Paper', book_chapter: 'Book Chapter',
+      research_poster: 'Research Poster', proceedings_paper: 'Proceedings Paper'
+    };
+    const STATUS_LABELS = {
+      submitted: 'Submitted', under_review: 'Under Review', accepted: 'Accepted',
+      published: 'Published', presented: 'Presented', rejected: 'Rejected'
+    };
+    const AUTHOR_TYPE_LABELS = { faculty: 'Faculty', student: 'Student', other: 'Other' };
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const pubRes = await fetch('/api/publications/' + id);
+      if (!pubRes.ok) { showMsg('error', (await pubRes.json()).error || 'Not found.'); return; }
+      const { publication: p } = await pubRes.json();
+      detail.style.display = 'block';
+      document.getElementById('pub-title').textContent = p.title;
+      document.getElementById('d-title').textContent = p.title;
+      document.getElementById('d-authors').textContent = p.authors;
+      document.getElementById('d-venue').textContent = p.journalOrConference;
+      document.getElementById('d-date').textContent = p.publicationDate;
+      document.getElementById('d-vol').textContent = `Vol. ${p.volume || '—'} Issue ${p.issue || '—'} pp. ${p.pages || '—'}`;
+      document.getElementById('d-doi').innerHTML = p.doi ? `<a href="https://doi.org/${escapeHtml(p.doi)}" target="_blank">${escapeHtml(p.doi)}</a>` : (p.publicationLink ? `<a href="${escapeHtml(p.publicationLink)}" target="_blank">Link</a>` : '—');
+      document.getElementById('d-index').textContent = p.indexingStatus || '—';
+      document.getElementById('d-type').textContent = TYPE_LABELS[p.pubType] || p.pubType;
+      document.getElementById('d-status').textContent = STATUS_LABELS[p.status] || p.status;
+      document.getElementById('d-authType').textContent = AUTHOR_TYPE_LABELS[p.authorType] || p.authorType;
+      document.getElementById('d-dept').textContent = p.department || '—';
+      document.getElementById('d-sy').textContent = p.schoolYear || '—';
+      document.getElementById('d-submitter').textContent = p.submitterName || '—';
+
+      const proofsEl = document.getElementById('proofs');
+      if (!p.proofDocuments || !p.proofDocuments.length) {
+        proofsEl.innerHTML = '<p class="form-note">No proof documents uploaded.</p>';
+      } else {
+        proofsEl.innerHTML = p.proofDocuments.map(d => `
+          <div style="border-bottom:1px solid var(--cpri-border);padding:8px 0;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <strong>${d.type.replace(/_/g, ' ').toUpperCase()}</strong> — ${d.originalName}
+              <div class="form-note">${new Date(d.uploadedAt).toLocaleString()}</div>
+            </div>
+            <a class="btn btn-navy" href="/api/publications/${p.id}/file/${encodeURIComponent(d.filename)}">Download</a>
+          </div>
+        `).join('');
+      }
+
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) {
+        const { user } = await meRes.json();
+        const canManage = ['admin', 'cpri_staff'].includes(user.role) || p.submitterId === user.id;
+        if (canManage) {
+          const ae = document.getElementById('admin-edit');
+          ae.style.display = 'block';
+          document.getElementById('e-status').value = p.status;
+          document.getElementById('e-type').value = p.pubType;
+          document.getElementById('edit-form').addEventListener('submit', async (ev) => {
+            ev.preventDefault();
+            const fd = new FormData(ev.target);
+            const updates = {
+              status: fd.get('status'),
+              pubType: fd.get('pubType')
+            };
+            const patchRes = await fetch('/api/publications/' + p.id, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(updates)
+            });
+            const out = await patchRes.json();
+            if (!patchRes.ok) return showMsg('error', out.error);
+            showMsg('success', 'Publication updated.');
+            location.reload();
+          });
+          document.getElementById('delete-btn').addEventListener('click', async () => {
+            if (!confirm('Delete this publication?')) return;
+            const delRes = await fetch('/api/publications/' + p.id, { method: 'DELETE' });
+            const out = await delRes.json();
+            if (!delRes.ok) return showMsg('error', out.error);
+            location.href = 'publications.html';
+          });
+        }
+      }
+    })();
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

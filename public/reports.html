@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>System Reports | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>System Reports</h1>
+        <p>Generate and export institutional research reports.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="access-denied" class="empty-state" style="display:none;">Admin access required.</div>
+
+        <div id="reports-area" style="display:none;">
+          <div class="grid grid-2" style="gap:18px;">
+            <div class="card">
+              <h3 style="margin-top:0;">1. List of Completed Researches per Department</h3>
+              <p class="form-note">Shows research output counts grouped by department.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/research-output-per-department?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/research-output-per-department?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/research-output-per-department?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0;">2. List of Published Researches per School Year</h3>
+              <p class="form-note">Shows research and publication counts per year.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/research-output-per-year?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/research-output-per-year?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/research-output-per-year?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0;">3. Faculty Research Productivity Report</h3>
+              <p class="form-note">Completed researches, publications, presentations, and citations per faculty.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/faculty-productivity?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/faculty-productivity?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/faculty-productivity?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0;">4. Student Research Output Report</h3>
+              <p class="form-note">Student research titles, advisers, completion year, and output status.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/student-output?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/student-output?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/student-output?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0;">5. Ethics Review Application Report</h3>
+              <p class="form-note">Summary of ethics applications by status.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/ethics-by-status?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/ethics-by-status?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/ethics-by-status?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0;">6. Research Submission Status Report</h3>
+              <p class="form-note">Count of submissions grouped by current status.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/submissions-by-status?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/submissions-by-status?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/submissions-by-status?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0;">7. Innovation and Extension Project Report</h3>
+              <p class="form-note">List of innovation and extension projects with beneficiaries and partners.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/innovation-extension-report?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/innovation-extension-report?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/innovation-extension-report?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0;">8. Research Events and Participation Report</h3>
+              <p class="form-note">Event details with registrant counts, presenters, and attendees.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/events-participation-report?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/events-participation-report?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/events-participation-report?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0;">9. Publication Monitoring Report</h3>
+              <p class="form-note">Publications with journal/conference, type, status, DOI, and school year.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/publications-monitoring?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/publications-monitoring?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/publications-monitoring?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3 style="margin-top:0;">10. Institutional Research Repository Inventory</h3>
+              <p class="form-note">Full repository inventory with access levels and file availability.</p>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <a class="btn btn-primary" href="/api/reports/export/repository-inventory?format=csv" target="_blank">Export CSV</a>
+                <a class="btn btn-navy" href="/api/reports/export/repository-inventory?format=excel" target="_blank">Export Excel</a>
+                <a class="btn btn-outline" href="/api/reports/export/repository-inventory?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { document.getElementById('access-denied').style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      if (!['admin', 'cpri_staff'].includes(user.role)) {
+        document.getElementById('access-denied').style.display = 'block';
+        return;
+      }
+      document.getElementById('reports-area').style.display = 'block';
+    })();
+  </script>
+</body>
+</html>

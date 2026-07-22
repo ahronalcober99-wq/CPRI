@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Researcher Profile Form | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Researcher Profile</h1>
+        <p>Add or edit a researcher profile.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to manage researcher profiles.
+        </div>
+
+        <div id="form-area" style="display:none;max-width:900px;">
+          <p><a href="researchers.html">&larr; Back to researchers</a></p>
+
+          <div class="card" style="margin-bottom:22px;">
+            <h3 style="margin-top:0;">Basic Information</h3>
+            <form id="researcher-form">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="f-type">Researcher Type *</label>
+                  <select id="f-type" name="type" required>
+                    <option value="faculty">Faculty Researcher</option>
+                    <option value="student">Student Researcher</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-name">Full Name *</label>
+                  <input type="text" id="f-name" name="fullName" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-dept">Department</label>
+                  <input type="text" id="f-dept" name="department" placeholder="Department (Faculty)">
+                </div>
+                <div class="form-group">
+                  <label for="f-program">Program</label>
+                  <input type="text" id="f-program" name="program" placeholder="Program (Student)">
+                </div>
+                <div class="form-group">
+                  <label for="f-interests">Research Interests</label>
+                  <textarea id="f-interests" name="researchInterests" rows="3" placeholder="e.g. Policy analysis, environmental governance..."></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="f-orcid">ORCID</label>
+                  <input type="url" id="f-orcid" name="orcid" placeholder="https://orcid.org/...">
+                </div>
+                <div class="form-group">
+                  <label for="f-scholar">Google Scholar</label>
+                  <input type="url" id="f-scholar" name="googleScholar" placeholder="https://scholar.google.com/...">
+                </div>
+                <div class="form-group">
+                  <label for="f-rg">ResearchGate</label>
+                  <input type="url" id="f-rg" name="researchGate" placeholder="https://researchgate.net/profile/...">
+                </div>
+              </div>
+          </div>
+
+          <div class="card" style="margin-bottom:22px;">
+            <h3 style="margin-top:0;">Research Outputs</h3>
+            <div class="grid grid-2" style="gap:16px;">
+              <div class="form-group">
+                <label for="f-research-title">Research Title</label>
+                <input type="text" id="f-research-title" name="researchTitle" placeholder="Current or latest research title">
+              </div>
+              <div class="form-group">
+                <label for="f-adviser">Adviser</label>
+                <input type="text" id="f-adviser" name="adviser" placeholder="Adviser name (for students)">
+              </div>
+              <div class="form-group">
+                <label for="f-year">Year Completed</label>
+                <input type="text" id="f-year" name="yearCompleted" placeholder="e.g. 2025">
+              </div>
+              <div class="form-group">
+                <label for="f-output-status">Research Output Status</label>
+                <select id="f-output-status" name="researchOutputStatus">
+                  <option value="">Select status</option>
+                  <option value="ongoing">Ongoing</option>
+                  <option value="completed">Completed</option>
+                  <option value="published">Published</option>
+                  <option value="presented">Presented</option>
+                  <option value="under_review">Under Review</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="f-completed">Completed Researches (comma-separated)</label>
+                <textarea id="f-completed" name="completedResearches" rows="2" placeholder="Research 1, Research 2..."></textarea>
+              </div>
+                <div class="form-group">
+                <label for="f-published">Published Works (comma-separated)</label>
+                <textarea id="f-published" name="publishedWorks" rows="2" placeholder="Pub 1, Pub 2..."></textarea>
+              </div>
+              <div class="form-group">
+                <label for="f-presented">Presented Papers (comma-separated)</label>
+                <textarea id="f-presented" name="presentedPapers" rows="2" placeholder="Presentation 1, Presentation 2..."></textarea>
+              </div>
+              <div class="form-group">
+                <label for="f-innovation">Innovation Projects (comma-separated)</label>
+                <textarea id="f-innovation" name="innovationProjects" rows="2" placeholder="Project 1, Project 2..."></textarea>
+              </div>
+              <div class="form-group">
+                <label for="f-awards">Awards or Recognitions (comma-separated)</label>
+                <textarea id="f-awards" name="awards" rows="2" placeholder="Award 1, Award 2..."></textarea>
+              </div>
+              <div class="form-group">
+                <label for="f-citations">Number of Citations</label>
+                <input type="number" id="f-citations" name="citations" placeholder="e.g. 12" min="0">
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:18px;">
+            <button type="submit" class="btn btn-primary">Save Profile</button>
+          </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const formArea = document.getElementById('form-area');
+    const notLogged = document.getElementById('not-logged');
+    let editId = null;
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      if (!['admin', 'cpri_staff'].includes(user.role)) {
+        notLogged.style.display = 'block';
+        notLogged.innerHTML = 'You do not have permission to manage researcher profiles.';
+        return;
+      }
+
+      const params = new URLSearchParams(location.search);
+      editId = params.get('edit');
+      if (editId) {
+        const res = await fetch('/api/researchers/' + editId);
+        if (res.ok) {
+          const { researcher: r } = await res.json();
+          const map = {
+            type: 'f-type', fullName: 'f-name', department: 'f-dept', program: 'f-program',
+            researchInterests: 'f-interests', orcid: 'f-orcid', googleScholar: 'f-scholar',
+            researchGate: 'f-rg', researchTitle: 'f-research-title', adviser: 'f-adviser',
+            yearCompleted: 'f-year', researchOutputStatus: 'f-output-status',
+            citations: 'f-citations'
+          };
+          for (const [key, elId] of Object.entries(map)) {
+            const el = document.getElementById(elId);
+            if (el && r[key] !== undefined && r[key] !== null) el.value = r[key];
+          }
+          const arrFields = {
+            completedResearches: 'f-completed',
+            publishedWorks: 'f-published',
+            presentedPapers: 'f-presented',
+            innovationProjects: 'f-innovation',
+            awards: 'f-awards'
+          };
+          for (const [key, elId] of Object.entries(arrFields)) {
+            const el = document.getElementById(elId);
+            if (el && Array.isArray(r[key])) el.value = r[key].join(', ');
+          }
+        }
+      }
+      formArea.style.display = 'block';
+    })();
+
+    document.getElementById('researcher-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.target).entries());
+
+      const arrFields = ['completedResearches', 'publishedWorks', 'presentedPapers', 'innovationProjects', 'awards'];
+      const payload = { ...fd };
+      for (const key of arrFields) {
+        if (payload[key]) {
+          payload[key] = payload[key].split(',').map(s => s.trim()).filter(Boolean);
+        } else {
+          payload[key] = [];
+        }
+      }
+      if (payload.citations !== undefined && payload.citations !== '') {
+        payload.citations = parseInt(payload.citations, 10) || 0;
+      } else {
+        payload.citations = 0;
+      }
+
+      const res = await fetch('/api/researchers' + (editId ? '/' + editId : ''), {
+        method: editId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const out = await res.json();
+      if (!res.ok) { showMsg('error', out.error); return; }
+      showMsg('success', out.message);
+      e.target.reset();
+    });
+  </script>
+</body>
+</html>

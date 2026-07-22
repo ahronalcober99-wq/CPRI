@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Events & Activities | CPRI</title>
+  <meta name="description" content="Research conferences, symposiums, trainings, and capability-building activities hosted by CPRI.">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Events & Activities</h1>
+        <p>Conferences, symposiums, trainings, and capability-building activities.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">Upcoming Activities</h2>
+        <div class="grid grid-3" id="events-upcoming"></div>
+      </div>
+    </section>
+
+    <section class="section alt">
+      <div class="container">
+        <h2 class="section-title">Past Events & Documentation</h2>
+        <div class="grid grid-3" id="events-past"></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <h2 class="section-title">Event Gallery</h2>
+        <p class="section-sub">Photos and documentation from recent CPRI activities.</p>
+        <div class="grid grid-4" id="gallery"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (async () => {
+      const events = await CPRI.fetchJson('/api/events');
+      const up = document.getElementById('events-upcoming');
+      const past = document.getElementById('events-past');
+      const gallery = document.getElementById('gallery');
+      if (!events) {
+        up.innerHTML = '<p class="empty-state">Unable to load events at this time.</p>';
+        return;
+      }
+      const now = new Date();
+      const upcoming = events.filter(e => new Date(e.date) >= now);
+      const pastEvents = events.filter(e => new Date(e.date) < now);
+
+      up.innerHTML = upcoming.length ? upcoming.map(e => eventCard(e)).join('')
+        : '<p class="empty-state">No upcoming events scheduled.</p>';
+      past.innerHTML = pastEvents.length ? pastEvents.map(e => eventCard(e)).join('')
+        : '<p class="empty-state">No past events recorded yet.</p>';
+
+      if (gallery) {
+        gallery.innerHTML = events.map(e => `
+          <div class="card" style="padding:0;overflow:hidden;">
+            <div style="height:140px;background:linear-gradient(135deg,#13518f,#2a9d8f);display:grid;place-items:center;color:#fff;font-size:2rem;">📷</div>
+            <div style="padding:14px;">
+              <h3 style="font-size:1rem;margin:0 0 4px;">${e.title}</h3>
+              <div class="meta">${CPRI.fmtDate(e.date)}</div>
+            </div>
+          </div>`).join('') || '<p class="empty-state">No photos yet.</p>';
+      }
+
+      function eventCard(e) {
+        return `
+          <div class="card">
+            <span class="badge">${e.type}</span>
+            <h3>${e.title}</h3>
+            <div class="meta">${CPRI.fmtDate(e.date)}</div>
+            <p>${e.description}</p>
+            <p style="color:var(--cpri-gray);font-size:.9rem;">📍 ${e.location}</p>
+          </div>`;
+      }
+    })();
+  </script>
+</body>
+</html>

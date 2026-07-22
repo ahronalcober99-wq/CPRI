@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CPRI | Center for Policy and Research Innovations</title>
+  <meta name="description" content="CPRI is a multidisciplinary research center generating, synthesizing, and translating evidence into sound public policy. Enterprise-grade research management, AI-assisted discovery, and open knowledge.">
+  <meta name="theme-color" content="#0F172A">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%231E3A8A'/><text x='50' y='68' font-size='54' font-family='sans-serif' font-weight='700' fill='white' text-anchor='middle'>C</text></svg>">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <!-- Page loader -->
+  <div class="page-loader" id="pageLoader">
+    <div class="pl-ring"></div>
+    <div class="pl-logo">C</div>
+  </div>
+
+  <div id="site-header"></div>
+
+  <main id="main">
+
+    <!-- ============ HERO ============ -->
+    <section class="cpri-hero">
+      <div class="hero-bg"></div>
+      <canvas id="particles"></canvas>
+      <div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+      <div class="container-xl">
+        <div class="hero-grid">
+          <div class="reveal-up">
+            <span class="hero-badge"><i class="bi bi-mortarboard-fill"></i> A university research center · est. 2014</span>
+            <h1>Evidence that moves<br><span class="hl">policy &amp; society</span> forward</h1>
+            <p class="lead">We advance <span class="type-line"><span id="typed"></span><span class="type-caret">&nbsp;</span></span><br>through rigorous research, collaboration, and capability building for a more equitable and resilient society.</p>
+            <div class="hero-cta">
+              <a class="btn btn-gradient" href="research-agenda.html"><i class="bi bi-graph-up-arrow"></i> Explore Research</a>
+              <a class="btn btn-outline-light" href="about.html"><i class="bi bi-info-circle"></i> About CPRI</a>
+            </div>
+            <div class="trust-row">
+              <span class="lbl">Trusted by</span>
+              <div class="trust-logos">
+                <span><i class="bi bi-building"></i> State University</span>
+                <span><i class="bi bi-mortarboard"></i> National College</span>
+                <span><i class="bi bi-hospital"></i> Health Institute</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-art reveal-right">
+            <div class="hero-float f1"><i class="bi bi-journal-richtext"></i></div>
+            <div class="hero-float f2"><i class="bi bi-people-fill"></i></div>
+            <div class="hero-float f3"><i class="bi bi-lightbulb"></i></div>
+            <div class="glass-card">
+              <div class="gc-head">
+                <span class="gc-icon"><i class="bi bi-speedometer2"></i></span>
+                <div><b>Research Impact Dashboard</b><small>Live · updated 2m ago</small></div>
+                <span class="badge-soft tag" style="margin-left:auto;">Live</span>
+              </div>
+              <div class="glass-stats">
+                <div class="glass-stat"><div class="gs-num" data-count="1420">0</div><div class="gs-lbl">Publications</div></div>
+                <div class="glass-stat"><div class="gs-num" data-count="128">0</div><div class="gs-lbl">Active Projects</div></div>
+                <div class="glass-stat"><div class="gs-num" data-count="96">0</div><div class="gs-lbl">Researchers</div></div>
+                <div class="glass-stat"><div class="gs-num" data-count="42">0</div><div class="gs-lbl">Innovation Programs</div></div>
+              </div>
+              <div class="mt-3 glass-stat">
+                <div class="d-flex align-items-center gap-2 mb-1"><i class="bi bi-bar-chart-line" style="color:#fff;"></i><small style="color:rgba(255,255,255,.8);">Monthly output</small></div>
+                <div class="mini-chart">
+                  <span style="--h:42%"></span><span style="--h:66%"></span><span style="--h:54%"></span>
+                  <span style="--h:80%"></span><span style="--h:62%"></span><span style="--h:95%"></span><span style="--h:78%"></span>
+                </div>
+              </div>
+              <div class="gc-progress">
+                <div class="gc-label"><span>Approval rate</span><span>94%</span></div>
+                <div class="gc-bar"><span data-w="94%"></span></div>
+                <div class="gc-label" style="margin-top:10px;"><span>On-time delivery</span><span>88%</span></div>
+                <div class="gc-bar"><span data-w="88%"></span></div>
+              </div>
+              <div class="ring-row">
+                <div class="ring" data-pct="76">
+                  <svg width="78" height="78"><circle cx="39" cy="39" r="32" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="8"/><circle class="ring-fg" cx="39" cy="39" r="32" fill="none" stroke="#2DD4BF" stroke-width="8" stroke-linecap="round"/></svg>
+                  <div class="rv">76%</div>
+                </div>
+                <div class="ring-info">
+                  <small>Research goals</small>
+                  <div style="color:#fff;font-family:var(--font-head);font-weight:700;">On track for 2026</div>
+                  <small style="margin-top:6px;">+18% citations YoY</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ RESEARCH (Google Research style) ============ -->
+    <section class="section">
+      <div class="container-xl">
+        <div class="section-head reveal-up">
+          <span class="eyebrow">Discover Research</span>
+          <h2 class="section-title text-center">Explore our research</h2>
+          <p class="section-sub text-center mx-auto">Browse peer-reviewed studies, policy briefs, and applied programs across our priority themes.</p>
+        </div>
+
+        <div class="research-toolbar reveal-up glass" style="border-radius:var(--radius);padding:18px 20px;margin-bottom:26px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
+          <div class="input-group" style="flex:1;min-width:260px;">
+            <span class="input-group-text" style="background:transparent;border:none;"><i class="bi bi-search"></i></span>
+            <input type="search" id="researchSearch" class="form-control" style="border:none;background:transparent;box-shadow:none;" placeholder="Search publications, topics, authors…">
+          </div>
+          <div class="research-filters d-flex flex-wrap gap-2" id="researchFilters">
+            <button class="btn btn-soft btn-sm active" data-cat="all">All</button>
+            <button class="btn btn-soft btn-sm" data-cat="ai">AI Research</button>
+            <button class="btn btn-soft btn-sm" data-cat="policy">Policy Studies</button>
+            <button class="btn btn-soft btn-sm" data-cat="health">Healthcare</button>
+            <button class="btn btn-soft btn-sm" data-cat="edu">Education</button>
+            <button class="btn btn-soft btn-sm" data-cat="climate">Climate</button>
+            <button class="btn btn-soft btn-sm" data-cat="gov">Governance</button>
+          </div>
+        </div>
+
+        <div class="row g-4" id="research-cards"></div>
+      </div>
+    </section>
+
+    <!-- ============ RESEARCHERS ============ -->
+    <section class="section">
+      <div class="container-xl">
+        <div class="section-head reveal-up">
+          <span class="eyebrow">Our People</span>
+          <h2 class="section-title text-center">Featured Researchers</h2>
+          <p class="section-sub text-center mx-auto">Meet the faculty, students, and staff advancing CPRI's mission.</p>
+        </div>
+        <div class="row g-4" id="researchers"></div>
+      </div>
+    </section>
+
+    <!-- ============ STATISTICS ============ -->
+    <section class="section alt">
+      <div class="container-xl">
+        <div class="section-head reveal-up">
+          <span class="eyebrow">By the Numbers</span>
+          <h2 class="section-title text-center">Our impact, measured</h2>
+          <p class="section-sub text-center mx-auto">A decade of evidence, partnerships, and published research.</p>
+        </div>
+        <div class="row g-4" id="stats"></div>
+      </div>
+    </section>
+
+    <!-- ============ PARTNERS ============ -->
+    <section class="section">
+      <div class="container-xl">
+        <div class="section-head reveal-up">
+          <span class="eyebrow">Collaboration</span>
+          <h2 class="section-title text-center">Our Partners</h2>
+          <p class="section-sub text-center mx-auto">Universities, government agencies, NGOs, and international organizations.</p>
+        </div>
+        <div class="partner-marquee reveal-up">
+          <div class="track" id="partnerTrack"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ TESTIMONIALS ============ -->
+    <section class="section alt">
+      <div class="container-xl">
+        <div class="section-head reveal-up">
+          <span class="eyebrow">Voices</span>
+          <h2 class="section-title text-center">What partners say</h2>
+          <p class="section-sub text-center mx-auto">From students to government and industry leaders.</p>
+        </div>
+        <div class="swiper testiSwiper reveal-up">
+          <div class="swiper-wrapper" id="testimonials"></div>
+          <div class="swiper-pagination"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ UPCOMING EVENTS ============ -->
+    <section class="section">
+      <div class="container-xl">
+        <div class="section-head reveal-up">
+          <span class="eyebrow">Save the Date</span>
+          <h2 class="section-title text-center">Upcoming Events</h2>
+          <p class="section-sub text-center mx-auto">Conferences, seminars, and workshops — open to the public and partners.</p>
+        </div>
+        <div class="row g-4" id="events"></div>
+      </div>
+    </section>
+
+    <!-- ============ AI FEATURES ============ -->
+    <section class="section alt">
+      <div class="container-xl">
+        <div class="section-head reveal-up">
+          <span class="eyebrow">Powered by AI</span>
+          <h2 class="section-title text-center">Intelligent research, by design</h2>
+          <p class="section-sub text-center mx-auto">An AI layer that helps you discover, summarize, and act on knowledge faster.</p>
+        </div>
+        <div class="row g-4" id="ai-features"></div>
+      </div>
+    </section>
+
+    <!-- ============ FAQS ============ -->
+    <section class="section">
+      <div class="container-xl">
+        <div class="row g-4 align-items-start">
+          <div class="col-lg-5 reveal-left">
+            <span class="eyebrow">FAQs</span>
+            <h2 class="section-title text-start">Frequently asked questions</h2>
+            <p class="section-sub text-start">Can't find what you need? <a href="contact.html" style="color:var(--cpri-secondary);font-weight:700;">Contact our team</a>.</p>
+          </div>
+          <div class="col-lg-7 reveal-up" id="faqs"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ CONTACT ============ -->
+    <section class="section alt">
+      <div class="container-xl">
+        <div class="section-head reveal-up">
+          <span class="eyebrow">Get in Touch</span>
+          <h2 class="section-title text-center">Contact Us</h2>
+          <p class="section-sub text-center mx-auto">We'd love to hear about partnerships, research, and ideas.</p>
+        </div>
+        <div class="row g-4">
+          <div class="col-lg-5 reveal-left">
+            <div class="contact-card">
+              <div class="contact-row"><i class="bi bi-envelope"></i><div><b>Email</b>cpri@university.edu</div></div>
+              <div class="contact-row"><i class="bi bi-telephone"></i><div><b>Phone</b>+63 (2) 8123 4567</div></div>
+              <div class="contact-row"><i class="bi bi-geo-alt"></i><div><b>Office</b>Room 302, Research &amp; Innovation Building</div></div>
+              <div class="contact-row"><i class="bi bi-clock"></i><div><b>Hours</b>Mon–Fri, 8:00 AM – 5:00 PM</div></div>
+            </div>
+          </div>
+          <div class="col-lg-7 reveal-up">
+            <form class="contact-card" id="contact-form">
+              <div class="row g-3">
+                <div class="col-md-6 form-group"><label>Name</label><input type="text" placeholder="Your name" required></div>
+                <div class="col-md-6 form-group"><label>Email</label><input type="email" placeholder="you@email.com" required></div>
+              </div>
+              <div class="form-group"><label>Subject</label><input type="text" placeholder="How can we help?"></div>
+              <div class="form-group"><label>Message</label><textarea placeholder="Write your message..."></textarea></div>
+              <button class="btn btn-gradient" type="submit"><i class="bi bi-send"></i> Send Message</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ NEWSLETTER ============ -->
+    <section class="section">
+      <div class="container-xl">
+        <div class="newsletter reveal-zoom">
+          <span class="eyebrow" style="color:var(--cpri-accent);">Stay Informed</span>
+          <h2>Subscribe to Our Newsletter</h2>
+          <p>Receive research highlights, events, and policy briefs in your inbox.</p>
+          <form data-newsletter>
+            <input type="email" placeholder="Enter your email address" aria-label="Email" required>
+            <button class="btn btn-accent" type="submit"><i class="bi bi-envelope-paper"></i> Subscribe</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="site-footer"></div>
+
+  <!-- ============ SCRIPTS ============ -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://unpkg.com/aos@2.3.4/dist/aos.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/countup.js@2.8.0/dist/countUp.umd.js"></script>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (async () => {
+      // Build dynamic content for the homepage
+      const [research, publications, events, researchers] = await Promise.all([
+        CPRI.fetchJson('/api/research'),
+        CPRI.fetchJson('/api/publications'),
+        CPRI.fetchJson('/api/events'),
+        CPRI.fetchJson('/api/researchers')
+      ]);
+      CPRI.buildResearch(research, publications);
+      CPRI.buildResearchers(researchers);
+      CPRI.buildStats();
+      CPRI.buildPartners();
+      CPRI.buildTestimonials();
+      CPRI.buildEvents(events);
+      CPRI.buildAiFeatures();
+      CPRI.buildFaqs();
+      CPRI.initHeroExtras();
+      if (CPRI.reveal) CPRI.reveal();
+    })();
+  </script>
+</body>
+</html>
+

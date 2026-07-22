@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact | CPRI</title>
+  <meta name="description" content="Contact the Center for Policy and Research Innovations. Email, office location, and inquiry form.">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Contact CPRI</h1>
+        <p>Reach the Center for Policy and Research Innovations or send us an inquiry.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-2">
+          <div>
+            <h2 class="section-title">Get in Touch</h2>
+            <div class="contact-card" id="contact-info">
+              <div class="contact-row"><span class="label">Email</span><span id="ci-email">cpri@university.edu</span></div>
+              <div class="contact-row"><span class="label">Phone</span><span id="ci-phone">+63 (2) 8123 4567</span></div>
+              <div class="contact-row"><span class="label">Office</span><span id="ci-office">Room 302, Research and Innovation Building, University Avenue, Quezon City</span></div>
+              <div class="contact-row"><span class="label">Hours</span><span id="ci-hours">Monday to Friday, 8:00 AM – 5:00 PM</span></div>
+            </div>
+          </div>
+
+          <div>
+            <h2 class="section-title">Inquiry Form</h2>
+            <div class="form-message" id="form-message"></div>
+            <form id="contact-form" novalidate>
+              <div class="form-group">
+                <label for="name">Name *</label>
+                <input type="text" id="name" name="name" required>
+              </div>
+              <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" name="email" required>
+              </div>
+              <div class="form-group">
+                <label for="subject">Subject</label>
+                <input type="text" id="subject" name="subject">
+              </div>
+              <div class="form-group">
+                <label for="message">Message *</label>
+                <textarea id="message" name="message" required></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary" id="submit-btn">Send Inquiry</button>
+              <p class="form-note">We typically respond within 2–3 business days.</p>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (async () => {
+      const site = await CPRI.fetchJson('/api/site');
+      if (site && site.contact) {
+        const c = site.contact;
+        if (c.email) document.getElementById('ci-email').textContent = c.email;
+        if (c.phone) document.getElementById('ci-phone').textContent = c.phone;
+        if (c.office) document.getElementById('ci-office').textContent = c.office;
+        if (c.hours) document.getElementById('ci-hours').textContent = c.hours;
+      }
+
+      const form = document.getElementById('contact-form');
+      const message = document.getElementById('form-message');
+      const btn = document.getElementById('submit-btn');
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        message.className = 'form-message';
+        const data = Object.fromEntries(new FormData(form).entries());
+        if (!data.name || !data.email || !data.message) {
+          message.className = 'form-message error';
+          message.textContent = 'Please complete the required fields (name, email, message).';
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+        try {
+          const res = await fetch('/api/contact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+          const out = await res.json();
+          if (!res.ok) throw new Error(out.error || 'Submission failed');
+          message.className = 'form-message success';
+          message.textContent = out.message || 'Thank you. Your inquiry has been received.';
+          form.reset();
+        } catch (err) {
+          message.className = 'form-message error';
+          message.textContent = err.message || 'Something went wrong. Please try again.';
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Send Inquiry';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

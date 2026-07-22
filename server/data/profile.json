@@ -1,0 +1,22 @@
+{
+  "name": "Center for Policy and Research Innovations",
+  "shortName": "CPRI",
+  "tagline": "Advancing evidence-based policy through research and innovation",
+  "description": "The Center for Policy and Research Innovations (CPRI) is a multidisciplinary research center dedicated to generating, synthesizing, and translating evidence to inform sound public policy and strengthen research capacity across institutions.",
+  "contact": {
+    "email": "cpri@university.edu",
+    "phone": "+63 (2) 8123 4567",
+    "office": "Room 302, Research and Innovation Building, University Avenue, Quezon City",
+    "hours": "Monday to Friday, 8:00 AM – 5:00 PM"
+  },
+  "quickLinks": [
+    { "label": "Repository", "href": "repository.html", "icon": "archive" },
+    { "label": "Publications", "href": "publications.html", "icon": "book" },
+    { "label": "Ethics Review", "href": "ethics.html", "icon": "book" },
+    { "label": "Researchers", "href": "researchers.html", "icon": "book" },
+    { "label": "Events & Conferences", "href": "events-module.html", "icon": "book" },
+    { "label": "Innovation & Extension", "href": "innovation-extension.html", "icon": "book" },
+    { "label": "Submission", "href": "submit.html", "icon": "upload" },
+    { "label": "Contact", "href": "contact.html", "icon": "mail" }
+  ]
+}

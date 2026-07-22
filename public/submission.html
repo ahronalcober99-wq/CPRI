@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submission Detail | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Submission Detail</h1>
+        <p id="sub-title">Loading…</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to view this submission.
+        </div>
+        <div id="detail" style="display:none;">
+          <p><a href="submissions.html">&larr; Back to submissions</a></p>
+
+          <div class="grid grid-2">
+            <div class="card">
+              <h3>Research Information</h3>
+              <div class="contact-row"><span class="label">Authors</span><span id="d-authors"></span></div>
+              <div class="contact-row"><span class="label">Program</span><span id="d-program"></span></div>
+              <div class="contact-row"><span class="label">Adviser</span><span id="d-adviser"></span></div>
+              <div class="contact-row"><span class="label">Category</span><span id="d-category"></span></div>
+              <div class="contact-row"><span class="label">Type</span><span id="d-type"></span></div>
+              <div class="contact-row"><span class="label">School Year</span><span id="d-sy"></span></div>
+              <div class="contact-row"><span class="label">Semester</span><span id="d-sem"></span></div>
+              <div class="contact-row"><span class="label">Keywords</span><span id="d-keywords"></span></div>
+              <div class="form-group" style="margin-top:12px;">
+                <label>Abstract</label>
+                <p id="d-abstract" style="white-space:pre-wrap;"></p>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>Status &amp; History</h3>
+              <p><span class="badge" id="d-status"></span></p>
+              <ol id="history" style="padding-left:20px;"></ol>
+
+              <div id="status-update" style="display:none;border-top:1px solid var(--cpri-border);margin-top:14px;padding-top:14px;">
+                <label for="new-status">Update status</label>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <select id="new-status" style="max-width:260px;"></select>
+                  <button class="btn btn-primary" id="update-btn">Update</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:22px;">
+            <h3>Uploaded Documents</h3>
+            <table>
+              <thead><tr><th>Document</th><th>File</th></tr></thead>
+              <tbody id="files"></tbody>
+            </table>
+          </div>
+
+          <div class="card" style="margin-top:22px;">
+            <h3>Revision History</h3>
+            <p class="form-note">Each resubmission creates a new version. Download any version below to compare.</p>
+            <div id="versions"></div>
+            <div id="revision-box" style="display:none;border-top:1px solid var(--cpri-border);margin-top:16px;padding-top:16px;">
+              <h4>Upload Revised Manuscript</h4>
+              <form id="revision-form">
+                <div class="form-group">
+                  <label for="r-note">Revision note</label>
+                  <input type="text" id="r-note" name="note" placeholder="Brief note about this revision">
+                </div>
+                <div class="form-group">
+                  <label for="r-manuscript">Revised Manuscript *</label>
+                  <input type="file" id="r-manuscript" name="manuscript" required accept=".pdf,.doc,.docx">
+                </div>
+                <div class="form-group">
+                  <label for="r-abstract">Revised Abstract (optional)</label>
+                  <input type="file" id="r-abstract" name="abstract" accept=".pdf,.doc,.docx">
+                </div>
+                <div class="form-group">
+                  <label for="r-additional">Other revised documents (optional)</label>
+                  <input type="file" id="r-additional" name="additional" multiple accept=".pdf,.doc,.docx">
+                </div>
+                <button type="submit" class="btn btn-primary">Upload Revision</button>
+              </form>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:22px;">
+            <h3>Comments &amp; Feedback</h3>
+            <div id="comments"></div>
+            <div id="comment-box" style="display:none;border-top:1px solid var(--cpri-border);margin-top:16px;padding-top:16px;">
+              <form id="comment-form">
+                <div class="form-group">
+                  <label for="comment-body">Add a comment / respond</label>
+                  <textarea id="comment-body" name="body" required placeholder="Write your comment, feedback, revision suggestion, or response…"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Post</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const detail = document.getElementById('detail');
+    const notLogged = document.getElementById('not-logged');
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+    const STATUS_LABELS = {
+      submitted: 'Submitted', under_initial_checking: 'Under Initial Checking',
+      for_revision: 'For Revision', under_ethics_review: 'Under Ethics Review',
+      approved: 'Approved', published: 'Published', archived: 'Archived', rejected: 'Rejected'
+    };
+    const TYPE_LABELS = {
+      institutional: 'Institutional Research', faculty: 'Faculty Research',
+      student_thesis: 'Student Thesis', capstone: 'Capstone',
+      feasibility: 'Feasibility Study', action_research: 'Action Research'
+    };
+    const DOC_LABELS = {
+      manuscript: 'Full Manuscript', abstract: 'Abstract',
+      ethicsCertificate: 'Ethics Certificate', approvalForm: 'Research Approval Form',
+      similarityReport: 'Similarity Report', adviserEndorsement: 'Adviser Endorsement',
+      panelApproval: 'Panel Approval Sheet', publicationProof: 'Publication Proof'
+    };
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      const isReviewer = ['admin','cpri_staff','ethics_reviewer'].includes(user.role);
+
+      const res = await fetch('/api/submissions/' + id);
+      if (!res.ok) {
+        notLogged.style.display = 'block';
+        notLogged.innerHTML = (await res.json()).error || 'Not found.';
+        return;
+      }
+      const { submission: s } = await res.json();
+      detail.style.display = 'block';
+      document.getElementById('sub-title').textContent = s.title;
+      document.getElementById('d-authors').textContent = s.authors;
+      document.getElementById('d-program').textContent = s.program;
+      document.getElementById('d-adviser').textContent = s.adviser || '—';
+      document.getElementById('d-category').textContent = s.category;
+      document.getElementById('d-type').textContent = TYPE_LABELS[s.researchType] || s.researchType;
+      document.getElementById('d-sy').textContent = s.schoolYear;
+      document.getElementById('d-sem').textContent = s.semester;
+      document.getElementById('d-keywords').textContent = s.keywords || '—';
+      document.getElementById('d-abstract').textContent = s.abstract;
+      document.getElementById('d-status').textContent = STATUS_LABELS[s.status] || s.status;
+
+      document.getElementById('history').innerHTML = s.statusHistory.map(h =>
+        `<li><strong>${STATUS_LABELS[h.status] || h.status}</strong> — ${new Date(h.at).toLocaleString()} by ${h.by}${h.note ? ' (' + h.note + ')' : ''}</li>`
+      ).join('');
+
+      // Files
+      const fileRows = [];
+      for (const [key, meta] of Object.entries(s.files || {})) {
+        if (meta) fileRows.push(`<tr><td>${DOC_LABELS[key] || key}</td><td><a class="btn btn-navy" href="/api/submissions/${s.id}/file?key=${key}">Download</a></td></tr>`);
+      }
+      (s.additionalDocs || []).forEach(d => {
+        fileRows.push(`<tr><td>Additional: ${d.originalName}</td><td><a class="btn btn-navy" href="/api/submissions/${s.id}/file?key=additional&docId=${d.id}">Download</a></td></tr>`);
+      });
+      document.getElementById('files').innerHTML = fileRows.join('') || '<tr><td colspan="2">No files uploaded.</td></tr>';
+
+      // Status update for reviewers
+      if (isReviewer) {
+        const su = document.getElementById('status-update');
+        su.style.display = 'block';
+        const sel = document.getElementById('new-status');
+        sel.innerHTML = Object.keys(STATUS_LABELS).map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${STATUS_LABELS[st]}</option>`).join('');
+        document.getElementById('update-btn').addEventListener('click', async () => {
+          const res2 = await fetch('/api/submissions/' + s.id + '/status', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: sel.value })
+          });
+          const out = await res2.json();
+          if (!res2.ok) { message.className = 'form-message error'; message.textContent = out.error; return; }
+          message.className = 'form-message success';
+          message.textContent = 'Status updated.';
+          location.reload();
+        });
+      }
+
+      // Revision history
+      const versionsEl = document.getElementById('versions');
+      const vList = (s.versions || []);
+      versionsEl.innerHTML = vList.map(v => {
+        const rows = [];
+        for (const [key, meta] of Object.entries(v.files || {})) {
+          if (meta) rows.push(`<tr><td>${DOC_LABELS[key] || key}</td><td><a class="btn btn-navy" href="/api/submissions/${s.id}/file?key=${key}&version=${v.version}">Download</a></td></tr>`);
+        }
+        (v.additionalDocs || []).forEach(d => {
+          rows.push(`<tr><td>Additional: ${d.originalName}</td><td><a class="btn btn-navy" href="/api/submissions/${s.id}/file?key=additional&docId=${d.id}&version=${v.version}">Download</a></td></tr>`);
+        });
+        return `<div style="margin-bottom:14px;">
+          <strong>Version ${v.version}</strong> — ${new Date(v.uploadedAt).toLocaleString()} by ${v.by}${v.note ? ' · ' + v.note : ''}
+          <table style="margin-top:6px;"><tbody>${rows.join('') || '<tr><td colspan=\"2\">No files.</td></tr>'}</tbody></table>
+        </div>`;
+      }).join('') || '<p class="form-note">No versions yet.</p>';
+
+      // Revision upload (owner only)
+      const isOwner = s.submitterId === user.id;
+      if (isOwner) {
+        document.getElementById('revision-box').style.display = 'block';
+        document.getElementById('revision-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const r = await fetch('/api/submissions/' + s.id + '/revisions', { method: 'POST', body: fd });
+          const out = await r.json();
+          if (!r.ok) { message.className = 'form-message error'; message.textContent = out.error; return; }
+          message.className = 'form-message success';
+          message.textContent = out.message;
+          location.reload();
+        });
+      }
+
+      // Comments & feedback
+      const COMMENT_LABELS = {
+        comment: 'Comment', feedback: 'Adviser Feedback',
+        revision_suggestion: 'Reviewer Suggestion', response: 'Researcher Response'
+      };
+      const commentsEl = document.getElementById('comments');
+      const cRes = await fetch('/api/submissions/' + s.id + '/comments');
+      if (cRes.ok) {
+        const { comments } = await cRes.json();
+        commentsEl.innerHTML = comments.length ? comments.map(c => `
+          <div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">
+            <div class="meta">${COMMENT_LABELS[c.type] || 'Comment'} · ${c.authorName} · ${new Date(c.createdAt).toLocaleString()}</div>
+            <p style="margin:6px 0 0;">${c.body}</p>
+          </div>`).join('') : '<p class="form-note">No comments yet.</p>';
+      }
+      const canComment = isOwner || ['admin','cpri_staff','ethics_reviewer','adviser'].includes(user.role);
+      if (canComment) {
+        document.getElementById('comment-box').style.display = 'block';
+        document.getElementById('comment-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const body = document.getElementById('comment-body').value.trim();
+          if (!body) return;
+          const r = await fetch('/api/submissions/' + s.id + '/comments', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body })
+          });
+          const out = await r.json();
+          if (!r.ok) { message.className = 'form-message error'; message.textContent = out.error; return; }
+          message.className = 'form-message success';
+          message.textContent = 'Comment posted.';
+          location.reload();
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

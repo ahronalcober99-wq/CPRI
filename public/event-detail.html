@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Event Detail | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1 id="event-title">Loading…</h1>
+        <p id="event-theme">Loading…</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-found" class="empty-state" style="display:none;">Event not found.</div>
+
+        <div id="detail" style="display:none;">
+          <p><a href="events-module.html">&larr; Back to events</a></p>
+
+          <div class="grid grid-2">
+            <div class="card">
+              <h3 style="margin-top:0;">Event Information</h3>
+              <div class="contact-row"><span class="label">Theme</span><span id="d-theme"></span></div>
+              <div class="contact-row"><span class="label">Date and Time</span><span id="d-datetime"></span></div>
+              <div class="contact-row"><span class="label">Venue / Platform</span><span id="d-venue"></span></div>
+              <div class="contact-row"><span class="label">Description</span><span id="d-desc" style="white-space:pre-wrap;"></span></div>
+              <div class="contact-row"><span class="label">Program Flow</span><span id="d-program" style="white-space:pre-wrap;"></span></div>
+              <div class="contact-row"><span class="label">Speakers</span><span id="d-speakers" style="white-space:pre-wrap;"></span></div>
+              <div class="contact-row"><span class="label">Registration</span><span id="d-reg"></span></div>
+
+              <div id="admin-edit" style="display:none;border-top:1px solid var(--cpri-border);margin-top:22px;padding-top:18px;">
+                <h3>Manage Event</h3>
+                <form id="edit-form">
+                  <div class="form-group">
+                    <label for="e-title">Title</label>
+                    <input type="text" id="e-title" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="e-theme">Theme</label>
+                    <input type="text" id="e-theme" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="e-datetime">Date and Time</label>
+                    <input type="datetime-local" id="e-datetime" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="e-venue">Venue / Platform</label>
+                    <input type="text" id="e-venue" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="e-desc">Description</label>
+                    <textarea id="e-desc" rows="4"></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label for="e-program">Program Flow</label>
+                    <textarea id="e-program" rows="4"></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label for="e-speakers">Speakers</label>
+                    <textarea id="e-speakers" rows="3"></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label for="e-reg">Registration Link</label>
+                    <input type="url" id="e-reg">
+                  </div>
+                  <button type="submit" class="btn btn-primary">Save Changes</button>
+                  <button type="button" class="btn btn-navy" id="delete-btn" style="margin-left:8px;">Delete Event</button>
+                </form>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3 style="margin-top:0;">Quick Actions</h3>
+              <a class="btn btn-primary" href="event-registration.html?id=${e.id}" style="display:inline-block;margin-bottom:10px;">Register for this Event</a>
+              <a class="btn btn-navy" href="event-abstract.html?id=${e.id}" style="display:inline-block;margin-bottom:10px;">Submit Abstract</a>
+
+              <h3 style="margin-top:22px;">Event Gallery</h3>
+              <div id="gallery"></div>
+
+              <div id="admin-gallery" style="display:none;border-top:1px solid var(--cpri-border);margin-top:18px;padding-top:18px;">
+                <h4>Upload Gallery Items</h4>
+                <form id="gallery-form">
+                  <div class="form-group">
+                    <label for="g-photo">Photo</label>
+                    <input type="file" id="g-photo" name="photo" accept="image/*">
+                  </div>
+                  <div class="form-group">
+                    <label for="g-poster">Poster</label>
+                    <input type="file" id="g-poster" name="poster" accept="image/*,.pdf">
+                  </div>
+                  <div class="form-group">
+                    <label for="g-cert">Certificate</label>
+                    <input type="file" id="g-cert" name="certificate" accept=".pdf,image/*">
+                  </div>
+                  <button type="submit" class="btn btn-primary">Upload</button>
+                </form>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:22px;">
+            <h3 style="margin-top:0;">Certificate Monitoring</h3>
+            <div id="cert-monitoring"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const detail = document.getElementById('detail');
+    const notFound = document.getElementById('not-found');
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const eventRes = await fetch('/api/events-module/' + id);
+      if (!eventRes.ok) { notFound.style.display = 'block'; return; }
+      const { event: e } = await eventRes.json();
+      detail.style.display = 'block';
+      document.getElementById('event-title').textContent = e.title;
+      document.getElementById('event-theme').textContent = e.theme;
+      document.getElementById('d-theme').textContent = e.theme;
+      document.getElementById('d-datetime').textContent = new Date(e.dateTime).toLocaleString();
+      document.getElementById('d-venue').textContent = e.venue;
+      document.getElementById('d-desc').textContent = e.description || '—';
+      document.getElementById('d-program').textContent = e.programFlow || '—';
+      document.getElementById('d-speakers').textContent = e.speakers || '—';
+      document.getElementById('d-reg').innerHTML = e.registrationLink ? `<a href="${escapeHtml(e.registrationLink)}" target="_blank">Registration Link</a>` : '—';
+
+      const meRes = await fetch('/api/auth/me');
+      const isAdmin = meRes.ok && (await meRes.json()).user && ['admin', 'cpri_staff'].includes((await meRes.json()).user.role);
+
+      if (isAdmin) {
+        document.getElementById('admin-edit').style.display = 'block';
+        document.getElementById('e-title').value = e.title;
+        document.getElementById('e-theme').value = e.theme;
+        const dt = new Date(e.dateTime);
+        const pad = n => String(n).padStart(2, '0');
+        document.getElementById('e-datetime').value = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+        document.getElementById('e-venue').value = e.venue;
+        document.getElementById('e-desc').value = e.description || '';
+        document.getElementById('e-program').value = e.programFlow || '';
+        document.getElementById('e-speakers').value = e.speakers || '';
+        document.getElementById('e-reg').value = e.registrationLink || '';
+
+        document.getElementById('edit-form').addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          const fd = Object.fromEntries(new FormData(ev.target).entries());
+          const dtVal = new Date(fd.dateTime).toISOString().slice(0, 16);
+          const patchRes = await fetch('/api/events-module/' + e.id, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...fd, dateTime: dtVal })
+          });
+          const out = await patchRes.json();
+          if (!patchRes.ok) return showMsg('error', out.error);
+          showMsg('success', 'Event updated.');
+          location.reload();
+        });
+        document.getElementById('delete-btn').addEventListener('click', async () => {
+          if (!confirm('Delete this event?')) return;
+          const delRes = await fetch('/api/events-module/' + e.id, { method: 'DELETE' });
+          const out = await delRes.json();
+          if (!delRes.ok) return showMsg('error', out.error);
+          location.href = 'events-module.html';
+        });
+
+        document.getElementById('admin-gallery').style.display = 'block';
+        document.getElementById('gallery-form').addEventListener('submit', async (ev) => {
+          ev.preventDefault();
+          const fd = new FormData(ev.target);
+          const res = await fetch('/api/events-module/' + e.id + '/gallery', { method: 'POST', body: fd });
+          const out = await res.json();
+          if (!res.ok) return showMsg('error', out.error);
+          showMsg('success', 'Gallery updated.');
+          ev.target.reset();
+          loadGallery(e.id);
+        });
+      }
+
+      loadGallery(e.id);
+      loadCertMonitoring(e.id);
+    })();
+
+    async function loadGallery(eventId) {
+      const res = await fetch('/api/events-module/' + eventId + '/gallery');
+      const { gallery } = await res.json();
+      const gal = document.getElementById('gallery');
+      if (!gallery.length) { gal.innerHTML = '<p class="form-note">No gallery items yet.</p>'; return; }
+      gal.innerHTML = '<div class="grid grid-3" style="gap:10px;">' + gallery.map(item => `
+        <div class="card" style="padding:10px;text-align:center;">
+          <div class="form-note">${item.type.toUpperCase()}</div>
+          <a href="/api/events-module/${eventId}/gallery/${encodeURIComponent(item.filename)}" target="_blank">${escapeHtml(item.originalName)}</a>
+        </div>
+      `).join('') + '</div>';
+    }
+
+    async function loadCertMonitoring(eventId) {
+      const res = await fetch('/api/events-module/' + eventId + '/certificates');
+      if (!res.ok) return;
+      const { certificates } = await res.json();
+      const el = document.getElementById('cert-monitoring');
+      if (!certificates.length) { el.innerHTML = '<p class="form-note">No participants yet.</p>'; return; }
+      el.innerHTML = '<table><thead><tr><th>Participant</th><th>Email</th><th>Institution</th><th>Type</th><th>Attendance</th><th>Certificate</th><th>Actions</th></tr></thead><tbody>' +
+        certificates.map(c => `
+          <tr>
+            <td>${escapeHtml(c.participantName)}</td>
+            <td>${escapeHtml(c.email)}</td>
+            <td>${escapeHtml(c.institution)}</td>
+            <td>${c.participantType}</td>
+            <td>
+              <select data-regid="${c.id}" class="attendance-select" style="max-width:140px;">
+                <option value="present" ${c.attendanceStatus === 'present' ? 'selected' : ''}>Present</option>
+                <option value="absent" ${c.attendanceStatus === 'absent' ? 'selected' : ''}>Absent</option>
+              </select>
+            </td>
+            <td>${c.certificateIssued ? 'Issued (' + escapeHtml(c.certificateNumber || '') + ')' : 'Not issued'}</td>
+            <td>
+              ${!c.certificateIssued ? `<button class="btn btn-primary issue-cert" data-regid="${c.id}">Issue</button>` : '—'}
+            </td>
+          </tr>
+        `).join('') + '</tbody></table>';
+
+      el.querySelectorAll('.attendance-select').forEach(sel => {
+        sel.addEventListener('change', async (ev) => {
+          const regId = ev.target.dataset.regid;
+          await fetch('/api/events-module/' + id + '/registrations/' + regId + '/attendance', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ attendanceStatus: ev.target.value })
+          });
+          showMsg('success', 'Attendance updated.');
+        });
+      });
+
+      el.querySelectorAll('.issue-cert').forEach(btn => {
+        btn.addEventListener('click', async (ev) => {
+          const regId = ev.target.dataset.regid;
+          const certNum = prompt('Enter certificate number:');
+          if (!certNum) return;
+          const res = await fetch('/api/events-module/' + id + '/registrations/' + regId + '/certificate', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ certificateNumber: certNum })
+          });
+          const out = await res.json();
+          if (!res.ok) return showMsg('error', out.error);
+          showMsg('success', 'Certificate issued.');
+          location.reload();
+        });
+      });
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

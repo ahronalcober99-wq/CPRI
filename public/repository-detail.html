@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Record | CPRI Repository</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Research Record</h1>
+        <p id="rec-title">Loading…</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="detail" style="display:none;">
+          <p><a href="repository.html">&larr; Back to repository</a></p>
+
+          <div class="grid grid-2">
+            <div class="card">
+              <h3>Details</h3>
+              <div class="contact-row"><span class="label">Author(s)</span><span id="d-authors"></span></div>
+              <div class="contact-row"><span class="label">Adviser</span><span id="d-adviser"></span></div>
+              <div class="contact-row"><span class="label">Department/Program</span><span id="d-dept"></span></div>
+              <div class="contact-row"><span class="label">Category</span><span id="d-cat"></span></div>
+              <div class="contact-row"><span class="label">Year Completed</span><span id="d-year"></span></div>
+              <div class="contact-row"><span class="label">Status</span><span id="d-status"></span></div>
+              <div class="contact-row"><span class="label">Access Level</span><span id="d-access"></span></div>
+              <div class="contact-row"><span class="label">File</span><span id="d-file"></span></div>
+              <div class="form-group" style="margin-top:12px;">
+                <label>Abstract</label>
+                <p id="d-abstract" style="white-space:pre-wrap;"></p>
+              </div>
+              <div class="form-group">
+                <label>Keywords</label>
+                <p id="d-keywords"></p>
+              </div>
+              <div id="file-action" style="margin-top:10px;"></div>
+            </div>
+
+            <div class="card">
+              <h3>Citations</h3>
+              <div class="form-group">
+                <label>APA</label>
+                <div class="contact-row" style="display:block;"><span id="c-apa"></span></div>
+                <button class="btn btn-navy" data-copy="c-apa" style="margin-top:6px;">Copy APA</button>
+              </div>
+              <div class="form-group">
+                <label>MLA</label>
+                <div class="contact-row" style="display:block;"><span id="c-mla"></span></div>
+                <button class="btn btn-navy" data-copy="c-mla" style="margin-top:6px;">Copy MLA</button>
+              </div>
+              <div class="form-group">
+                <label>Institutional</label>
+                <div class="contact-row" style="display:block;"><span id="c-inst"></span></div>
+                <button class="btn btn-navy" data-copy="c-inst" style="margin-top:6px;">Copy Institutional</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Admin management -->
+          <div id="admin-edit" class="card" style="display:none;margin-top:22px;">
+            <h3>Manage Record (CPRI Staff / Admin)</h3>
+            <div class="form-group">
+              <label for="e-access">Access Level</label>
+              <select id="e-access">
+                <option value="public_abstract">Public (abstract only)</option>
+                <option value="viewable">Full text viewable</option>
+                <option value="downloadable">Full text downloadable</option>
+                <option value="restricted_institutional">Restricted to institutional users</option>
+                <option value="restricted_staff">Restricted to CPRI staff</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="save-access">Save</button>
+            <button class="btn btn-navy" id="delete-rec" style="margin-left:8px;">Delete from Repository</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const detail = document.getElementById('detail');
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+
+    function showMsg(type, text){ message.className = 'form-message ' + type; message.textContent = text; }
+
+    (async () => {
+      const detailRes = await fetch('/api/repository/' + id);
+      if (!detailRes.ok) { showMsg('error', (await detailRes.json()).error || 'Not found.'); return; }
+      const { record: r, categoryLabel, accessLabel, canView, canDownload } = await detailRes.json();
+      detail.style.display = 'block';
+      document.getElementById('rec-title').textContent = r.title;
+      document.getElementById('d-authors').textContent = r.authors;
+      document.getElementById('d-adviser').textContent = r.adviser || '—';
+      document.getElementById('d-dept').textContent = r.department;
+      document.getElementById('d-cat').textContent = categoryLabel || r.category;
+      document.getElementById('d-year').textContent = r.yearCompleted;
+      document.getElementById('d-status').textContent = r.status;
+      document.getElementById('d-access').textContent = accessLabel;
+      document.getElementById('d-abstract').textContent = r.abstract || '—';
+      document.getElementById('d-keywords').textContent = r.keywords || '—';
+      document.getElementById('d-file').textContent = r.fileAvailable ? 'Available' : 'Not available';
+      document.getElementById('c-apa').textContent = (r.citation && r.citation.apa) || '—';
+      document.getElementById('c-mla').textContent = (r.citation && r.citation.mla) || '—';
+      document.getElementById('c-inst').textContent = (r.citation && r.citation.institutional) || '—';
+
+      const fa = document.getElementById('file-action');
+      if (!r.fileAvailable) {
+        fa.innerHTML = '<p class="form-note">No full-text file for this record.</p>';
+      } else if (r.accessLevel === 'public_abstract') {
+        fa.innerHTML = '<p class="form-note">Full text is restricted; only the abstract is public.</p>';
+      } else if (canDownload) {
+        const label = r.accessLevel === 'viewable' ? 'View Full Text' : 'Download Full Text';
+        fa.innerHTML = `<a class="btn btn-primary" href="/api/repository/${r.id}/file">${label}</a>`;
+      } else {
+        fa.innerHTML = '<p class="form-note">Login required to access the full text.</p><a class="btn btn-navy" href="login.html">Log in</a>';
+      }
+
+      // Copy buttons
+      document.querySelectorAll('[data-copy]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const text = document.getElementById(btn.dataset.copy).textContent;
+          navigator.clipboard?.writeText(text);
+          showMsg('success', 'Citation copied.');
+        });
+      });
+
+      // Admin management
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) {
+        const { user } = await meRes.json();
+        if (['admin', 'cpri_staff'].includes(user.role)) {
+          const ae = document.getElementById('admin-edit');
+          ae.style.display = 'block';
+          document.getElementById('e-access').value = r.accessLevel;
+          document.getElementById('save-access').addEventListener('click', async () => {
+            const res = await fetch('/api/repository/' + r.id, {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ accessLevel: document.getElementById('e-access').value })
+            });
+            const out = await res.json();
+            if (!res.ok) return showMsg('error', out.error);
+            showMsg('success', 'Access level updated.');
+          });
+          document.getElementById('delete-rec').addEventListener('click', async () => {
+            if (!confirm('Delete this record from the repository?')) return;
+            const res = await fetch('/api/repository/' + r.id, { method: 'DELETE' });
+            const out = await res.json();
+            if (!res.ok) return showMsg('error', out.error);
+            location.href = 'repository.html';
+          });
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

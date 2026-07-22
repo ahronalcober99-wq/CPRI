@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Console | CPRI</title>
+  <meta name="theme-color" content="#0F172A">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container-xl">
+        <span class="badge" style="background:rgba(255,255,255,.16);color:#fff;">Enterprise Console</span>
+        <h1>Admin Dashboard</h1>
+        <p>Monitoring, governance, and decision-making center for CPRI research operations.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container-xl">
+        <div class="form-message" id="message"></div>
+        <div id="access-denied" class="empty-state" style="display:none;">Admin access required.</div>
+
+        <div class="admin-shell">
+          <!-- Sidebar -->
+          <aside class="admin-side">
+            <div class="as-brand">
+              <span class="logo">C</span>
+              <div><b>CPRI Admin</b><small>Control Center</small></div>
+            </div>
+            <div class="as-label">Operations</div>
+            <a href="#" class="active"><i class="bi bi-speedometer2"></i> Overview</a>
+            <a href="submissions.html"><i class="bi bi-send"></i> Submissions</a>
+            <a href="repository.html"><i class="bi bi-archive"></i> Repository</a>
+            <a href="publications.html"><i class="bi bi-journal-richtext"></i> Publications</a>
+            <a href="ethics.html"><i class="bi bi-shield-check"></i> Ethics Review</a>
+            <a href="researchers.html"><i class="bi bi-people"></i> Researchers</a>
+            <div class="as-label">Insights</div>
+            <a href="reports.html"><i class="bi bi-bar-chart"></i> Analytics &amp; Reports</a>
+            <a href="#logs"><i class="bi bi-activity"></i> Audit Logs</a>
+            <a href="#"><i class="bi bi-calendar3"></i> Calendar</a>
+            <a href="#"><i class="bi bi-envelope"></i> Email Notifications</a>
+            <a href="#"><i class="bi bi-folder2"></i> File Manager</a>
+            <div class="as-user">
+              <span class="av">AD</span>
+              <div><b style="font-family:var(--font-head);color:var(--cpri-text)">Admin</b><small>Role-based access</small></div>
+            </div>
+          </aside>
+
+          <!-- Main -->
+          <div class="admin-main">
+            <div class="admin-toolbar">
+              <div>
+                <h2>Operations Overview</h2>
+                <small style="color:var(--cpri-muted)">Real-time research management metrics</small>
+              </div>
+              <a class="btn btn-gradient btn-sm" href="submissions.html"><i class="bi bi-plus-lg"></i> New Submission</a>
+            </div>
+
+            <div id="dashboard-summary" class="kpi-row"></div>
+
+            <div class="admin-grid">
+              <div class="admin-card">
+                <h3><i class="bi bi-bar-chart-line"></i> Research Output per Department</h3>
+                <canvas id="chart-dept"></canvas>
+              </div>
+              <div class="admin-card">
+                <h3><i class="bi bi-graph-up"></i> Research Output per Year</h3>
+                <canvas id="chart-year"></canvas>
+              </div>
+              <div class="admin-card">
+                <h3><i class="bi bi-hourglass-split"></i> Submissions by Status</h3>
+                <canvas id="chart-submissions"></canvas>
+              </div>
+              <div class="admin-card">
+                <h3><i class="bi bi-shield-check"></i> Ethics Applications by Status</h3>
+                <canvas id="chart-ethics"></canvas>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3><i class="bi bi-people"></i> User Management <span class="status-pill active">Role-based</span></h3>
+              <div id="user-management"></div>
+            </div>
+
+            <div class="admin-card">
+              <h3><i class="bi bi-sliders"></i> Content Management</h3>
+              <div class="sub-cards">
+                <div>
+                  <h4 style="font-family:var(--font-head)">Homepage Content</h4>
+                  <form id="homepage-form">
+                    <div class="form-group">
+                      <label>Tagline</label>
+                      <input type="text" id="h-tagline" style="margin-bottom:8px;">
+                    </div>
+                    <div class="form-group">
+                      <label>Description</label>
+                      <textarea id="h-desc" rows="3"></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Update Homepage</button>
+                  </form>
+                </div>
+                <div>
+                  <h4 style="font-family:var(--font-head)">Announcements</h4>
+                  <form id="announcement-form">
+                    <div class="form-group">
+                      <label>Title</label>
+                      <input type="text" id="a-title" required style="margin-bottom:8px;">
+                    </div>
+                    <div class="form-group">
+                      <label>Content</label>
+                      <textarea id="a-content" rows="3" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Post Announcement</button>
+                  </form>
+                </div>
+                <div>
+                  <h4 style="font-family:var(--font-head)">Events</h4>
+                  <form id="event-form">
+                    <div class="form-group">
+                      <label>Title</label>
+                      <input type="text" id="e-title" required style="margin-bottom:8px;">
+                    </div>
+                    <div class="form-group">
+                      <label>Theme</label>
+                      <input type="text" id="e-theme" required style="margin-bottom:8px;">
+                    </div>
+                    <div class="form-group">
+                      <label>Date &amp; Time</label>
+                      <input type="datetime-local" id="e-datetime" required style="margin-bottom:8px;">
+                    </div>
+                    <div class="form-group">
+                      <label>Venue</label>
+                      <input type="text" id="e-venue" required style="margin-bottom:8px;">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Event</button>
+                  </form>
+                </div>
+                <div>
+                  <h4 style="font-family:var(--font-head)">Research Agenda</h4>
+                  <form id="agenda-form">
+                    <div class="form-group">
+                      <label>Title</label>
+                      <input type="text" id="ag-title" required style="margin-bottom:8px;">
+                    </div>
+                    <div class="form-group">
+                      <label>Description</label>
+                      <textarea id="ag-desc" rows="3" required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Update Agenda</button>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-card" id="logs">
+              <h3><i class="bi bi-activity"></i> System Logs <span class="status-pill pending">Audit</span></h3>
+              <div class="quick-actions" style="margin-bottom:16px;">
+                <div class="form-group" style="margin:0;">
+                  <label>Filter by action</label>
+                  <select id="log-action">
+                    <option value="">All</option>
+                    <option value="login">Login</option>
+                    <option value="logout">Logout</option>
+                    <option value="content_update">Content Update</option>
+                    <option value="content_create">Content Create</option>
+                    <option value="content_delete">Content Delete</option>
+                    <option value="user_update">User Update</option>
+                    <option value="user_delete">User Delete</option>
+                    <option value="password_reset">Password Reset</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label>From</label>
+                  <input type="date" id="log-from">
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label>To</label>
+                  <input type="date" id="log-to">
+                </div>
+              </div>
+              <button class="btn btn-navy" id="load-logs" style="margin-bottom:14px;"><i class="bi bi-arrow-clockwise"></i> Load Logs</button>
+              <div id="logs-table"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const accessDenied = document.getElementById('access-denied');
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    async function loadSummary() {
+      const res = await fetch('/api/admin/summary');
+      if (!res.ok) { accessDenied.style.display = 'block'; return; }
+      const { summary } = await res.json();
+      document.getElementById('dashboard-summary').innerHTML = [
+        { label: 'Total Submitted Research', value: summary.totalSubmissions, i:'bi-send' },
+        { label: 'Total Approved Researches', value: summary.approvedResearches, i:'bi-check2-circle' },
+        { label: 'Total Archived Researches', value: summary.archivedResearches, i:'bi-archive' },
+        { label: 'Total Published Papers', value: summary.publishedPapers, i:'bi-journal-richtext' },
+        { label: 'Total Ethics Applications', value: summary.ethicsApplications, i:'bi-shield-check' },
+        { label: 'Total Innovation Projects', value: summary.innovationProjects, i:'bi-lightbulb' },
+        { label: 'Total Active Users', value: summary.activeUsers, i:'bi-people' }
+      ].map(s => `<div class="kpi">
+        <span class="k-ic"><i class="bi ${s.i}"></i></span>
+        <div><div class="k-v">${s.value}</div><div class="k-l">${s.label}</div></div>
+      </div>`).join('');
+      return summary;
+    }
+
+    async function loadUserManagement() {
+      const res = await fetch('/api/admin/users');
+      if (!res.ok) return;
+      const { users } = await res.json();
+      const el = document.getElementById('user-management');
+      el.innerHTML = '<table><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
+        users.map(u => `
+          <tr>
+            <td>${escapeHtml(u.fullName || u.username)}</td>
+            <td>${escapeHtml(u.username)}</td>
+            <td>${escapeHtml(u.email)}</td>
+            <td>
+              <select data-userid="${u.id}" class="user-role-select" style="max-width:140px;">
+                <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+                <option value="cpri_staff" ${u.role === 'cpri_staff' ? 'selected' : ''}>CPRI Staff</option>
+                <option value="faculty_researcher" ${u.role === 'faculty_researcher' ? 'selected' : ''}>Faculty</option>
+                <option value="student_researcher" ${u.role === 'student_researcher' ? 'selected' : ''}>Student</option>
+                <option value="adviser" ${u.role === 'adviser' ? 'selected' : ''}>Adviser</option>
+                <option value="ethics_reviewer" ${u.role === 'ethics_reviewer' ? 'selected' : ''}>Ethics Reviewer</option>
+                <option value="public_visitor" ${u.role === 'public_visitor' ? 'selected' : ''}>Public Visitor</option>
+              </select>
+            </td>
+            <td>
+              <select data-userid="${u.id}" class="user-status-select" style="max-width:120px;">
+                <option value="active" ${u.status === 'active' ? 'selected' : ''}>Active</option>
+                <option value="pending" ${u.status === 'pending' ? 'selected' : ''}>Pending</option>
+                <option value="disabled" ${u.status === 'disabled' ? 'selected' : ''}>Disabled</option>
+              </select>
+            </td>
+            <td>
+              <button class="btn btn-navy reset-pwd" data-userid="${u.id}" style="padding:6px 10px;font-size:.85rem;">Reset Password</button>
+              <button class="btn btn-outline del-user" data-userid="${u.id}" style="padding:6px 10px;font-size:.85rem;border-color:#b23b32;color:#b23b32;">Delete</button>
+            </td>
+          </tr>
+        `).join('') + '</tbody></table>';
+
+      el.querySelectorAll('.user-role-select').forEach(sel => {
+        sel.addEventListener('change', async (ev) => {
+          const userId = ev.target.dataset.userid;
+          const res = await fetch('/api/admin/users/' + userId, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: ev.target.value, status: document.querySelector('.user-status-select[data-userid="' + userId + '"]').value }) });
+          const out = await res.json();
+          if (!res.ok) return showMsg('error', out.error);
+          showMsg('success', 'User updated.');
+        });
+      });
+      el.querySelectorAll('.user-status-select').forEach(sel => {
+        sel.addEventListener('change', async (ev) => {
+          const userId = ev.target.dataset.userid;
+          const res = await fetch('/api/admin/users/' + userId, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: document.querySelector('.user-role-select[data-userid="' + userId + '"]').value, status: ev.target.value }) });
+          const out = await res.json();
+          if (!res.ok) return showMsg('error', out.error);
+          showMsg('success', 'User updated.');
+        });
+      });
+      el.querySelectorAll('.reset-pwd').forEach(btn => {
+        btn.addEventListener('click', async (ev) => {
+          const userId = ev.target.dataset.userid;
+          const newPwd = prompt('Enter new password (min 8 chars):');
+          if (!newPwd || newPwd.length < 8) return showMsg('error', 'Password must be at least 8 characters.');
+          const res = await fetch('/api/admin/users/' + userId + '/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: newPwd }) });
+          const out = await res.json();
+          if (!res.ok) return showMsg('error', out.error);
+          showMsg('success', 'Password reset.');
+        });
+      });
+      el.querySelectorAll('.del-user').forEach(btn => {
+        btn.addEventListener('click', async (ev) => {
+          const userId = ev.target.dataset.userid;
+          if (!confirm('Delete this user?')) return;
+          const res = await fetch('/api/admin/users/' + userId, { method: 'DELETE' });
+          const out = await res.json();
+          if (!res.ok) return showMsg('error', out.error);
+          showMsg('success', 'User deleted.');
+          loadUserManagement();
+        });
+      });
+    }
+
+    async function loadCharts() {
+      const [deptRes, yearRes, subRes, ethicsRes] = await Promise.all([
+        fetch('/api/admin/reports/department'),
+        fetch('/api/admin/reports/year'),
+        fetch('/api/admin/reports/submissions-status'),
+        fetch('/api/admin/reports/ethics-status')
+      ]);
+      if (!deptRes.ok || !yearRes.ok || !subRes.ok || !ethicsRes.ok) return;
+      const deptData = await deptRes.json();
+      const yearData = await yearRes.json();
+      const subData = await subRes.json();
+      const ethicsData = await ethicsRes.json();
+
+      const chartDefaults = { responsive: true, plugins: { legend: { labels: { color: '#5b6b7b' } } } };
+      const gridColor = '#e2e8f0';
+
+      new Chart(document.getElementById('chart-dept'), {
+        type: 'bar',
+        data: { labels: deptData.report.map(r => r.department), datasets: [{ label: 'Researches', data: deptData.report.map(r => r.count), backgroundColor: '#2a9d8f' }] },
+        options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } } } }
+      });
+      new Chart(document.getElementById('chart-year'), {
+        type: 'bar',
+        data: { labels: yearData.report.map(r => r.year), datasets: [{ label: 'Outputs', data: yearData.report.map(r => r.count), backgroundColor: '#13518f' }] },
+        options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } } } }
+      });
+      new Chart(document.getElementById('chart-submissions'), {
+        type: 'doughnut',
+        data: { labels: subData.report.map(r => r.status), datasets: [{ data: subData.report.map(r => r.count), backgroundColor: ['#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#264653', '#a8dadc'] }] },
+        options: chartDefaults
+      });
+      new Chart(document.getElementById('chart-ethics'), {
+        type: 'doughnut',
+        data: { labels: ethicsData.report.map(r => r.status), datasets: [{ data: ethicsData.report.map(r => r.count), backgroundColor: ['#457b9d', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#1d3557'] }] },
+        options: chartDefaults
+      });
+    }
+
+    async function loadLogs() {
+      const params = new URLSearchParams();
+      const action = document.getElementById('log-action').value;
+      const from = document.getElementById('log-from').value;
+      const to = document.getElementById('log-to').value;
+      if (action) params.set('action', action);
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const res = await fetch('/api/admin/logs' + (params.toString() ? '?' + params.toString() : ''));
+      const data = await res.json();
+      const el = document.getElementById('logs-table');
+      if (!data.logs.length) { el.innerHTML = '<p class="form-note">No logs found.</p>'; return; }
+      el.innerHTML = '<table><thead><tr><th>Timestamp</th><th>Action</th><th>Details</th><th>User ID</th><th>IP</th></tr></thead><tbody>' +
+        data.logs.slice(0, 100).map(l => `<tr><td>${new Date(l.timestamp).toLocaleString()}</td><td>${escapeHtml(l.action)}</td><td>${escapeHtml(l.details || '')}</td><td>${l.userId ? l.userId.slice(0, 8) : '—'}</td><td>${l.ip || '—'}</td></tr>`).join('') + '</tbody></table>';
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.getElementById('homepage-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/admin/content/homepage', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tagline: document.getElementById('h-tagline').value, description: document.getElementById('h-desc').value }) });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error);
+      showMsg('success', 'Homepage updated.');
+    });
+
+    document.getElementById('announcement-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/admin/content/announcement', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: document.getElementById('a-title').value, content: document.getElementById('a-content').value }) });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error);
+      showMsg('success', 'Announcement created.');
+      e.target.reset();
+    });
+
+    document.getElementById('event-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/admin/content/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: document.getElementById('e-title').value, theme: document.getElementById('e-theme').value, dateTime: document.getElementById('e-datetime').value, venue: document.getElementById('e-venue').value }) });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error);
+      showMsg('success', 'Event created.');
+      e.target.reset();
+    });
+
+    document.getElementById('agenda-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/admin/content/agenda', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: document.getElementById('ag-title').value, description: document.getElementById('ag-desc').value, items: [] }) });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error);
+      showMsg('success', 'Agenda updated.');
+      e.target.reset();
+    });
+
+    document.getElementById('load-logs').addEventListener('click', loadLogs);
+
+    (async () => {
+      const summary = await loadSummary();
+      if (!summary) return;
+      loadCharts();
+      loadUserManagement();
+      loadLogs();
+      const profile = await (await fetch('/api/site')).json();
+      if (profile) {
+        document.getElementById('h-tagline').value = profile.tagline || '';
+        document.getElementById('h-desc').value = profile.description || '';
+      }
+    })();
+  </script>
+</body>
+</html>
+

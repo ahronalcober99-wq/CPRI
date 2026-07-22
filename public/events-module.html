@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Events and Conferences | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Research Events and Conferences</h1>
+        <p>CPRI activities including research galas, seminars, and conferences.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+
+        <!-- Admin: Post event -->
+        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:#e6f4f1;">
+          <h3>CPRI Staff / Admin</h3>
+          <p class="form-note">Create a new research event, gala, seminar, or conference.</p>
+          <a class="btn btn-primary" href="event-detail.html" style="display:inline-block;margin-top:8px;">+ Create Event</a>
+        </div>
+
+        <!-- Search & filter -->
+        <div class="card" style="margin-bottom:22px;">
+          <form id="filter-form">
+            <div class="grid grid-3" style="gap:14px;">
+              <div class="form-group" style="margin:0;">
+                <label for="f-title">Event title</label>
+                <input type="text" id="f-title" name="title" placeholder="Title keyword">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-theme">Theme</label>
+                <input type="text" id="f-theme" name="theme" placeholder="Theme keyword">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-venue">Venue / Platform</label>
+                <input type="text" id="f-venue" name="venue" placeholder="Venue or platform">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-from">From date</label>
+                <input type="date" id="f-from" name="fromDate">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-to">To date</label>
+                <input type="date" id="f-to" name="toDate">
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+              <button type="submit" class="btn btn-primary">Search</button>
+              <button type="button" class="btn btn-navy" id="clear-btn">Clear</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="records"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const recordsEl = document.getElementById('records');
+
+    function buildQuery() {
+      const fd = new FormData(document.getElementById('filter-form'));
+      const p = new URLSearchParams();
+      for (const [k, v] of fd.entries()) if (v) p.set(k, v);
+      return p.toString();
+    }
+
+    async function load() {
+      const res = await fetch('/api/events-module' + (buildQuery() ? '?' + buildQuery() : ''));
+      const { events } = await res.json();
+      if (!events.length) {
+        recordsEl.innerHTML = '<p class="empty-state">No events found.</p>';
+        return;
+      }
+      recordsEl.innerHTML = events.map(e => `
+        <div class="card" style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;">
+            <div style="flex:1;min-width:240px;">
+              <h3 style="margin:0 0 6px;"><a href="event-detail.html?id=${e.id}">${escapeHtml(e.title)}</a></h3>
+              <div class="meta">${escapeHtml(e.theme)} · ${new Date(e.dateTime).toLocaleString()} · ${escapeHtml(e.venue)}</div>
+              <p style="margin:8px 0;">${e.description || ''}</p>
+              ${e.registrationLink ? `<a class="btn btn-primary" href="${escapeHtml(e.registrationLink)}" target="_blank">Register</a>` : ''}
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.getElementById('filter-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
+    document.getElementById('clear-btn').addEventListener('click', () => {
+      document.getElementById('filter-form').reset();
+      load();
+    });
+
+    (async () => {
+      await load();
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) {
+        const { user } = await meRes.json();
+        if (['admin', 'cpri_staff'].includes(user.role)) {
+          document.getElementById('admin-panel').style.display = 'block';
+        }
+      }
+    })();
+  </script>
+</body>
+</html>

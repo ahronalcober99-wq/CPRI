@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ethics Application Detail | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Ethics Application</h1>
+        <p id="app-title">Loading…</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to view details.
+        </div>
+
+        <div id="detail" style="display:none;">
+          <p><a href="ethics.html">&larr; Back to ethics archive</a></p>
+
+          <div class="grid grid-2">
+            <div class="card">
+              <h3 style="margin-top:0;">Application Details</h3>
+              <div class="contact-row"><span class="label">Title</span><span id="d-title"></span></div>
+              <div class="contact-row"><span class="label">Researcher/s</span><span id="d-researchers"></span></div>
+              <div class="contact-row"><span class="label">Adviser</span><span id="d-adviser"></span></div>
+              <div class="contact-row"><span class="label">Department</span><span id="d-dept"></span></div>
+              <div class="contact-row"><span class="label">Participants</span><span id="d-participants"></span></div>
+              <div class="contact-row"><span class="label">Risk Level</span><span id="d-risk"></span></div>
+              <div class="contact-row"><span class="label">Status</span><span id="d-status"></span></div>
+              <div class="contact-row"><span class="label">Submitted by</span><span id="d-submitter"></span></div>
+            </div>
+
+            <div class="card">
+              <h3 style="margin-top:0;">Status History</h3>
+              <p><span class="badge" id="d-status-badge"></span></p>
+              <ol id="history" style="padding-left:20px;"></ol>
+
+              <div id="reviewer-controls" style="display:none;border-top:1px solid var(--cpri-border);margin-top:14px;padding-top:14px;">
+                <h4>Reviewer Controls</h4>
+                <div class="form-group">
+                  <label for="new-status">Update status</label>
+                  <select id="new-status" style="max-width:260px;">
+                    <option value="submitted">Submitted</option>
+                    <option value="under_review">Under Review</option>
+                    <option value="for_revision">For Revision</option>
+                    <option value="approved">Approved</option>
+                    <option value="exempted_from_full_review">Exempted from Full Review</option>
+                    <option value="disapproved">Disapproved</option>
+                    <option value="certificate_issued">Certificate Issued</option>
+                  </select>
+                </div>
+                <button class="btn btn-primary" id="update-status-btn">Update Status</button>
+
+                <div class="form-group" style="margin-top:14px;">
+                  <label for="compliance-note">Compliance note</label>
+                  <textarea id="compliance-note" rows="3" placeholder="Reviewer compliance note..."></textarea>
+                </div>
+                <button class="btn btn-navy" id="mark-compliant" style="margin-right:8px;">Mark Compliant</button>
+                <button class="btn btn-outline" id="mark-non-compliant" style="border-color:var(--cpri-border);color:var(--cpri-gray);">Mark Non-Compliant</button>
+
+                <div class="form-group" style="margin-top:14px;">
+                  <label for="comment-body">Add comment</label>
+                  <textarea id="comment-body" rows="3" placeholder="Reviewer comment..."></textarea>
+                </div>
+                <button class="btn btn-navy" id="post-comment">Post Comment</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top:22px;">
+            <h3 style="margin-top:0;">Uploaded Documents</h3>
+            <table>
+              <thead><tr><th>Document</th><th>File</th></tr></thead>
+              <tbody id="files"></tbody>
+            </table>
+          </div>
+
+          <div class="card" style="margin-top:22px;">
+            <h3 style="margin-top:0;">Revision History</h3>
+            <p class="form-note">Documents uploaded after initial submission appear here.</p>
+            <div id="revisions"></div>
+
+            <div id="revision-box" style="display:none;border-top:1px solid var(--cpri-border);margin-top:16px;padding-top:16px;">
+              <h4>Upload Revised Documents</h4>
+              <form id="revision-form">
+                <div class="form-group">
+                  <label for="r-note">Revision note</label>
+                  <input type="text" id="r-note" placeholder="Brief note about this revision">
+                </div>
+                <div class="form-group">
+                  <label for="r-manuscript">Revised Proposal Manuscript</label>
+                  <input type="file" id="r-manuscript" name="revised_manuscript" accept=".pdf,.doc,.docx">
+                </div>
+                <div class="form-group">
+                  <label for="r-additional">Additional revised files</label>
+                  <input type="file" id="r-additional" name="revised_docs" multiple accept=".pdf,.doc,.docx,.zip">
+                </div>
+                <button type="submit" class="btn btn-primary">Upload Revision</button>
+              </form>
+            </div>
+          </div>
+
+          <div id="cert-section" class="card" style="margin-top:22px;display:none;">
+            <h3 style="margin-top:0;">Ethics Certificate Record</h3>
+            <div id="cert-detail"></div>
+          </div>
+
+          <div class="card" style="margin-top:22px;">
+            <h3 style="margin-top:0;">ERB Reviewer Comments</h3>
+            <div id="comments"></div>
+            <div id="reviewer-cert" style="display:none;border-top:1px solid var(--cpri-border);margin-top:16px;padding-top:16px;">
+              <h4>Issue Ethics Certificate</h4>
+              <form id="cert-form">
+                <div class="grid grid-2" style="gap:14px;">
+                  <div class="form-group">
+                    <label for="cert-num">Certificate Number *</label>
+                    <input type="text" id="cert-num" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="cert-date">Date Issued *</label>
+                    <input type="date" id="cert-date" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="cert-valid">Validity Period *</label>
+                    <input type="text" id="cert-valid" required placeholder="e.g. 1 year">
+                  </div>
+                  <div class="form-group">
+                    <label for="cert-title">Approved Title *</label>
+                    <input type="text" id="cert-title" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="cert-pi">Principal Investigator *</label>
+                    <input type="text" id="cert-pi" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="cert-pdf">Certificate PDF</label>
+                    <input type="file" id="cert-pdf" name="certificate_pdf" accept=".pdf">
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="margin-top:14px;">Issue Certificate</button>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const detail = document.getElementById('detail');
+    const notLogged = document.getElementById('not-logged');
+    const params = new URLSearchParams(location.search);
+    const id = params.get('id');
+
+    const STATUS_LABELS = {
+      submitted: 'Submitted', under_review: 'Under Review', for_revision: 'For Revision',
+      approved: 'Approved', exempted_from_full_review: 'Exempted from Full Review',
+      disapproved: 'Disapproved', certificate_issued: 'Certificate Issued'
+    };
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
+      const { user } = await meRes.json();
+
+      const res = await fetch('/api/ethics/' + id);
+      if (!res.ok) { notLogged.style.display = 'block'; notLogged.innerHTML = (await res.json()).error || 'Not found.'; return; }
+      const { application: a } = await res.json();
+      detail.style.display = 'block';
+      document.getElementById('app-title').textContent = a.title;
+      document.getElementById('d-title').textContent = a.title;
+      document.getElementById('d-researchers').textContent = a.researchers;
+      document.getElementById('d-adviser').textContent = a.adviser;
+      document.getElementById('d-dept').textContent = a.department;
+      document.getElementById('d-participants').textContent = a.participantType;
+      document.getElementById('d-risk').textContent = a.riskLevel;
+      document.getElementById('d-submitter').textContent = a.submitterName;
+      document.getElementById('d-status').textContent = STATUS_LABELS[a.status] || a.status;
+      document.getElementById('d-status-badge').textContent = STATUS_LABELS[a.status] || a.status;
+
+      document.getElementById('history').innerHTML = a.statusHistory.map(h =>
+        `<li><strong>${STATUS_LABELS[h.status] || h.status}</strong> — ${new Date(h.at).toLocaleString()} by ${h.by}${h.note ? ' (' + h.note + ')' : ''}</li>`
+      ).join('');
+
+      const isReviewer = ['admin', 'cpri_staff', 'ethics_reviewer'].includes(user.role);
+      const isOwner = a.submitterId === user.id;
+
+      if (isReviewer) {
+        document.getElementById('reviewer-controls').style.display = 'block';
+        const statusSel = document.getElementById('new-status');
+        statusSel.value = a.status;
+        document.getElementById('update-status-btn').addEventListener('click', async () => {
+          const r = await fetch('/api/ethics/' + a.id + '/status', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: statusSel.value })
+          });
+          const out = await r.json();
+          if (!r.ok) return showMsg('error', out.error);
+          showMsg('success', 'Status updated.');
+          location.reload();
+        });
+        document.getElementById('mark-compliant').addEventListener('click', async () => {
+          const r = await fetch('/api/ethics/' + a.id + '/compliance', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ compliant: true, note: document.getElementById('compliance-note').value })
+          });
+          const out = await r.json();
+          if (!r.ok) return showMsg('error', out.error);
+          showMsg('success', 'Marked compliant.');
+        });
+        document.getElementById('mark-non-compliant').addEventListener('click', async () => {
+          const r = await fetch('/api/ethics/' + a.id + '/compliance', {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ compliant: false, note: document.getElementById('compliance-note').value })
+          });
+          const out = await r.json();
+          if (!r.ok) return showMsg('error', out.error);
+          showMsg('success', 'Marked non-compliant.');
+        });
+        document.getElementById('post-comment').addEventListener('click', async () => {
+          const body = document.getElementById('comment-body').value.trim();
+          if (!body) return;
+          const r = await fetch('/api/ethics/' + a.id + '/comments', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body })
+          });
+          const out = await r.json();
+          if (!r.ok) return showMsg('error', out.error);
+          showMsg('success', 'Comment posted.');
+          location.reload();
+        });
+
+        const certForm = document.getElementById('cert-form');
+        if (certForm) {
+          certForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const fd = new FormData(certForm);
+            const metaRes = await fetch('/api/ethics/' + a.id + '/certificate', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                certificateNumber: document.getElementById('cert-num').value,
+                dateIssued: document.getElementById('cert-date').value,
+                validityPeriod: document.getElementById('cert-valid').value,
+                approvedTitle: document.getElementById('cert-title').value,
+                principalInvestigator: document.getElementById('cert-pi').value
+              })
+            });
+            const metaOut = await metaRes.json();
+            if (!metaRes.ok) return showMsg('error', metaOut.error);
+
+            let certFile = null;
+            if (fd.get('certificate_pdf') && fd.get('certificate_pdf').size > 0) {
+              const fileRes = await fetch('/api/ethics/' + a.id + '/certificate-upload', {
+                method: 'PATCH', body: fd
+              });
+              const fileOut = await fileRes.json();
+              if (!fileRes.ok) return showMsg('error', fileOut.error);
+              certFile = fileOut;
+            }
+            showMsg('success', 'Certificate issued.');
+            location.reload();
+          });
+        }
+      }
+
+      if (isOwner) {
+        document.getElementById('revision-box').style.display = 'block';
+        document.getElementById('revision-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const fd = new FormData(e.target);
+          const r = await fetch('/api/ethics/' + a.id + '/revisions', { method: 'POST', body: fd });
+          const out = await r.json();
+          if (!r.ok) return showMsg('error', out.error);
+          showMsg('success', 'Revision uploaded.');
+          location.reload();
+        });
+      }
+
+      const fileRows = [];
+      for (const [key, meta] of Object.entries(a.files || {})) {
+        if (meta) fileRows.push(`<tr><td>${key.replace(/_/g, ' ').toUpperCase()}</td><td><a class="btn btn-navy" href="/api/ethics/${a.id}/file/${encodeURIComponent(meta.filename)}">Download</a></td></tr>`);
+      }
+      (a.additionalDocs || []).forEach(d => {
+        fileRows.push(`<tr><td>Additional: ${d.originalName}</td><td><a class="btn btn-navy" href="/api/ethics/${a.id}/file/${encodeURIComponent(d.filename)}">Download</a></td></tr>`);
+      });
+      document.getElementById('files').innerHTML = fileRows.join('') || '<tr><td colspan="2">No files uploaded.</td></tr>';
+
+      (a.revisedDocuments || []).forEach(d => {
+        const rows = document.getElementById('revisions');
+        const row = document.createElement('div');
+        row.style.cssText = 'border-bottom:1px solid var(--cpri-border);padding:8px 0;display:flex;justify-content:space-between;align-items:center;';
+        row.innerHTML = `<div><strong>REVISED</strong> — ${d.originalName} <span class="form-note">${d.note ? '(' + d.note + ')' : ''}</span> <span class="form-note">${new Date(d.uploadedAt).toLocaleString()}</span></div>
+          <a class="btn btn-navy" href="/api/ethics/${a.id}/file/${encodeURIComponent(d.filename)}">Download</a>`;
+        rows.appendChild(row);
+      });
+
+      if (a.certificate) {
+        const certSection = document.getElementById('cert-section');
+        certSection.style.display = 'block';
+        const c = a.certificate;
+        document.getElementById('cert-detail').innerHTML = `
+          <div class="contact-row"><span class="label">Certificate Number</span><span id="cert-num"></span></div>
+          <div class="contact-row"><span class="label">Approved Title</span><span id="cert-title"></span></div>
+          <div class="contact-row"><span class="label">Principal Investigator</span><span id="cert-pi"></span></div>
+          <div class="contact-row"><span class="label">Date Issued</span><span id="cert-date"></span></div>
+          <div class="contact-row"><span class="label">Validity Period</span><span id="cert-valid"></span></div>
+          <a class="btn btn-primary" id="download-cert" style="margin-top:10px;display:inline-block;">Download Certificate</a>
+        `;
+        document.getElementById('cert-num').textContent = c.certificateNumber;
+        document.getElementById('cert-title').textContent = c.approvedTitle;
+        document.getElementById('cert-pi').textContent = c.principalInvestigator;
+        document.getElementById('cert-date').textContent = c.dateIssued;
+        document.getElementById('cert-valid').textContent = c.validityPeriod;
+        document.getElementById('download-cert').href = '/api/ethics/' + a.id + '/certificate';
+      }
+
+      const commentsEl = document.getElementById('comments');
+      (a.comments || []).forEach(c => {
+        const div = document.createElement('div');
+        div.style.cssText = 'border-bottom:1px solid var(--cpri-border);padding:10px 0;';
+        div.innerHTML = `<div class="meta">${c.authorRole} · ${c.authorName} · ${new Date(c.createdAt).toLocaleString()}</div>
+          <p style="margin:6px 0 0;">${escapeHtml(c.body)}</p>`;
+        commentsEl.appendChild(div);
+      });
+      if (!(a.comments || []).length) commentsEl.innerHTML = '<p class="form-note">No comments yet.</p>';
+
+      if (isReviewer) {
+        const dl = document.createElement('div');
+        dl.style.cssText = 'margin-top:10px;';
+        dl.innerHTML = '<a class="btn btn-navy" href="/api/ethics/' + a.id + '/certificate.pdf">Download Certificate PDF</a>';
+        document.getElementById('cert-section').appendChild(dl);
+      }
+    })();
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

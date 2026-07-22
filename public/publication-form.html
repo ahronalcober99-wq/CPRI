@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Publication Form | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Publication Record</h1>
+        <p>Add or edit a publication record.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to manage publications.
+        </div>
+
+        <div id="form-area" style="display:none;max-width:900px;">
+          <p><a href="publications.html">&larr; Back to publications</a></p>
+
+          <div class="card" style="margin-bottom:22px;">
+            <h3 style="margin-top:0;">Publication Record Encoding</h3>
+            <form id="pub-form">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="f-title">Title of published paper *</label>
+                  <input type="text" id="f-title" name="title" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-authors">Author/s *</label>
+                  <input type="text" id="f-authors" name="authors" required placeholder="e.g. Dr. A. Cruz, M. Reyes">
+                </div>
+                <div class="form-group">
+                  <label for="f-venue">Journal or conference name *</label>
+                  <input type="text" id="f-venue" name="journalOrConference" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-date">Publication date *</label>
+                  <input type="date" id="f-date" name="publicationDate" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-volume">Volume</label>
+                  <input type="text" id="f-volume" name="volume" placeholder="e.g. 12">
+                </div>
+                <div class="form-group">
+                  <label for="f-issue">Issue</label>
+                  <input type="text" id="f-issue" name="issue" placeholder="e.g. 3">
+                </div>
+                <div class="form-group">
+                  <label for="f-pages">Page number</label>
+                  <input type="text" id="f-pages" name="pages" placeholder="e.g. 45-67">
+                </div>
+                <div class="form-group">
+                  <label for="f-doi">DOI or publication link</label>
+                  <input type="text" id="f-doi" name="doi" placeholder="e.g. 10.1234/example">
+                </div>
+                <div class="form-group">
+                  <label for="f-indexing">Indexing status</label>
+                  <input type="text" id="f-indexing" name="indexingStatus" placeholder="e.g. Scopus, Web of Science">
+                </div>
+                <div class="form-group">
+                  <label for="f-pubLink">Publication link</label>
+                  <input type="url" id="f-pubLink" name="publicationLink" placeholder="https://...">
+                </div>
+                <div class="form-group">
+                  <label for="f-type">Type of publication *</label>
+                  <select id="f-type" name="pubType" required>
+                    <option value="institutional_journal">Institutional Journal</option>
+                    <option value="local_journal">Local Journal</option>
+                    <option value="national_journal">National Journal</option>
+                    <option value="international_journal">International Journal</option>
+                    <option value="conference_paper">Conference Paper</option>
+                    <option value="book_chapter">Book Chapter</option>
+                    <option value="research_poster">Research Poster</option>
+                    <option value="proceedings_paper">Proceedings Paper</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-status">Status *</label>
+                  <select id="f-status" name="status" required>
+                    <option value="submitted">Submitted</option>
+                    <option value="under_review">Under Review</option>
+                    <option value="accepted">Accepted</option>
+                    <option value="published">Published</option>
+                    <option value="presented">Presented</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-author-type">Author type</label>
+                  <select id="f-author-type" name="authorType">
+                    <option value="faculty">Faculty</option>
+                    <option value="student">Student</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-dept">Department</label>
+                  <input type="text" id="f-dept" name="department" placeholder="Department">
+                </div>
+                <div class="form-group">
+                  <label for="f-sy">School Year</label>
+                  <input type="text" id="f-sy" name="schoolYear" placeholder="e.g. 2025-2026">
+                </div>
+              </div>
+              <div style="margin-top:18px;">
+                <button type="submit" class="btn btn-primary">Save Publication</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="edit-section" class="card" style="display:none;margin-bottom:22px;">
+            <h3 style="margin-top:0;">Proof of Publication Upload</h3>
+            <p class="form-note">Upload supporting documents such as acceptance letters, certificates, published PDFs, and proofs of presentation.</p>
+            <form id="proof-form">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="f-acceptance">Acceptance letter</label>
+                  <input type="file" id="f-acceptance" name="acceptance_letter" accept=".pdf,.doc,.docx,.jpg,.png">
+                </div>
+                <div class="form-group">
+                  <label for="f-cert-pres">Certificate of presentation</label>
+                  <input type="file" id="f-cert-pres" name="certificate_presentation" accept=".pdf,.doc,.docx,.jpg,.png">
+                </div>
+                <div class="form-group">
+                  <label for="f-pub-pdf">Published article PDF</label>
+                  <input type="file" id="f-pub-pdf" name="published_pdf" accept=".pdf">
+                </div>
+                <div class="form-group">
+                  <label for="f-doi-file">DOI link / journal link</label>
+                  <input type="file" id="f-doi-file" name="doi_link" accept=".pdf,.doc,.docx,.txt">
+                </div>
+                <div class="form-group">
+                  <label for="f-conf-cert">Conference certificate</label>
+                  <input type="file" id="f-conf-cert" name="conference_certificate" accept=".pdf,.doc,.docx,.jpg,.png">
+                </div>
+              </div>
+              <div style="margin-top:18px;">
+                <button type="submit" class="btn btn-primary">Upload Proofs</button>
+              </div>
+            </form>
+            <div id="proof-list" style="margin-top:18px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const formArea = document.getElementById('form-area');
+    const notLogged = document.getElementById('not-logged');
+    const editSection = document.getElementById('edit-section');
+    const proofList = document.getElementById('proof-list');
+    let editId = null;
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
+      const { user } = await meRes.json();
+
+      const params = new URLSearchParams(location.search);
+      editId = params.get('edit');
+      if (editId) {
+        const pubRes = await fetch('/api/publications/' + editId);
+        if (pubRes.ok) {
+          const { publication: p } = await pubRes.json();
+          const map = {
+            title: 'f-title', authors: 'f-authors', journalOrConference: 'f-venue',
+            publicationDate: 'f-date', volume: 'f-volume', issue: 'f-issue',
+            pages: 'f-pages', doi: 'f-doi', publicationLink: 'f-pubLink',
+            indexingStatus: 'f-indexing', pubType: 'f-type', status: 'f-status',
+            authorType: 'f-author-type', department: 'f-dept', schoolYear: 'f-sy'
+          };
+          for (const [key, elId] of Object.entries(map)) {
+            const el = document.getElementById(elId);
+            if (el && p[key] !== undefined) el.value = p[key];
+          }
+          editSection.style.display = 'block';
+          loadProofs(p);
+        }
+      }
+
+      formArea.style.display = 'block';
+    })();
+
+    function loadProofs(p) {
+      proofList.innerHTML = (p.proofDocuments || []).map(d => `
+        <div style="border-bottom:1px solid var(--cpri-border);padding:8px 0;display:flex;justify-content:space-between;align-items:center;">
+          <div>
+            <strong>${d.type.replace(/_/g, ' ').toUpperCase()}</strong> — ${d.originalName}
+            <div class="form-note">${new Date(d.uploadedAt).toLocaleString()}</div>
+          </div>
+          <a class="btn btn-navy" href="/api/publications/${p.id}/file/${encodeURIComponent(d.filename)}">Download</a>
+        </div>
+      `).join('') || '<p class="form-note">No proofs uploaded yet.</p>';
+    }
+
+    document.getElementById('pub-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.target).entries());
+      const res = await fetch('/api/publications' + (editId ? '/' + editId : ''), {
+        method: editId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fd)
+      });
+      const out = await res.json();
+      if (!res.ok) { showMsg('error', out.error); return; }
+      showMsg('success', out.message);
+      if (!editId) {
+        editId = out.publication.id;
+        editSection.style.display = 'block';
+      }
+      e.target.reset();
+    });
+
+    document.getElementById('proof-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!editId) { showMsg('error', 'Save the publication first.'); return; }
+      const fd = new FormData(e.target);
+      const res = await fetch('/api/publications/' + editId + '/proofs', { method: 'POST', body: fd });
+      const out = await res.json();
+      if (!res.ok) { showMsg('error', out.error); return; }
+      showMsg('success', out.message);
+      e.target.reset();
+      const listRes = await fetch('/api/publications/' + editId);
+      const listOut = await listRes.json();
+      loadProofs(listOut.publication);
+    });
+  </script>
+</body>
+</html>

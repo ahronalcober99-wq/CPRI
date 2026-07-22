@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Innovation/Extension Record Form | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Innovation / Extension Record</h1>
+        <p>Add or edit an innovation project or extension-based research record.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to manage records.
+        </div>
+
+        <div id="form-area" style="display:none;max-width:900px;">
+          <p><a href="innovation-extension.html">&larr; Back to records</a></p>
+
+          <div class="card" style="margin-bottom:22px;">
+            <h3 style="margin-top:0;">Basic Information</h3>
+            <form id="record-form">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="f-type">Project Type *</label>
+                  <select id="f-type" name="projectType" required>
+                    <option value="innovation_project">Innovation Project</option>
+                    <option value="extension_research">Extension-Based Research</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-title">Project Title *</label>
+                  <input type="text" id="f-title" name="title" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-proponents">Proponent/s *</label>
+                  <input type="text" id="f-proponents" name="proponents" required placeholder="e.g. Dr. A. Cruz, M. Reyes">
+                </div>
+                <div class="form-group">
+                  <label for="f-dept">Department *</label>
+                  <input type="text" id="f-dept" name="department" required>
+                </div>
+                <div class="form-group" style="grid-column:span 2;">
+                  <label for="f-desc">Description</label>
+                  <textarea id="f-desc" name="description" rows="4" placeholder="Project description..."></textarea>
+                </div>
+                <div class="form-group">
+                  <label for="f-beneficiaries">Number of Beneficiaries</label>
+                  <input type="number" id="f-beneficiaries" name="beneficiaries" placeholder="e.g. 150" min="0">
+                </div>
+                <div class="form-group">
+                  <label for="f-date">Implementation Date</label>
+                  <input type="date" id="f-date" name="implementationDate">
+                </div>
+                <div class="form-group" style="grid-column:span 2;">
+                  <label for="f-output">Output or Product Developed</label>
+                  <textarea id="f-output" name="outputProduct" rows="3" placeholder="Describe the output or product..."></textarea>
+                </div>
+              </div>
+          </div>
+
+          <div class="card" style="margin-bottom:22px;">
+            <h3 style="margin-top:0;">Extension-Based Research Details</h3>
+            <div class="grid grid-2" style="gap:16px;">
+              <div class="form-group">
+                <label for="f-partner">Community Partner</label>
+                <input type="text" id="f-partner" name="communityPartner" placeholder="Partner organization/community">
+              </div>
+              <div class="form-group">
+                <label for="f-needs">Needs Assessment</label>
+                <textarea id="f-needs" name="needsAssessment" rows="3" placeholder="Findings from needs assessment..."></textarea>
+              </div>
+              <div class="form-group" style="grid-column:span 2;">
+                <label for="f-intervention">Intervention Conducted</label>
+                <textarea id="f-intervention" name="interventionConducted" rows="3" placeholder="Describe the intervention..."></textarea>
+              </div>
+              <div class="form-group" style="grid-column:span 2;">
+                <label for="f-evaluation">Evaluation Result</label>
+                <textarea id="f-evaluation" name="evaluationResult" rows="3" placeholder="Results of the evaluation..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:22px;">
+            <h3 style="margin-top:0;">Impact Documentation</h3>
+            <div class="grid grid-2" style="gap:16px;">
+              <div class="form-group" style="grid-column:span 2;">
+                <label for="f-outcome">Community Outcome</label>
+                <textarea id="f-outcome" name="communityOutcome" rows="3" placeholder="Describe the community outcome..."></textarea>
+              </div>
+              <div class="form-group" style="grid-column:span 2;">
+                <label for="f-sustainability">Sustainability Plan</label>
+                <textarea id="f-sustainability" name="sustainabilityPlan" rows="3" placeholder="How will the project be sustained?"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-bottom:22px;">
+            <h3 style="margin-top:0;">Supporting Documents</h3>
+            <p class="form-note">Upload project proposals, designs, or other supporting files.</p>
+            <div class="grid grid-2" style="gap:16px;">
+              <div class="form-group">
+                <label for="f-doc">Supporting Document</label>
+                <input type="file" id="f-doc" name="supporting_document" accept=".pdf,.doc,.docx,.xlsx">
+              </div>
+              <div class="form-group">
+                <label for="f-photo">Photo</label>
+                <input type="file" id="f-photo" name="photo" accept="image/*">
+              </div>
+              <div class="form-group">
+                <label for="f-report">Report</label>
+                <input type="file" id="f-report" name="report" accept=".pdf,.doc,.docx">
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:18px;">
+            <button type="submit" class="btn btn-primary">Save Record</button>
+          </div>
+          </form>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const formArea = document.getElementById('form-area');
+    const notLogged = document.getElementById('not-logged');
+    let editId = null;
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      if (!['admin', 'cpri_staff'].includes(user.role)) {
+        notLogged.style.display = 'block';
+        notLogged.innerHTML = 'You do not have permission to manage innovation/extension records.';
+        return;
+      }
+
+      const params = new URLSearchParams(location.search);
+      editId = params.get('edit');
+      if (editId) {
+        const res = await fetch('/api/innovation-extension/' + editId);
+        if (res.ok) {
+          const { record: r } = await res.json();
+          const map = {
+            projectType: 'f-type', title: 'f-title', proponents: 'f-proponents',
+            department: 'f-dept', description: 'f-desc', beneficiaries: 'f-beneficiaries',
+            implementationDate: 'f-date', outputProduct: 'f-output',
+            communityPartner: 'f-partner', needsAssessment: 'f-needs',
+            interventionConducted: 'f-intervention', evaluationResult: 'f-evaluation',
+            communityOutcome: 'f-outcome', sustainabilityPlan: 'f-sustainability'
+          };
+          for (const [key, elId] of Object.entries(map)) {
+            const el = document.getElementById(elId);
+            if (el && r[key] !== undefined && r[key] !== null) el.value = r[key];
+          }
+        }
+      }
+      formArea.style.display = 'block';
+    })();
+
+    document.getElementById('record-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.target).entries());
+      if (fd.beneficiaries !== undefined && fd.beneficiaries !== '') {
+        fd.beneficiaries = parseInt(fd.beneficiaries, 10) || 0;
+      } else {
+        fd.beneficiaries = 0;
+      }
+      const res = await fetch('/api/innovation-extension' + (editId ? '/' + editId : ''), {
+        method: editId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fd)
+      });
+      const out = await res.json();
+      if (!res.ok) { showMsg('error', out.error); return; }
+      showMsg('success', out.message);
+      e.target.reset();
+    });
+  </script>
+</body>
+</html>

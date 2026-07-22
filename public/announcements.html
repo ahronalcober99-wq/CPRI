@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Announcements | CPRI</title>
+  <meta name="description" content="Research-related announcements, calls for papers, training schedules, defense schedules, and publication opportunities.">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Announcements</h1>
+        <p>Calls for papers, training schedules, research defenses, and publication opportunities.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="grid grid-3" id="announcements"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (async () => {
+      const items = await CPRI.fetchJson('/api/announcements');
+      const el = document.getElementById('announcements');
+      if (!items) {
+        el.innerHTML = '<p class="empty-state">Unable to load announcements at this time.</p>';
+        return;
+      }
+      if (!items.length) {
+        el.innerHTML = '<p class="empty-state">No announcements posted yet.</p>';
+        return;
+      }
+      el.innerHTML = items.map(a => `
+        <div class="card">
+          <span class="badge">${a.category}</span>
+          <h3>${a.title}</h3>
+          <div class="meta">${CPRI.fmtDate(a.date)}</div>
+          <p>${a.excerpt}</p>
+          <p style="color:var(--cpri-gray);font-size:.95rem;">${a.body || ''}</p>
+        </div>`).join('');
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ethics Application Form | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Ethics Application</h1>
+        <p>Submit or edit an ethics review application.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to manage ethics applications.
+        </div>
+
+        <div id="form-area" style="display:none;max-width:900px;">
+          <p><a href="ethics.html">&larr; Back to ethics archive</a></p>
+
+          <div class="card" style="margin-bottom:22px;">
+            <h3 style="margin-top:0;">Ethics Application Submission</h3>
+            <form id="ethics-form">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="f-title">Research title *</label>
+                  <input type="text" id="f-title" name="title" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-researchers">Researcher/s *</label>
+                  <input type="text" id="f-researchers" name="researchers" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-adviser">Adviser *</label>
+                  <input type="text" id="f-adviser" name="adviser" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-dept">Department *</label>
+                  <input type="text" id="f-dept" name="department" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-participant">Type of participants *</label>
+                  <input type="text" id="f-participant" name="participantType" required placeholder="e.g. Adults, Minors, Vulnerable groups">
+                </div>
+                <div class="form-group">
+                  <label for="f-risk">Risk level *</label>
+                  <select id="f-risk" name="riskLevel" required>
+                    <option value="">Select risk level</option>
+                    <option value="minimal">Minimal</option>
+                    <option value="low">Low</option>
+                    <option value="moderate">Moderate</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+              <div style="margin-top:18px;">
+                <button type="submit" class="btn btn-primary">Save Application</button>
+              </div>
+            </form>
+          </div>
+
+          <div id="upload-section" class="card" style="display:none;margin-bottom:22px;">
+            <h3 style="margin-top:0;">Document Uploads</h3>
+            <p class="form-note">Upload required ethics documents. All files except revised documents are mandatory on first submission.</p>
+            <form id="upload-form">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="f-ethics-app">Ethics application form *</label>
+                  <input type="file" id="f-ethics-app" name="ethics_application" accept=".pdf,.doc,.docx">
+                </div>
+                <div class="form-group">
+                  <label for="f-consent">Informed consent form *</label>
+                  <input type="file" id="f-consent" name="informed_consent" accept=".pdf,.doc,.docx">
+                </div>
+                <div class="form-group">
+                  <label for="f-instrument">Research instrument *</label>
+                  <input type="file" id="f-instrument" name="research_instrument" accept=".pdf,.doc,.docx,.xlsx">
+                </div>
+                <div class="form-group">
+                  <label for="f-manuscript">Proposal manuscript *</label>
+                  <input type="file" id="f-manuscript" name="proposal_manuscript" accept=".pdf,.doc,.docx">
+                </div>
+                <div class="form-group">
+                  <label for="f-revised">Revised documents (optional)</label>
+                  <input type="file" id="f-revised" name="revised_docs" accept=".pdf,.doc,.docx,.zip" multiple>
+                </div>
+              </div>
+              <div style="margin-top:18px;">
+                <button type="submit" class="btn btn-primary">Upload Documents</button>
+              </div>
+            </form>
+            <div id="file-list" style="margin-top:18px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const formArea = document.getElementById('form-area');
+    const notLogged = document.getElementById('not-logged');
+    const uploadSection = document.getElementById('upload-section');
+    const fileList = document.getElementById('file-list');
+    let editId = null;
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      if (!['admin', 'cpri_staff', 'faculty_researcher', 'student_researcher', 'adviser', 'ethics_reviewer'].includes(user.role)) {
+        notLogged.style.display = 'block';
+        notLogged.innerHTML = 'You do not have permission to access this page.';
+        return;
+      }
+
+      const params = new URLSearchParams(location.search);
+      editId = params.get('edit');
+      if (editId) {
+        const appRes = await fetch('/api/ethics/' + editId);
+        if (appRes.ok) {
+          const { application: a } = await appRes.json();
+          const map = {
+            title: 'f-title', researchers: 'f-researchers', adviser: 'f-adviser',
+            department: 'f-dept', participantType: 'f-participant', riskLevel: 'f-risk'
+          };
+          for (const [key, elId] of Object.entries(map)) {
+            const el = document.getElementById(elId);
+            if (el && a[key] !== undefined) el.value = a[key];
+          }
+          uploadSection.style.display = 'block';
+          loadFiles(a);
+        }
+      }
+
+      formArea.style.display = 'block';
+      if (editId) uploadSection.style.display = 'block';
+    })();
+
+    function loadFiles(a) {
+      const rows = [];
+      for (const [key, meta] of Object.entries(a.files || {})) {
+        if (meta) rows.push(`<div style="border-bottom:1px solid var(--cpri-border);padding:6px 0;display:flex;justify-content:space-between;">
+          <span><strong>${key.replace(/_/g, ' ').toUpperCase()}</strong> — ${meta.originalName}</span>
+          <a class="btn btn-navy" href="/api/ethics/${a.id}/file/${encodeURIComponent(meta.filename)}">Download</a></div>`);
+      }
+      (a.additionalDocs || []).forEach(d => {
+        rows.push(`<div style="border-bottom:1px solid var(--cpri-border);padding:6px 0;display:flex;justify-content:space-between;">
+          <span><strong>ADDITIONAL</strong> — ${d.originalName}</span>
+          <a class="btn btn-navy" href="/api/ethics/${a.id}/file/${encodeURIComponent(d.filename)}">Download</a></div>`);
+      });
+      (a.revisedDocuments || []).forEach(d => {
+        rows.push(`<div style="border-bottom:1px solid var(--cpri-border);padding:6px 0;display:flex;justify-content:space-between;">
+          <span><strong>REVISED</strong> — ${d.originalName} <span class="form-note">${d.note ? '(' + d.note + ')' : ''}</span></span>
+          <a class="btn btn-navy" href="/api/ethics/${a.id}/file/${encodeURIComponent(d.filename)}">Download</a></div>`);
+      });
+      fileList.innerHTML = rows.length ? rows.join('') : '<p class="form-note">No documents uploaded yet.</p>';
+    }
+
+    document.getElementById('ethics-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = Object.fromEntries(new FormData(e.target).entries());
+      const res = await fetch('/api/ethics' + (editId ? '/' + editId : ''), {
+        method: editId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fd)
+      });
+      const out = await res.json();
+      if (!res.ok) { showMsg('error', out.error); return; }
+      showMsg('success', out.message);
+      if (!editId) {
+        editId = out.application.id;
+        uploadSection.style.display = 'block';
+      }
+      e.target.reset();
+    });
+
+    document.getElementById('upload-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!editId) { showMsg('error', 'Save the application first.'); return; }
+      const fd = new FormData(e.target);
+      const res = await fetch('/api/ethics/' + editId + '/revisions', { method: 'POST', body: fd });
+      const out = await res.json();
+      if (!res.ok) { showMsg('error', out.error); return; }
+      showMsg('success', out.message);
+      e.target.reset();
+      const listRes = await fetch('/api/ethics/' + editId);
+      const listOut = await listRes.json();
+      loadFiles(listOut.application);
+    });
+  </script>
+</body>
+</html>

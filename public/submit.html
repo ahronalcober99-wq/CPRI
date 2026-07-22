@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submit Research | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Submit Research</h1>
+        <p>Complete the form and upload the required documents.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container" style="max-width:820px;">
+        <div class="form-message" id="message"></div>
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to submit research (Faculty/Student Researchers, Advisers, and CPRI Staff).
+        </div>
+
+        <form id="submit-form" class="card" style="display:none;">
+          <h3>Research Details</h3>
+          <div class="form-group">
+            <label for="title">Title of Research *</label>
+            <input type="text" id="title" name="title" required>
+          </div>
+          <div class="form-group">
+            <label for="authors">Name of Author(s) *</label>
+            <input type="text" id="authors" name="authors" required placeholder="e.g. J. Dela Cruz, M. Reyes">
+          </div>
+          <div class="grid grid-2" style="gap:16px;">
+            <div class="form-group">
+              <label for="program">Program / Department *</label>
+              <input type="text" id="program" name="program" required>
+            </div>
+            <div class="form-group">
+              <label for="adviser">Adviser</label>
+              <input type="text" id="adviser" name="adviser">
+            </div>
+            <div class="form-group">
+              <label for="category">Research Category *</label>
+              <input type="text" id="category" name="category" required placeholder="e.g. Education, Health, Governance">
+            </div>
+            <div class="form-group">
+              <label for="researchType">Research Type *</label>
+              <select id="researchType" name="researchType" required>
+                <option value="">Select…</option>
+                <option value="institutional">Institutional Research</option>
+                <option value="faculty">Faculty Research</option>
+                <option value="student_thesis">Student Thesis</option>
+                <option value="capstone">Capstone</option>
+                <option value="feasibility">Feasibility Study</option>
+                <option value="action_research">Action Research</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="schoolYear">School Year *</label>
+              <input type="text" id="schoolYear" name="schoolYear" required placeholder="e.g. 2025-2026">
+            </div>
+            <div class="form-group">
+              <label for="semester">Semester *</label>
+              <select id="semester" name="semester" required>
+                <option value="">Select…</option>
+                <option value="1st">1st Semester</option>
+                <option value="2nd">2nd Semester</option>
+                <option value="summer">Summer</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="abstract">Abstract *</label>
+            <textarea id="abstract" name="abstract" required></textarea>
+          </div>
+          <div class="form-group">
+            <label for="keywords">Keywords</label>
+            <input type="text" id="keywords" name="keywords" placeholder="Comma-separated">
+          </div>
+
+          <h3 style="margin-top:24px;">Required File Uploads</h3>
+          <p class="form-note">Accepted: PDF/Word (max 15 MB each). Manuscript, Abstract, Approval Form, Similarity Report, Adviser Endorsement, and Panel Approval Sheet are required.</p>
+
+          <div class="grid grid-2" style="gap:16px;">
+            <div class="form-group">
+              <label>Full Manuscript *</label>
+              <input type="file" name="manuscript" required accept=".pdf,.doc,.docx">
+            </div>
+            <div class="form-group">
+              <label>Abstract *</label>
+              <input type="file" name="abstract" required accept=".pdf,.doc,.docx">
+            </div>
+            <div class="form-group">
+              <label>Ethics Certificate (if applicable)</label>
+              <input type="file" name="ethicsCertificate" accept=".pdf,.doc,.docx">
+            </div>
+            <div class="form-group">
+              <label>Research Approval Form *</label>
+              <input type="file" name="approvalForm" required accept=".pdf,.doc,.docx">
+            </div>
+            <div class="form-group">
+              <label>Similarity Report *</label>
+              <input type="file" name="similarityReport" required accept=".pdf,.doc,.docx">
+            </div>
+            <div class="form-group">
+              <label>Adviser Endorsement *</label>
+              <input type="file" name="adviserEndorsement" required accept=".pdf,.doc,.docx">
+            </div>
+            <div class="form-group">
+              <label>Panel Approval Sheet *</label>
+              <input type="file" name="panelApproval" required accept=".pdf,.doc,.docx">
+            </div>
+            <div class="form-group">
+              <label>Publication Proof (if available)</label>
+              <input type="file" name="publicationProof" accept=".pdf,.doc,.docx">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Additional Documents</label>
+            <input type="file" name="additional" multiple accept=".pdf,.doc,.docx">
+          </div>
+
+          <button type="submit" class="btn btn-primary" id="submit-btn">Submit Research</button>
+          <a href="submissions.html" class="btn btn-navy" style="margin-left:8px;">View My Submissions</a>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const form = document.getElementById('submit-form');
+    const message = document.getElementById('message');
+    const notLogged = document.getElementById('not-logged');
+
+    (async () => {
+      const res = await fetch('/api/auth/me');
+      if (!res.ok) { notLogged.style.display = 'block'; return; }
+      const { user } = await res.json();
+      const allowed = ['faculty_researcher','student_researcher','adviser','cpri_staff'];
+      if (!allowed.includes(user.role)) {
+        notLogged.style.display = 'block';
+        notLogged.innerHTML = 'Your role (' + (user.roleLabel||user.role) + ') is not allowed to submit research.';
+        return;
+      }
+      form.style.display = 'block';
+    })();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      message.className = 'form-message';
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true; btn.textContent = 'Submitting…';
+      const fd = new FormData(form);
+      try {
+        const res = await fetch('/api/submissions', { method: 'POST', body: fd });
+        const out = await res.json();
+        if (!res.ok) throw new Error(out.error || 'Submission failed');
+        message.className = 'form-message success';
+        message.textContent = out.message + ' Redirecting…';
+        setTimeout(() => (window.location.href = 'submissions.html'), 1200);
+      } catch (err) {
+        message.className = 'form-message error';
+        message.textContent = err.message;
+        btn.disabled = false; btn.textContent = 'Submit Research';
+      }
+    });
+  </script>
+</body>
+</html>

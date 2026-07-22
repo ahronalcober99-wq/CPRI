@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Account | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>My Account</h1>
+        <p>Your CPRI account and session.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container" style="max-width:560px;">
+        <div class="form-message" id="message"></div>
+        <div id="account-area">
+          <div class="card" id="account-card" style="display:none;">
+            <h3 id="acc-name">—</h3>
+            <div class="contact-row"><span class="label">Username</span><span id="acc-username"></span></div>
+            <div class="contact-row"><span class="label">Email</span><span id="acc-email"></span></div>
+            <div class="contact-row"><span class="label">Role</span><span id="acc-role"></span></div>
+            <div class="contact-row"><span class="label">Status</span><span id="acc-status"></span></div>
+            <p id="acc-note" class="form-note" style="display:none;"></p>
+            <div id="acc-links" style="display:none;margin-top:6px;">
+              <a class="btn btn-primary" href="profile.html">Manage Profile</a>
+            </div>
+            <button class="btn btn-navy" id="logout-btn" style="margin-top:10px;">Log Out</button>
+          </div>
+          <div id="not-logged" class="empty-state">
+            You are not logged in. <a href="login.html">Log in here</a>.
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const card = document.getElementById('account-card');
+    const notLogged = document.getElementById('not-logged');
+
+    (async () => {
+      const res = await fetch('/api/auth/me');
+      if (!res.ok) { notLogged.style.display = 'block'; return; }
+      const { user } = await res.json();
+      card.style.display = 'block';
+      document.getElementById('acc-name').textContent = user.fullName || user.username;
+      document.getElementById('acc-username').textContent = user.username;
+      document.getElementById('acc-email').textContent = user.email;
+      document.getElementById('acc-role').textContent = user.roleLabel || user.role;
+      document.getElementById('acc-status').textContent = user.status;
+      const links = document.getElementById('acc-links');
+      if (links) links.style.display = 'block';
+      if (user.role === 'ethics_reviewer' && user.status === 'pending') {
+        const note = document.getElementById('acc-note');
+        note.style.display = 'block';
+        note.textContent = 'Your Ethics Reviewer account is pending admin approval.';
+      }
+    })();
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (res.ok) window.location.href = 'login.html';
+      else { message.className = 'form-message error'; message.textContent = 'Logout failed.'; }
+    });
+  </script>
+</body>
+</html>

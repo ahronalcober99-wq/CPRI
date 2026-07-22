@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Researchers | CPRI</title>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Researchers</h1>
+        <p>Faculty and student researcher profiles with research productivity summaries.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+
+        <!-- Productivity Summary Dashboard -->
+        <div id="dashboard" class="grid grid-3" style="margin-bottom:28px;"></div>
+
+        <!-- Admin: Add researcher -->
+        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:#e6f4f1;">
+          <h3>CPRI Staff / Admin</h3>
+          <p class="form-note">Register a new researcher profile.</p>
+          <a class="btn btn-primary" href="researcher-form.html" style="display:inline-block;margin-top:8px;">+ Add Researcher</a>
+        </div>
+
+        <!-- Search & filter -->
+        <div class="card" style="margin-bottom:22px;">
+          <form id="filter-form">
+            <div class="grid grid-3" style="gap:14px;">
+              <div class="form-group" style="margin:0;">
+                <label for="f-name">Name</label>
+                <input type="text" id="f-name" name="fullName" placeholder="Researcher name">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-dept">Department / Program</label>
+                <input type="text" id="f-dept" name="department" placeholder="Department or program">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-type">Type</label>
+                <select id="f-type" name="type">
+                  <option value="">All</option>
+                  <option value="faculty">Faculty</option>
+                  <option value="student">Student</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-year">Year Completed</label>
+                <input type="text" id="f-year" name="year" placeholder="e.g. 2025">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="f-status">Research Output Status</label>
+                <select id="f-status" name="status">
+                  <option value="">All</option>
+                  <option value="ongoing">Ongoing</option>
+                  <option value="completed">Completed</option>
+                  <option value="published">Published</option>
+                  <option value="presented">Presented</option>
+                  <option value="under_review">Under Review</option>
+                  <option value="rejected">Rejected</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+              <button type="submit" class="btn btn-primary">Search</button>
+              <button type="button" class="btn btn-navy" id="clear-btn">Clear</button>
+            </div>
+          </form>
+        </div>
+
+        <div id="records"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const dashboard = document.getElementById('dashboard');
+    const recordsEl = document.getElementById('records');
+
+    const TYPE_LABELS = { faculty: 'Faculty Researcher', student: 'Student Researcher' };
+
+    function buildQuery() {
+      const fd = new FormData(document.getElementById('filter-form'));
+      const p = new URLSearchParams();
+      for (const [k, v] of fd.entries()) if (v) p.set(k, v);
+      return p.toString();
+    }
+
+    async function loadStats() {
+      const res = await fetch('/api/researchers/stats');
+      const { stats } = await res.json();
+      dashboard.innerHTML = [
+        { label: 'Total Researchers', value: stats.totalResearchers, cls: '' },
+        { label: 'Faculty', value: stats.faculty, cls: '' },
+        { label: 'Students', value: stats.students, cls: '' },
+        { label: 'Completed Researches', value: stats.completedResearches, cls: '' },
+        { label: 'Publications', value: stats.publications, cls: '' },
+        { label: 'Presentations', value: stats.presentations, cls: '' },
+        { label: 'Innovation Projects', value: stats.innovationProjects, cls: '' },
+        { label: 'Citations', value: stats.citations, cls: '' }
+      ].map(s => `<div class="card" style="text-align:center;padding:22px;">
+        <div style="font-size:2rem;font-weight:800;color:var(--cpri-accent);">${s.value}</div>
+        <div class="form-note" style="margin-top:4px;">${s.label}</div>
+      </div>`).join('');
+    }
+
+    async function load() {
+      const res = await fetch('/api/researchers' + (buildQuery() ? '?' + buildQuery() : ''));
+      const { researchers } = await res.json();
+      if (!researchers.length) {
+        recordsEl.innerHTML = '<p class="empty-state">No researcher profiles found.</p>';
+        return;
+      }
+      recordsEl.innerHTML = researchers.map(r => `
+        <div class="card" style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;">
+            <div style="flex:1;min-width:240px;">
+              <h3 style="margin:0 0 6px;"><a href="researcher-detail.html?id=${r.id}">${escapeHtml(r.fullName)}</a></h3>
+              <div class="meta">${TYPE_LABELS[r.type] || r.type} · ${escapeHtml(r.department || r.program || '—')}</div>
+              ${r.researchTitle ? `<div class="meta" style="margin-top:4px;">Research: ${escapeHtml(r.researchTitle)}</div>` : ''}
+              ${r.orcid ? `<div class="meta" style="margin-top:4px;">ORCID: ${escapeHtml(r.orcid)}</div>` : ''}
+              ${r.googleScholar ? `<div class="meta" style="margin-top:4px;">Google Scholar: ${escapeHtml(r.googleScholar)}</div>` : ''}
+              ${r.researchGate ? `<div class="meta" style="margin-top:4px;">ResearchGate: ${escapeHtml(r.researchGate)}</div>` : ''}
+              <div style="margin-top:8px;">
+                <span class="badge">${r.outputStatusLabel || r.researchOutputStatus || '—'}</span>
+                <span class="form-note">Pubs: ${r.publications} · Pres: ${r.presentations} · Awards: ${r.awards}</span>
+              </div>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.getElementById('filter-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
+    document.getElementById('clear-btn').addEventListener('click', () => {
+      document.getElementById('filter-form').reset();
+      load();
+    });
+
+    (async () => {
+      await loadStats();
+      await load();
+      const meRes = await fetch('/api/auth/me');
+      if (meRes.ok) {
+        const { user } = await meRes.json();
+        if (['admin', 'cpri_staff'].includes(user.role)) {
+          document.getElementById('admin-panel').style.display = 'block';
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
