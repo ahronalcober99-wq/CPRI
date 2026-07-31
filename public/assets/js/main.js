@@ -538,6 +538,90 @@ const CPRI = (() => {
     }
   }
 
+  async function loadPublicDashboard() {
+    const payload = await fetchJson('/api/admin/public-summary');
+    if (!payload || !payload.summary) return null;
+    const summary = payload.summary;
+
+    const headerSmall = document.querySelector('.gc-head small');
+    if (headerSmall) {
+      const updated = new Date(summary.lastUpdated);
+      const diffMin = Math.max(0, Math.round((Date.now() - updated.getTime()) / 60000));
+      headerSmall.textContent = `Live · updated ${diffMin === 0 ? 'just now' : `${diffMin}m ago`}`;
+    }
+
+    const statEls = document.querySelectorAll('.glass-stat .gs-num');
+    const values = [summary.publications, summary.activeProjects, summary.researchers, summary.innovationProjects];
+    statEls.forEach((el, idx) => {
+      if (values[idx] !== undefined) {
+        el.dataset.count = values[idx];
+        el.textContent = '0';
+      }
+    });
+    initCounters();
+
+    const barEls = document.querySelectorAll('.mini-chart span');
+    if (barEls.length && Array.isArray(summary.monthlyOutput)) {
+      const max = Math.max(...summary.monthlyOutput, 1);
+      barEls.forEach((bar, index) => {
+        const value = summary.monthlyOutput[index] || 0;
+        const pct = value ? Math.max(8, Math.round((value / max) * 100)) : 8;
+        bar.style.setProperty('--h', `${pct}%`);
+        // Re-trigger the CSS grow animation so refreshed values animate smoothly
+        bar.style.animation = 'none';
+        void bar.offsetWidth;
+        bar.style.animation = '';
+      });
+    }
+
+    const progressBars = document.querySelectorAll('.gc-bar > span[data-w]');
+    if (progressBars.length) {
+      if (progressBars[0]) progressBars[0].dataset.w = `${summary.approvalRate}%`;
+      if (progressBars[1]) progressBars[1].dataset.w = `${summary.onTimeDelivery}%`;
+      progressBars.forEach(bar => { bar.style.width = '0'; requestAnimationFrame(() => bar.style.width = bar.dataset.w || '0'); });
+    }
+
+    const ring = document.querySelector('.ring');
+    if (ring) {
+      const pct = summary.goalProgress || 0;
+      ring.dataset.pct = pct;
+      const rv = ring.querySelector('.rv');
+      if (rv) rv.textContent = `${pct}%`;
+      const fg = ring.querySelector('.ring-fg');
+      if (fg) {
+        const r = 32, c = 2 * Math.PI * r;
+        fg.style.strokeDasharray = c;
+        fg.style.strokeDashoffset = c;
+        requestAnimationFrame(() => { fg.style.transition = 'stroke-dashoffset 1.6s ease'; fg.style.strokeDashoffset = c * (1 - pct / 100); });
+      }
+    }
+
+    const ringInfo = document.querySelector('.ring-info');
+    if (ringInfo) {
+      const labelTitle = ringInfo.querySelector('div');
+      const labelSub = ringInfo.querySelectorAll('small');
+      if (labelTitle) labelTitle.textContent = summary.goalLabel || 'On track for 2026';
+      if (labelSub[1]) labelSub[1].textContent = summary.goalSubtext || '+0% citations YoY';
+    }
+
+    startPublicDashboardAutoRefresh();
+    return summary;
+  }
+
+  // Keep the hero dashboard widget live: refresh every 60s and whenever the
+  // tab regains focus. A module-level guard ensures this is only set up once.
+  let dashboardRefreshTimer = null;
+  function startPublicDashboardAutoRefresh() {
+    if (dashboardRefreshTimer) return;
+    dashboardRefreshTimer = setInterval(() => {
+      if (!document.hidden) loadPublicDashboard();
+    }, 60000);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) loadPublicDashboard();
+    });
+    window.addEventListener('focus', () => loadPublicDashboard());
+  }
+
   function initDashChart() {
     const ctx = document.getElementById('dashChart').getContext('2d');
     const g = ctx.createLinearGradient(0, 0, 0, 120);
@@ -852,7 +936,7 @@ const CPRI = (() => {
     fetchJson, fmtDate, reveal: initReveal, toast, SITE,
     buildResearch, buildNews, buildResearchers, buildStats,
     buildPartners, buildTestimonials, buildEvents, buildAiFeatures,
-    buildFaqs, initHeroExtras
+    buildFaqs, initHeroExtras, loadPublicDashboard
   };
 })();
 

@@ -12,6 +12,7 @@ import { researchersRouter } from './researchers.js';
 import { eventsModuleRouter } from './events-module.js';
 import { innovationExtensionRouter } from './innovation-extension.js';
 import { adminDashboardRouter } from './admin-dashboard.js';
+import { adminInsightsRouter } from './admin-insights.js';
 import { reportsRouter } from './reports.js';
 import { testConnection } from './db.js';
 import { insert } from './server/db/queries.js';
@@ -48,6 +49,7 @@ app.use('/api/researchers', researchersRouter);
 app.use('/api/events-module', eventsModuleRouter);
 app.use('/api/innovation-extension', innovationExtensionRouter);
 app.use('/api/admin', adminDashboardRouter);
+app.use('/api/admin', adminInsightsRouter);
 app.use('/api/reports', reportsRouter);
 
 app.use(express.static(PUBLIC_DIR));

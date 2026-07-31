@@ -6,6 +6,7 @@ import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
+import { addLog } from './audit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -200,6 +201,8 @@ router.patch('/:id/status', requireRole(...REVIEW_ROLES), async (req, res) => {
   if (status === 'published' || status === 'approved') {
     await syncRepository(sub, status);
   }
+
+  await addLog(`submission_${status}`, `${STATUS_LABELS[status] || status} submission "${sub.title}"`, req);
 
   const updated = await get('SELECT * FROM submissions WHERE id = ?', [sub.id]);
   res.json({ message: 'Status updated.', submission: updated });

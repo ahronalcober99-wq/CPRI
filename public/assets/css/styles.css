@@ -426,7 +426,7 @@ img { max-width: 100%; display: block; }
   background: var(--cpri-surface); border: 1px solid var(--cpri-border-soft); border-radius: 12px;
   padding: 14px; margin: 0; list-style: none; z-index: 1040;
   display: block; visibility: hidden; opacity: 0; transform: translateY(10px); pointer-events: none;
-  transition: opacity .4s ease, transform .4s ease, visibility .4s ease;
+  transition: opacity .5s cubic-bezier(.4,0,.2,1), transform .5s cubic-bezier(.4,0,.2,1), visibility .5s cubic-bezier(.4,0,.2,1);
 }
 .cpri-submenu.cols-2 { grid-template-columns: 1fr 1fr; min-width: 560px; gap: 4px 18px; display: grid; }
 .cpri-group.open .cpri-submenu { visibility: visible; opacity: 1; transform: none; pointer-events: auto; }
