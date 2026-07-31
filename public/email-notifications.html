@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Notifications | CPRI Admin</title>
+  <meta name="theme-color" content="#0F172A">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container-xl">
+        <span class="badge" style="background:rgba(255,255,255,.16);color:#fff;">Communications</span>
+        <h1>Email Notifications</h1>
+        <p>Manage notification preferences, templates, and delivery settings.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container-xl">
+        <div class="form-message" id="message"></div>
+        <div id="access-denied" class="empty-state" style="display:none;">Admin access required.</div>
+
+        <div class="admin-shell">
+          <!-- Sidebar -->
+          <aside class="admin-side">
+            <div class="as-brand">
+              <span class="logo">C</span>
+              <div><b>CPRI Admin</b><small>Control Center</small></div>
+            </div>
+            <div class="as-label">Operations</div>
+            <a href="admin-dashboard.html"><i class="bi bi-speedometer2"></i> Overview</a>
+            <a href="submissions.html"><i class="bi bi-send"></i> Submissions</a>
+            <a href="repository.html"><i class="bi bi-archive"></i> Repository</a>
+            <a href="publications.html"><i class="bi bi-journal-richtext"></i> Publications</a>
+            <a href="ethics.html"><i class="bi bi-shield-check"></i> Ethics Review</a>
+            <a href="researchers.html"><i class="bi bi-people"></i> Researchers</a>
+            <div class="as-label">Insights</div>
+            <a href="reports.html"><i class="bi bi-bar-chart"></i> Analytics &amp; Reports</a>
+            <a href="audit-logs.html"><i class="bi bi-activity"></i> Audit Logs</a>
+            <a href="calendar.html"><i class="bi bi-calendar3"></i> Calendar</a>
+            <a href="email-notifications.html" class="active"><i class="bi bi-envelope"></i> Email Notifications</a>
+            <a href="file-manager.html"><i class="bi bi-folder2"></i> File Manager</a>
+            <div class="as-user">
+              <span class="av">AD</span>
+              <div><b style="font-family:var(--font-head);color:var(--cpri-text)">Admin</b><small>Role-based access</small></div>
+            </div>
+          </aside>
+
+          <!-- Main -->
+          <div class="admin-main">
+            <div class="admin-toolbar">
+              <h2>Notification Preferences</h2>
+              <small style="color:var(--cpri-muted)">Configure which system events trigger email alerts</small>
+            </div>
+
+            <div class="admin-card">
+              <h3><i class="bi bi-envelope-paper"></i> Email Alerts</h3>
+              <p class="form-note">Toggle notification types on or off. Changes are saved automatically.</p>
+              <div id="notification-toggles">
+                <div class="a11y-row">
+                  <div><div class="lbl">New Research Submissions</div><div class="sub">Notify when a new research is submitted</div></div>
+                  <label class="switch"><input type="checkbox" id="notif-submission" checked><span></span></label>
+                </div>
+                <div class="a11y-row">
+                  <div><div class="lbl">Ethics Review Applications</div><div class="sub">Notify when an ethics review is filed</div></div>
+                  <label class="switch"><input type="checkbox" id="notif-ethics" checked><span></span></label>
+                </div>
+                <div class="a11y-row">
+                  <div><div class="lbl">Event Registrations</div><div class="sub">Notify when someone registers for an event</div></div>
+                  <label class="switch"><input type="checkbox" id="notif-event-reg" checked><span></span></label>
+                </div>
+                <div class="a11y-row">
+                  <div><div class="lbl">New User Registrations</div><div class="sub">Notify when a new user creates an account</div></div>
+                  <label class="switch"><input type="checkbox" id="notif-user-reg" checked><span></span></label>
+                </div>
+                <div class="a11y-row">
+                  <div><div class="lbl">Password Resets</div><div class="sub">Notify on password change requests</div></div>
+                  <label class="switch"><input type="checkbox" id="notif-pwd-reset"><span></span></label>
+                </div>
+                <div class="a11y-row">
+                  <div><div class="lbl">System Errors &amp; Warnings</div><div class="sub">Critical system alerts and error reports</div></div>
+                  <label class="switch"><input type="checkbox" id="notif-errors" checked><span></span></label>
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3><i class="bi bi-envelope-open"></i> Email Templates</h3>
+              <p class="form-note">Preview and customize notification email templates.</p>
+              <div class="grid grid-2" style="gap:14px;margin-top:14px;">
+                <div class="card" style="padding:16px;">
+                  <b style="font-family:var(--font-head);display:block;">Submission Received</b>
+                  <small class="form-note">Sent to admin when a new submission is received</small>
+                  <button class="btn btn-soft btn-sm mt-2 preview-template" data-template="submission"><i class="bi bi-eye"></i> Preview</button>
+                </div>
+                <div class="card" style="padding:16px;">
+                  <b style="font-family:var(--font-head);display:block;">Ethics Application</b>
+                  <small class="form-note">Sent to ethics reviewers on new application</small>
+                  <button class="btn btn-soft btn-sm mt-2 preview-template" data-template="ethics"><i class="bi bi-eye"></i> Preview</button>
+                </div>
+                <div class="card" style="padding:16px;">
+                  <b style="font-family:var(--font-head);display:block;">Event Confirmation</b>
+                  <small class="form-note">Sent to registrants upon event registration</small>
+                  <button class="btn btn-soft btn-sm mt-2 preview-template" data-template="event"><i class="bi bi-eye"></i> Preview</button>
+                </div>
+                <div class="card" style="padding:16px;">
+                  <b style="font-family:var(--font-head);display:block;">Welcome Email</b>
+                  <small class="form-note">Sent to new users after registration</small>
+                  <button class="btn btn-soft btn-sm mt-2 preview-template" data-template="welcome"><i class="bi bi-eye"></i> Preview</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3><i class="bi bi-gear"></i> Delivery Settings</h3>
+              <div style="max-width:480px;">
+                <div class="form-group">
+                  <label>Sender Email Address</label>
+                  <input type="email" id="sender-email" value="noreply@cpri.edu" placeholder="noreply@cpri.edu">
+                </div>
+                <div class="form-group">
+                  <label>Sender Name</label>
+                  <input type="text" id="sender-name" value="CPRI Notifications" placeholder="CPRI Notifications">
+                </div>
+                <div class="form-group">
+                  <label>Daily Digest Time</label>
+                  <input type="time" id="digest-time" value="08:00">
+                </div>
+                <button class="btn btn-primary" id="save-settings"><i class="bi bi-check2"></i> Save Settings</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    // Load saved preferences from localStorage
+    function loadPreferences() {
+      const prefs = JSON.parse(localStorage.getItem('cpri-notif-prefs') || '{}');
+      document.querySelectorAll('#notification-toggles input[type="checkbox"]').forEach(cb => {
+        const key = cb.id;
+        if (prefs[key] !== undefined) cb.checked = prefs[key];
+        cb.addEventListener('change', () => {
+          const p = JSON.parse(localStorage.getItem('cpri-notif-prefs') || '{}');
+          p[cb.id] = cb.checked;
+          localStorage.setItem('cpri-notif-prefs', JSON.stringify(p));
+          showMsg('success', 'Preference saved.');
+        });
+      });
+
+      const senderEmail = localStorage.getItem('cpri-notif-sender-email');
+      const senderName = localStorage.getItem('cpri-notif-sender-name');
+      const digestTime = localStorage.getItem('cpri-notif-digest-time');
+      if (senderEmail) document.getElementById('sender-email').value = senderEmail;
+      if (senderName) document.getElementById('sender-name').value = senderName;
+      if (digestTime) document.getElementById('digest-time').value = digestTime;
+    }
+
+    document.getElementById('save-settings').addEventListener('click', () => {
+      localStorage.setItem('cpri-notif-sender-email', document.getElementById('sender-email').value);
+      localStorage.setItem('cpri-notif-sender-name', document.getElementById('sender-name').value);
+      localStorage.setItem('cpri-notif-digest-time', document.getElementById('digest-time').value);
+      showMsg('success', 'Delivery settings saved.');
+    });
+
+    // Template preview modals
+    document.querySelectorAll('.preview-template').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tpl = btn.dataset.template;
+        const templates = {
+          submission: {
+            subject: 'New Research Submission Received',
+            body: `Dear Admin,\n\nA new research submission has been received.\n\nTitle: [Research Title]\nSubmitted by: [Author Name]\nDate: [Submission Date]\n\nPlease review the submission at your earliest convenience.\n\nBest regards,\nCPRI System`
+          },
+          ethics: {
+            subject: 'New Ethics Review Application',
+            body: `Dear Reviewer,\n\nA new ethics review application has been submitted for your evaluation.\n\nProject Title: [Project Title]\nApplicant: [Applicant Name]\nReceived: [Date]\n\nPlease log in to the system to review.\n\nBest regards,\nCPRI Ethics Board`
+          },
+          event: {
+            subject: 'Event Registration Confirmation',
+            body: `Dear [Registrant Name],\n\nYou are registered for the following event:\n\nEvent: [Event Title]\nDate: [Event Date]\nVenue: [Venue]\n\nWe look forward to seeing you there!\n\nBest regards,\nCPRI Events Team`
+          },
+          welcome: {
+            subject: 'Welcome to CPRI',
+            body: `Dear [User Name],\n\nWelcome to the CPRI Research Management System!\n\nYour account has been created with the following role: [Role]\n\nYou can now log in and start using the system.\n\nBest regards,\nCPRI Team`
+          }
+        };
+        const t = templates[tpl] || { subject: 'Template', body: 'No preview available.' };
+        alert(`Subject: ${t.subject}\n\n---\n\n${t.body}`);
+      });
+    });
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { document.getElementById('access-denied').style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      if (!['admin', 'cpri_staff'].includes(user.role)) {
+        document.getElementById('access-denied').style.display = 'block';
+        return;
+      }
+      loadPreferences();
+    })();
+  </script>
+</body>
+</html>
+

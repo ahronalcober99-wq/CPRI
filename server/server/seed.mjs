@@ -5,7 +5,7 @@ import { insert } from './db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const DATA_DIR = join(__dirname, 'data');
+const DATA_DIR = join(__dirname, '..', 'data');
 
 const MIGRATIONS = [
   { file: 'users.json', table: 'users', transform: u => ({ ...u, researches: JSON.stringify(u.researches || []) }) },
@@ -16,7 +16,8 @@ const MIGRATIONS = [
   { file: 'researchers.json', table: 'researchers', transform: r => ({ ...r, completedResearches: JSON.stringify(r.completedResearches || []), publishedWorks: JSON.stringify(r.publishedWorks || []), presentedPapers: JSON.stringify(r.presentedPapers || []), awards: JSON.stringify(r.awards || []), innovationProjects: JSON.stringify(r.innovationProjects || []) }) },
   { file: 'events-module.json', table: 'events_module', transform: e => ({ ...e, gallery: JSON.stringify(e.gallery || []) }) },
   { file: 'event-registrations.json', table: 'event_registrations', transform: r => ({ ...r, certificateData: JSON.stringify(r.certificateData || null) }) },
-  { file: 'innovation-extension.json', table: 'innovation_extension', transform: r => ({ ...r, supportingDocuments: JSON.stringify(r.supportingDocuments || []), impactDocuments: JSON.stringify(r.impactDocuments || []) }) }
+  { file: 'innovation-extension.json', table: 'innovation_extension', transform: r => ({ ...r, supportingDocuments: JSON.stringify(r.supportingDocuments || []), impactDocuments: JSON.stringify(r.impactDocuments || []) }) },
+  { file: 'event-abstracts.json', table: 'event_abstracts', transform: a => ({ ...a }) }
 ];
 
 async function migrate() {

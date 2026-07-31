@@ -1,60 +1,49 @@
 import { Router } from 'express';
-import { randomUUID } from 'crypto';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { promises as fs } from 'fs';
-import { requireAdmin, readUsers } from './auth.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const DATA_DIR = join(__dirname, 'data');
+import { requireAdmin } from './auth.js';
+import { all, get, run } from './server/db/queries.js';
 
 const router = Router();
 
-async function readJson(name) {
-  try { return JSON.parse(await fs.readFile(join(DATA_DIR, name + '.json'), 'utf8')); } catch { return []; }
-}
-
 router.get('/research-output-per-department', requireAdmin, async (req, res) => {
-  const repo = await readJson('repository');
+  const repo = await all("SELECT COALESCE(department, 'Unknown') AS dept FROM repository");
   const deptMap = {};
-  repo.forEach(r => { const d = r.department || 'Unknown'; deptMap[d] = (deptMap[d] || 0) + 1; });
+  repo.forEach(r => { deptMap[r.dept] = (deptMap[r.dept] || 0) + 1; });
   res.json({ report: Object.entries(deptMap).map(([department, count]) => ({ department, count })) });
 });
 
 router.get('/research-output-per-year', requireAdmin, async (req, res) => {
-  const repo = await readJson('repository');
-  const pubs = await readJson('publications');
+  const repo = await all("SELECT COALESCE(yearCompleted, 'Unknown') AS year FROM repository");
+  const pubs = await all("SELECT LEFT(COALESCE(publicationDate, ''), 4) AS year FROM publications");
   const yearMap = {};
-  repo.forEach(r => { const yr = r.yearCompleted || 'Unknown'; yearMap[yr] = (yearMap[yr] || 0) + 1; });
-  pubs.forEach(p => { const yr = (p.publicationDate || '').slice(0, 4) || 'Unknown'; yearMap[yr] = (yearMap[yr] || 0) + 1; });
+  repo.forEach(r => { yearMap[r.year] = (yearMap[r.year] || 0) + 1; });
+  pubs.forEach(p => { const yr = p.year || 'Unknown'; yearMap[yr] = (yearMap[yr] || 0) + 1; });
   res.json({ report: Object.entries(yearMap).map(([year, count]) => ({ year, count })) });
 });
 
 router.get('/publications-per-year', requireAdmin, async (req, res) => {
-  const pubs = await readJson('publications');
+  const pubs = await all("SELECT LEFT(COALESCE(publicationDate, ''), 4) AS year FROM publications");
   const yearMap = {};
-  pubs.forEach(p => { const yr = (p.publicationDate || '').slice(0, 4) || 'Unknown'; yearMap[yr] = (yearMap[yr] || 0) + 1; });
+  pubs.forEach(p => { const yr = p.year || 'Unknown'; yearMap[yr] = (yearMap[yr] || 0) + 1; });
   res.json({ report: Object.entries(yearMap).map(([year, count]) => ({ year, count })) });
 });
 
 router.get('/submissions-by-status', requireAdmin, async (req, res) => {
-  const subs = await readJson('submissions');
+  const subs = await all("SELECT COALESCE(status, 'Unknown') AS status FROM submissions");
   const statusMap = {};
   subs.forEach(s => { statusMap[s.status] = (statusMap[s.status] || 0) + 1; });
   res.json({ report: Object.entries(statusMap).map(([status, count]) => ({ status, count })) });
 });
 
 router.get('/ethics-by-status', requireAdmin, async (req, res) => {
-  const ethics = await readJson('ethics');
+  const ethics = await all("SELECT COALESCE(status, 'Unknown') AS status FROM ethics");
   const statusMap = {};
   ethics.forEach(e => { statusMap[e.status] = (statusMap[e.status] || 0) + 1; });
   res.json({ report: Object.entries(statusMap).map(([status, count]) => ({ status, count })) });
 });
 
 router.get('/faculty-productivity', requireAdmin, async (req, res) => {
-  const researchers = await readJson('researchers');
-  const report = researchers.filter(r => r.type === 'faculty').map(r => ({
+  const researchers = await all("SELECT fullName, department, completedResearches, publishedWorks, presentedPapers, innovationProjects, citations FROM researchers WHERE type = 'faculty'");
+  const report = researchers.map(r => ({
     name: r.fullName,
     department: r.department,
     completedResearches: (r.completedResearches || []).length,
@@ -67,8 +56,8 @@ router.get('/faculty-productivity', requireAdmin, async (req, res) => {
 });
 
 router.get('/student-output', requireAdmin, async (req, res) => {
-  const researchers = await readJson('researchers');
-  const report = researchers.filter(r => r.type === 'student').map(r => ({
+  const researchers = await all("SELECT fullName, program, researchTitle, adviser, yearCompleted, researchOutputStatus FROM researchers WHERE type = 'student'");
+  const report = researchers.map(r => ({
     name: r.fullName,
     program: r.program,
     researchTitle: r.researchTitle || '',
@@ -80,7 +69,7 @@ router.get('/student-output', requireAdmin, async (req, res) => {
 });
 
 router.get('/innovation-extension-report', requireAdmin, async (req, res) => {
-  const records = await readJson('innovation-extension');
+  const records = await all('SELECT title, projectType, proponents, department, beneficiaries, communityPartner, implementationDate FROM innovation_extension');
   const report = records.map(r => ({
     title: r.title,
     projectType: r.projectType,
@@ -94,8 +83,8 @@ router.get('/innovation-extension-report', requireAdmin, async (req, res) => {
 });
 
 router.get('/events-participation-report', requireAdmin, async (req, res) => {
-  const events = await readJson('events-module');
-  const regs = await readJson('event-registrations');
+  const events = await all('SELECT * FROM events_module');
+  const regs = await all('SELECT * FROM event_registrations');
   const report = events.map(e => ({
     title: e.title,
     dateTime: e.dateTime,
@@ -108,7 +97,7 @@ router.get('/events-participation-report', requireAdmin, async (req, res) => {
 });
 
 router.get('/publications-monitoring', requireAdmin, async (req, res) => {
-  const pubs = await readJson('publications');
+  const pubs = await all('SELECT title, authors, journalOrConference, pubType, status, publicationDate, doi, department, schoolYear FROM publications');
   const report = pubs.map(p => ({
     title: p.title,
     authors: p.authors,
@@ -124,7 +113,7 @@ router.get('/publications-monitoring', requireAdmin, async (req, res) => {
 });
 
 router.get('/repository-inventory', requireAdmin, async (req, res) => {
-  const repo = await readJson('repository');
+  const repo = await all('SELECT title, authors, department, category, yearCompleted, status, accessLevel, fileAvailable FROM repository');
   const report = repo.map(r => ({
     title: r.title,
     authors: r.authors,
@@ -162,7 +151,8 @@ router.get('/export/:reportType', requireAdmin, async (req, res) => {
   if (!endpoint) return res.status(404).json({ error: 'Report type not found.' });
 
   try {
-    const response = await fetch(endpoint, { headers: { 'Accept': 'application/json' } });
+    const { protocol, host } = req;
+    const response = await fetch(`${protocol}://${host}${endpoint}`, { headers: { 'Accept': 'application/json' } });
     if (!response.ok) return res.status(500).json({ error: 'Failed to fetch report data.' });
     const data = await response.json();
     reportData = data.report;
@@ -210,3 +200,4 @@ router.get('/export/:reportType', requireAdmin, async (req, res) => {
 });
 
 export { router as reportsRouter };
+

@@ -5,11 +5,10 @@ import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
+import { all, get, run, insert, update, remove } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const DATA_DIR = join(__dirname, 'data');
-const ETHICS_FILE = join(DATA_DIR, 'ethics.json');
 const ETHICS_UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'assets', 'uploads', 'ethics');
 
 const router = Router();
@@ -36,12 +35,6 @@ const FILE_FIELDS = [
 ];
 const REQUIRED_KEYS = FILE_FIELDS.filter(f => f.required).map(f => f.key);
 
-async function readEthics() {
-  try { return JSON.parse(await fs.readFile(ETHICS_FILE, 'utf8')); } catch { return []; }
-}
-async function writeEthics(list) {
-  await fs.writeFile(ETHICS_FILE, JSON.stringify(list, null, 2));
-}
 async function caller(req) {
   const users = await readUsers();
   return users.find(u => u.id === req.session.userId) || null;
@@ -73,42 +66,43 @@ const uploadCertificate = upload.single('certificate_pdf');
 router.get('/', requireAuth, async (req, res) => {
   const q = req.query;
   const me = await caller(req);
-  let list = await readEthics();
+  let sql = 'SELECT * FROM ethics WHERE 1=1';
+  const params = [];
 
-  const match = (val, term) => !term || String(val || '').toLowerCase().includes(String(term).toLowerCase());
-  list = list.filter(a => {
-    if (q.title && !match(a.title, q.title)) return false;
-    if (q.researchers && !match(a.researchers, q.researchers)) return false;
-    if (q.department && !match(a.department, q.department)) return false;
-    if (q.status && a.status !== q.status) return false;
-    if (q.year && String(a.createdAt).slice(0, 4) !== String(q.year)) return false;
-    if (!canAccess(me, a)) return false;
-    return true;
-  });
+  if (q.title) { sql += ' AND title LIKE ?'; params.push(`%${q.title}%`); }
+  if (q.researchers) { sql += ' AND researchers LIKE ?'; params.push(`%${q.researchers}%`); }
+  if (q.department) { sql += ' AND department LIKE ?'; params.push(`%${q.department}%`); }
+  if (q.status) { sql += ' AND status = ?'; params.push(q.status); }
+  if (q.year) { sql += ' AND LEFT(createdAt, 4) = ?'; params.push(q.year); }
+
+  if (!canReview(me)) {
+    sql += ' AND submitterId = ?';
+    params.push(me.id);
+  }
+
+  sql += ' ORDER BY createdAt DESC';
+  const list = await all(sql, params);
 
   res.json({
-    applications: list
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map(a => ({
-        id: a.id,
-        title: a.title,
-        researchers: a.researchers,
-        adviser: a.adviser,
-        department: a.department,
-        status: a.status,
-        statusLabel: ETHICS_STATUS[a.status] || a.status,
-        riskLevel: a.riskLevel,
-        participantType: a.participantType,
-        certificateNumber: a.certificate ? a.certificate.certificateNumber : null,
-        createdAt: a.createdAt
-      }))
+    applications: list.map(a => ({
+      id: a.id,
+      title: a.title,
+      researchers: a.researchers,
+      adviser: a.adviser,
+      department: a.department,
+      status: a.status,
+      statusLabel: ETHICS_STATUS[a.status] || a.status,
+      riskLevel: a.riskLevel,
+      participantType: a.participantType,
+      certificateNumber: a.certificate ? a.certificate.certificateNumber : null,
+      createdAt: a.createdAt
+    }))
   });
 });
 
 router.get('/:id', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Ethics application not found.' });
   if (!canAccess(me, a)) return res.status(403).json({ error: 'Access denied.' });
   res.json({ application: a, statusLabel: ETHICS_STATUS[a.status] || a.status });
@@ -163,18 +157,18 @@ router.post('/', requireAuth, async (req, res, next) => {
     participantType: String(b.participantType).trim(),
     riskLevel: String(b.riskLevel).trim(),
     status: 'submitted',
-    statusHistory: [{ status: 'submitted', at: now, by: me.fullName || me.username, note: '' }],
-    files,
-    additionalDocs,
-    comments: [],
-    certificate: null,
+    statusHistory: JSON.stringify([{ status: 'submitted', at: now, by: me.fullName || me.username, note: '' }]),
+    files: JSON.stringify(files),
+    additionalDocs: JSON.stringify(additionalDocs),
+    comments: JSON.stringify([]),
+    certificate: JSON.stringify(null),
+    compliance: JSON.stringify(null),
+    revisedDocuments: JSON.stringify([]),
     createdAt: now,
     updatedAt: now
   };
 
-  const list = await readEthics();
-  list.push(app);
-  await writeEthics(list);
+  await insert('ethics', app);
   res.status(201).json({ message: 'Ethics application submitted.', application: app });
 });
 
@@ -182,47 +176,49 @@ router.patch('/:id/status', requireRole(...REVIEWER_ROLES), async (req, res) => 
   const { status, note } = req.body || {};
   if (!ETHICS_STATUS[status]) return res.status(400).json({ error: 'Invalid status.' });
   const me = await caller(req);
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
-  a.status = status;
-  a.statusHistory.push({
+
+  const statusHistory = a.statusHistory || [];
+  statusHistory.push({
     status,
     at: new Date().toISOString(),
     by: me.fullName || me.username,
     note: note ? String(note).trim() : ''
   });
-  a.updatedAt = new Date().toISOString();
-  await writeEthics(list);
-  res.json({ message: 'Status updated.', application: a });
+
+  await update('ethics', a.id, { status, statusHistory: JSON.stringify(statusHistory), updatedAt: new Date().toISOString() });
+  const updated = await get('SELECT * FROM ethics WHERE id = ?', [a.id]);
+  res.json({ message: 'Status updated.', application: updated });
 });
 
 router.patch('/:id/compliance', requireRole(...REVIEWER_ROLES), async (req, res) => {
   const { compliant, note } = req.body || {};
   const me = await caller(req);
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
-  a.compliance = a.compliance || {};
-  a.compliance.reviewerId = me.id;
-  a.compliance.reviewerName = me.fullName || me.username;
-  a.compliance.compliant = !!compliant;
-  a.compliance.note = note ? String(note).trim() : '';
-  a.compliance.updatedAt = new Date().toISOString();
-  a.updatedAt = new Date().toISOString();
-  await writeEthics(list);
-  res.json({ message: 'Compliance recorded.', application: a });
+
+  const compliance = a.compliance || {};
+  compliance.reviewerId = me.id;
+  compliance.reviewerName = me.fullName || me.username;
+  compliance.compliant = !!compliant;
+  compliance.note = note ? String(note).trim() : '';
+  compliance.updatedAt = new Date().toISOString();
+
+  await update('ethics', a.id, { compliance: JSON.stringify(compliance), updatedAt: new Date().toISOString() });
+  const updated = await get('SELECT * FROM ethics WHERE id = ?', [a.id]);
+  res.json({ message: 'Compliance recorded.', application: updated });
 });
 
 router.post('/:id/comments', requireRole(...REVIEWER_ROLES), async (req, res) => {
   const { body } = req.body || {};
   if (!body || !String(body).trim()) return res.status(400).json({ error: 'Comment text is required.' });
   const me = await caller(req);
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
-  a.comments = a.comments || [];
-  a.comments.push({
+
+  const comments = a.comments || [];
+  comments.push({
     id: randomUUID(),
     authorId: me.id,
     authorName: me.fullName || me.username,
@@ -230,9 +226,10 @@ router.post('/:id/comments', requireRole(...REVIEWER_ROLES), async (req, res) =>
     body: String(body).trim(),
     createdAt: new Date().toISOString()
   });
-  a.updatedAt = new Date().toISOString();
-  await writeEthics(list);
-  res.status(201).json({ message: 'Comment added.', comment: a.comments[a.comments.length - 1] });
+  await update('ethics', a.id, { comments: JSON.stringify(comments), updatedAt: new Date().toISOString() });
+  const updated = await get('SELECT * FROM ethics WHERE id = ?', [a.id]);
+  const newComment = (updated.comments || []).pop();
+  res.status(201).json({ message: 'Comment added.', comment: newComment });
 });
 
 router.post('/:id/certificate', requireRole(...REVIEWER_ROLES), async (req, res) => {
@@ -240,10 +237,10 @@ router.post('/:id/certificate', requireRole(...REVIEWER_ROLES), async (req, res)
   if (!certificateNumber || !dateIssued || !validityPeriod || !approvedTitle || !principalInvestigator) {
     return res.status(400).json({ error: 'All certificate fields are required.' });
   }
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
-  a.certificate = {
+
+  const certificate = {
     certificateNumber: String(certificateNumber).trim(),
     dateIssued: String(dateIssued).trim(),
     validityPeriod: String(validityPeriod).trim(),
@@ -251,43 +248,47 @@ router.post('/:id/certificate', requireRole(...REVIEWER_ROLES), async (req, res)
     principalInvestigator: String(principalInvestigator).trim(),
     issuedAt: new Date().toISOString()
   };
-  a.status = 'certificate_issued';
-  a.statusHistory.push({
+
+  const statusHistory = a.statusHistory || [];
+  statusHistory.push({
     status: 'certificate_issued',
     at: new Date().toISOString(),
     by: (await caller(req))?.fullName || 'System',
     note: 'Certificate issued'
   });
-  a.updatedAt = new Date().toISOString();
-  await writeEthics(list);
-  res.json({ message: 'Certificate recorded.', application: a });
+
+  await update('ethics', a.id, {
+    certificate: JSON.stringify(certificate),
+    status: 'certificate_issued',
+    statusHistory: JSON.stringify(statusHistory),
+    updatedAt: new Date().toISOString()
+  });
+  const updated = await get('SELECT * FROM ethics WHERE id = ?', [a.id]);
+  res.json({ message: 'Certificate recorded.', application: updated });
 });
 
 router.patch('/:id/certificate-upload', requireRole(...REVIEWER_ROLES), async (req, res, next) => {
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
   req._ethId = a.id;
   next();
 }, uploadCertificate, async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Certificate PDF is required.' });
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
-  a.certificate = a.certificate || {};
-  a.certificate.file = {
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
+  const certificate = a.certificate || {};
+  certificate.file = {
     filename: req.file.filename,
     originalName: req.file.originalname,
     uploadedAt: new Date().toISOString()
   };
-  a.updatedAt = new Date().toISOString();
-  await writeEthics(list);
-  res.json({ message: 'Certificate PDF uploaded.', certificate: a.certificate });
+  await update('ethics', a.id, { certificate: JSON.stringify(certificate), updatedAt: new Date().toISOString() });
+  const updated = await get('SELECT * FROM ethics WHERE id = ?', [a.id]);
+  res.json({ message: 'Certificate PDF uploaded.', certificate: updated.certificate });
 });
 
 router.get('/:id/certificate', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
   if (!canAccess(me, a)) return res.status(403).json({ error: 'Access denied.' });
   if (!a.certificate) return res.status(404).json({ error: 'Certificate not issued yet.' });
@@ -296,8 +297,7 @@ router.get('/:id/certificate', requireAuth, async (req, res) => {
 
 router.get('/:id/certificate.pdf', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
   if (!canAccess(me, a)) return res.status(403).json({ error: 'Access denied.' });
   if (!a.certificate || !a.certificate.file) return res.status(404).json({ error: 'Certificate PDF not available.' });
@@ -307,8 +307,7 @@ router.get('/:id/certificate.pdf', requireAuth, async (req, res) => {
 
 router.post('/:id/revisions', requireAuth, async (req, res, next) => {
   const me = await caller(req);
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
   if (a.submitterId !== me.id) return res.status(403).json({ error: 'Only the researcher can upload revisions.' });
   req._ethId = a.id;
@@ -321,19 +320,17 @@ router.post('/:id/revisions', requireAuth, async (req, res, next) => {
     uploadedAt: new Date().toISOString(),
     note: req.body.note ? String(req.body.note).trim() : ''
   };
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
-  a.revisedDocuments = a.revisedDocuments || [];
-  a.revisedDocuments.push(fileEntry);
-  a.updatedAt = new Date().toISOString();
-  await writeEthics(list);
-  res.status(201).json({ message: 'Revision uploaded.', document: fileEntry, application: a });
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
+  const revisedDocuments = a.revisedDocuments || [];
+  revisedDocuments.push(fileEntry);
+  await update('ethics', a.id, { revisedDocuments: JSON.stringify(revisedDocuments), updatedAt: new Date().toISOString() });
+  const updated = await get('SELECT * FROM ethics WHERE id = ?', [a.id]);
+  res.status(201).json({ message: 'Revision uploaded.', document: fileEntry, application: updated });
 });
 
 router.get('/:id/file/:filename', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
   if (!canAccess(me, a)) return res.status(403).json({ error: 'Access denied.' });
 
@@ -342,12 +339,10 @@ router.get('/:id/file/:filename', requireAuth, async (req, res) => {
     if (a.files[key] && a.files[key].filename === req.params.filename) meta = a.files[key];
   }
   if (!meta && (a.additionalDocs || []).find(d => d.filename === req.params.filename)) {
-    const doc = (a.additionalDocs || []).find(d => d.filename === req.params.filename);
-    meta = doc;
+    meta = (a.additionalDocs || []).find(d => d.filename === req.params.filename);
   }
   if (!meta && (a.revisedDocuments || []).find(d => d.filename === req.params.filename)) {
-    const doc = (a.revisedDocuments || []).find(d => d.filename === req.params.filename);
-    meta = doc;
+    meta = (a.revisedDocuments || []).find(d => d.filename === req.params.filename);
   }
   if (!meta) return res.status(404).json({ error: 'File not found.' });
 
@@ -357,26 +352,26 @@ router.get('/:id/file/:filename', requireAuth, async (req, res) => {
 
 router.patch('/:id', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const list = await readEthics();
-  const a = list.find(x => x.id === req.params.id);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
   if (!canAccess(me, a)) return res.status(403).json({ error: 'Access denied.' });
 
   const b = req.body || {};
+  const changes = {};
   const editable = ['title', 'researchers', 'adviser', 'department', 'participantType', 'riskLevel'];
   for (const f of editable) {
-    if (b[f] !== undefined) a[f] = String(b[f]).trim();
+    if (b[f] !== undefined) changes[f] = String(b[f]).trim();
   }
-  a.updatedAt = new Date().toISOString();
-  await writeEthics(list);
-  res.json({ message: 'Application updated.', application: a });
+  changes.updatedAt = new Date().toISOString();
+  await update('ethics', req.params.id, changes);
+  const updated = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
+  res.json({ message: 'Application updated.', application: updated });
 });
 
 router.delete('/:id', requireRole(...REVIEWER_ROLES), async (req, res) => {
-  const list = await readEthics();
-  const filtered = list.filter(x => x.id !== req.params.id);
-  if (filtered.length === list.length) return res.status(404).json({ error: 'Application not found.' });
-  await writeEthics(filtered);
+  const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
+  if (!a) return res.status(404).json({ error: 'Application not found.' });
+  await remove('ethics', req.params.id);
   res.json({ message: 'Application removed.' });
 });
 

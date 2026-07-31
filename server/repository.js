@@ -4,11 +4,11 @@ import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
 import { readUsers } from './auth.js';
+import { all, get, run, insert, update, remove } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, 'data');
-const REPO_FILE = join(DATA_DIR, 'repository.json');
 const SUBMISSIONS_FILE = join(DATA_DIR, 'submissions.json');
 const SUB_UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'submissions');
 
@@ -34,22 +34,6 @@ const CATEGORY_TYPES = {
   innovation: 'Innovation Project'
 };
 
-// ---------- Store helpers ----------
-async function readRepo() {
-  try { return JSON.parse(await fs.readFile(REPO_FILE, 'utf8')); } catch { return []; }
-}
-async function writeRepo(list) {
-  await fs.writeFile(REPO_FILE, JSON.stringify(list, null, 2));
-}
-async function readSubs() {
-  try { return JSON.parse(await fs.readFile(SUBMISSIONS_FILE, 'utf8')); } catch { return []; }
-}
-async function optionalUser(req) {
-  if (!req.session || !req.session.userId) return null;
-  const users = await readUsers();
-  return users.find(u => u.id === req.session.userId) || null;
-}
-
 // ---------- Citation generation ----------
 function generateCitations(r) {
   const yr = r.yearCompleted || 'n.d.';
@@ -72,46 +56,50 @@ function canAccessFile(level, user) {
   }
 }
 
+async function optionalUser(req) {
+  if (!req.session || !req.session.userId) return null;
+  const users = await readUsers();
+  return users.find(u => u.id === req.session.userId) || null;
+}
+
 // ---------- Public list with search & filter ----------
 router.get('/', async (req, res) => {
   const q = req.query;
-  let list = await readRepo();
+  let sql = 'SELECT * FROM repository WHERE 1=1';
+  const params = [];
 
-  const match = (val, term) => !term || String(val || '').toLowerCase().includes(String(term).toLowerCase());
-  list = list.filter(r => {
-    if (q.title && !match(r.title, q.title)) return false;
-    if (q.author && !match(r.authors, q.author)) return false;
-    if (q.department && !match(r.department, q.department)) return false;
-    if (q.program && !match(r.department, q.program)) return false;
-    if (q.year && String(r.yearCompleted) !== String(q.year)) return false;
-    if (q.keywords && !match(r.keywords, q.keywords)) return false;
-    if (q.category && r.category !== q.category) return false;
-    return true;
-  });
+  const match = (val) => val ? `%${val}%` : '%';
+  if (q.title) { sql += ' AND title LIKE ?'; params.push(`%${q.title}%`); }
+  if (q.author) { sql += ' AND authors LIKE ?'; params.push(`%${q.author}%`); }
+  if (q.department) { sql += ' AND department LIKE ?'; params.push(`%${q.department}%`); }
+  if (q.program) { sql += ' AND department LIKE ?'; params.push(`%${q.program}%`); }
+  if (q.year) { sql += ' AND yearCompleted = ?'; params.push(q.year); }
+  if (q.keywords) { sql += ' AND keywords LIKE ?'; params.push(`%${q.keywords}%`); }
+  if (q.category) { sql += ' AND category = ?'; params.push(q.category); }
+
+  sql += ' ORDER BY yearCompleted DESC';
+  const list = await all(sql, params);
 
   res.json({
-    records: list
-      .sort((a, b) => String(b.yearCompleted).localeCompare(String(a.yearCompleted)))
-      .map(r => ({
-        id: r.id,
-        title: r.title,
-        authors: r.authors,
-        department: r.department,
-        category: r.category,
-        categoryLabel: CATEGORY_TYPES[r.category] || r.category,
-        yearCompleted: r.yearCompleted,
-        status: r.status,
-        accessLevel: r.accessLevel,
-        accessLabel: ACCESS_LEVELS[r.accessLevel] || r.accessLevel,
-        fileAvailable: r.fileAvailable
-      }))
+    records: list.map(r => ({
+      id: r.id,
+      title: r.title,
+      authors: r.authors,
+      department: r.department,
+      category: r.category,
+      categoryLabel: CATEGORY_TYPES[r.category] || r.category,
+      yearCompleted: r.yearCompleted,
+      status: r.status,
+      accessLevel: r.accessLevel,
+      accessLabel: ACCESS_LEVELS[r.accessLevel] || r.accessLevel,
+      fileAvailable: r.fileAvailable
+    }))
   });
 });
 
 // ---------- Public detail ----------
 router.get('/:id', async (req, res) => {
-  const list = await readRepo();
-  const r = list.find(x => x.id === req.params.id);
+  const r = await get('SELECT * FROM repository WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Record not found.' });
   const user = await optionalUser(req);
   const access = canAccessFile(r.accessLevel, user);
@@ -128,18 +116,15 @@ router.get('/:id', async (req, res) => {
 router.get('/:id/file', async (req, res) => {
   const user = await optionalUser(req);
   if (!user) return res.status(401).json({ error: 'Login required to access files.' });
-  const list = await readRepo();
-  const r = list.find(x => x.id === req.params.id);
+  const r = await get('SELECT * FROM repository WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Record not found.' });
   if (!canAccessFile(r.accessLevel, user)) return res.status(403).json({ error: 'You do not have access to this file.' });
 
-  const subs = await readSubs();
-  const sub = subs.find(s => s.id === r.sourceSubmissionId);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [r.sourceSubmissionId]);
   const meta = sub && sub.files && sub.files.manuscript;
   if (!meta) return res.status(404).json({ error: 'File not available.' });
 
   const p = join(SUB_UPLOAD_DIR, sub.id, meta.filename);
-  // "viewable" opens inline in the browser; other levels force download
   if (r.accessLevel === 'viewable') {
     const type = extname(meta.filename).toLowerCase() === '.pdf' ? 'application/pdf' : 'application/octet-stream';
     return res.sendFile(p, {
@@ -159,8 +144,7 @@ router.post('/', async (req, res) => {
   const b = req.body || {};
   let rec;
   if (b.submissionId) {
-    const subs = await readSubs();
-    const sub = subs.find(s => s.id === b.submissionId);
+    const sub = await get('SELECT * FROM submissions WHERE id = ?', [b.submissionId]);
     if (!sub) return res.status(404).json({ error: 'Submission not found.' });
     const year = (sub.schoolYear && sub.schoolYear.match(/\d{4}/g)) ? sub.schoolYear.match(/\d{4}/g).pop() : new Date(sub.createdAt).getFullYear();
     rec = {
@@ -176,7 +160,7 @@ router.post('/', async (req, res) => {
       yearCompleted: String(year),
       status: sub.status,
       accessLevel: b.accessLevel && ACCESS_LEVELS[b.accessLevel] ? b.accessLevel : 'downloadable',
-      fileAvailable: !!(sub.files && sub.files.manuscript)
+      fileAvailable: sub.files && sub.files.manuscript ? 1 : 0
     };
   } else {
     const required = ['title', 'authors', 'department', 'yearCompleted'];
@@ -197,13 +181,11 @@ router.post('/', async (req, res) => {
       fileAvailable: false
     };
   }
-  rec.citation = b.citation && b.citation.apa ? b.citation : generateCitations(rec);
+  rec.citation = b.citation && b.citation.apa ? JSON.stringify(b.citation) : JSON.stringify(generateCitations(rec));
   rec.createdAt = new Date().toISOString();
   rec.updatedAt = rec.createdAt;
 
-  const list = await readRepo();
-  list.push(rec);
-  await writeRepo(list);
+  await insert('repository', rec);
   res.status(201).json({ message: 'Added to repository.', record: rec });
 });
 
@@ -212,27 +194,34 @@ router.patch('/:id', async (req, res) => {
   const user = await optionalUser(req);
   if (!user || !['admin', 'cpri_staff'].includes(user.role)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
   const b = req.body || {};
-  const list = await readRepo();
-  const r = list.find(x => x.id === req.params.id);
+  const r = await get('SELECT * FROM repository WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Record not found.' });
+
+  const changes = {};
   const editable = ['adviser', 'department', 'abstract', 'keywords', 'category', 'yearCompleted', 'status', 'accessLevel', 'citation'];
   for (const f of editable) {
-    if (b[f] !== undefined) r[f] = (typeof b[f] === 'string') ? b[f].trim() : b[f];
+    if (b[f] !== undefined) {
+      if (f === 'citation') {
+        changes[f] = JSON.stringify(typeof b[f] === 'string' ? b[f] : b[f]);
+      } else {
+        changes[f] = (typeof b[f] === 'string') ? b[f].trim() : b[f];
+      }
+    }
   }
   if (b.accessLevel && !ACCESS_LEVELS[b.accessLevel]) return res.status(400).json({ error: 'Invalid access level.' });
-  r.updatedAt = new Date().toISOString();
-  await writeRepo(list);
-  res.json({ message: 'Record updated.', record: r });
+  changes.updatedAt = new Date().toISOString();
+  await update('repository', req.params.id, changes);
+  const updated = await get('SELECT * FROM repository WHERE id = ?', [req.params.id]);
+  res.json({ message: 'Record updated.', record: updated });
 });
 
 // ---------- Admin: delete ----------
 router.delete('/:id', async (req, res) => {
   const user = await optionalUser(req);
   if (!user || !['admin', 'cpri_staff'].includes(user.role)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
-  const list = await readRepo();
-  const filtered = list.filter(x => x.id !== req.params.id);
-  if (filtered.length === list.length) return res.status(404).json({ error: 'Record not found.' });
-  await writeRepo(filtered);
+  const r = await get('SELECT * FROM repository WHERE id = ?', [req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Record not found.' });
+  await remove('repository', req.params.id);
   res.json({ message: 'Record removed from repository.' });
 });
 

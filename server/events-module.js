@@ -5,13 +5,10 @@ import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
+import { all, get, run, insert, update, remove } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const DATA_DIR = join(__dirname, 'data');
-const EVENTS_FILE = join(DATA_DIR, 'events-module.json');
-const REGISTRATIONS_FILE = join(DATA_DIR, 'event-registrations.json');
-const ABSTRACTS_FILE = join(DATA_DIR, 'event-abstracts.json');
 const UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'assets', 'uploads', 'events-module');
 
 const router = Router();
@@ -30,24 +27,6 @@ const ABSTRACT_STATUS = {
 
 const STAFF_ROLES = ['admin', 'cpri_staff'];
 
-async function readEvents() {
-  try { return JSON.parse(await fs.readFile(EVENTS_FILE, 'utf8')); } catch { return []; }
-}
-async function writeEvents(list) {
-  await fs.writeFile(EVENTS_FILE, JSON.stringify(list, null, 2));
-}
-async function readRegistrations() {
-  try { return JSON.parse(await fs.readFile(REGISTRATIONS_FILE, 'utf8')); } catch { return []; }
-}
-async function writeRegistrations(list) {
-  await fs.writeFile(REGISTRATIONS_FILE, JSON.stringify(list, null, 2));
-}
-async function readAbstracts() {
-  try { return JSON.parse(await fs.readFile(ABSTRACTS_FILE, 'utf8')); } catch { return []; }
-}
-async function writeAbstracts(list) {
-  await fs.writeFile(ABSTRACTS_FILE, JSON.stringify(list, null, 2));
-}
 async function caller(req) {
   const users = await readUsers();
   return users.find(u => u.id === req.session.userId) || null;
@@ -76,39 +55,36 @@ const uploadGallery = upload.fields([
 // ---------- Events ----------
 router.get('/', async (req, res) => {
   const q = req.query;
-  let list = await readEvents();
+  let sql = 'SELECT * FROM events_module WHERE 1=1';
+  const params = [];
 
-  const match = (val, term) => !term || String(val || '').toLowerCase().includes(String(term).toLowerCase());
-  list = list.filter(e => {
-    if (q.title && !match(e.title, q.title)) return false;
-    if (q.theme && !match(e.theme, q.theme)) return false;
-    if (q.venue && !match(e.venue, q.venue)) return false;
-    if (q.fromDate && new Date(e.dateTime) < new Date(q.fromDate)) return false;
-    if (q.toDate && new Date(e.dateTime) > new Date(q.toDate)) return false;
-    return true;
-  });
+  if (q.title) { sql += ' AND title LIKE ?'; params.push(`%${q.title}%`); }
+  if (q.theme) { sql += ' AND theme LIKE ?'; params.push(`%${q.theme}%`); }
+  if (q.venue) { sql += ' AND venue LIKE ?'; params.push(`%${q.venue}%`); }
+  if (q.fromDate) { sql += ' AND dateTime >= ?'; params.push(q.fromDate); }
+  if (q.toDate) { sql += ' AND dateTime <= ?'; params.push(q.toDate); }
+
+  sql += ' ORDER BY dateTime ASC';
+  const list = await all(sql, params);
 
   res.json({
-    events: list
-      .sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime))
-      .map(e => ({
-        id: e.id,
-        title: e.title,
-        theme: e.theme,
-        dateTime: e.dateTime,
-        venue: e.venue,
-        description: e.description ? e.description.slice(0, 200) + (e.description.length > 200 ? '…' : '') : '',
-        registrationLink: e.registrationLink,
-        programFlow: e.programFlow,
-        speakers: e.speakers,
-        createdAt: e.createdAt
-      }))
+    events: list.map(e => ({
+      id: e.id,
+      title: e.title,
+      theme: e.theme,
+      dateTime: e.dateTime,
+      venue: e.venue,
+      description: e.description ? e.description.slice(0, 200) + (e.description.length > 200 ? '…' : '') : '',
+      registrationLink: e.registrationLink,
+      programFlow: e.programFlow,
+      speakers: e.speakers,
+      createdAt: e.createdAt
+    }))
   });
 });
 
 router.get('/:id', async (req, res) => {
-  const list = await readEvents();
-  const e = list.find(x => x.id === req.params.id);
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e) return res.status(404).json({ error: 'Event not found.' });
   res.json({ event: e });
 });
@@ -133,13 +109,12 @@ router.post('/', requireAuth, async (req, res) => {
     registrationLink: b.registrationLink ? String(b.registrationLink).trim() : '',
     programFlow: b.programFlow ? String(b.programFlow).trim() : '',
     speakers: b.speakers ? String(b.speakers).trim() : '',
+    gallery: JSON.stringify([]),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
-  const list = await readEvents();
-  list.push(rec);
-  await writeEvents(list);
+  await insert('events_module', rec);
   res.status(201).json({ message: 'Event created.', event: rec });
 });
 
@@ -147,36 +122,35 @@ router.patch('/:id', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const list = await readEvents();
-  const e = list.find(x => x.id === req.params.id);
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e) return res.status(404).json({ error: 'Event not found.' });
 
   const b = req.body || {};
+  const changes = {};
   const editable = ['title', 'theme', 'dateTime', 'venue', 'description', 'registrationLink', 'programFlow', 'speakers'];
   for (const f of editable) {
-    if (b[f] !== undefined) e[f] = String(b[f]).trim();
+    if (b[f] !== undefined) changes[f] = String(b[f]).trim();
   }
-  e.updatedAt = new Date().toISOString();
-  await writeEvents(list);
-  res.json({ message: 'Event updated.', event: e });
+  changes.updatedAt = new Date().toISOString();
+  await update('events_module', req.params.id, changes);
+  const updated = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
+  res.json({ message: 'Event updated.', event: updated });
 });
 
 router.delete('/:id', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const list = await readEvents();
-  const filtered = list.filter(x => x.id !== req.params.id);
-  if (filtered.length === list.length) return res.status(404).json({ error: 'Event not found.' });
-  await writeEvents(filtered);
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
+  if (!e) return res.status(404).json({ error: 'Event not found.' });
+  await remove('events_module', req.params.id);
   res.json({ message: 'Event removed.' });
 });
 
 // ---------- Registrations ----------
 router.post('/:id/register', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const eventList = await readEvents();
-  const e = eventList.find(x => x.id === req.params.id);
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e) return res.status(404).json({ error: 'Event not found.' });
 
   const b = req.body || {};
@@ -185,8 +159,7 @@ router.post('/:id/register', requireAuth, async (req, res) => {
     if (!b[f]) return res.status(400).json({ error: `Field "${f}" is required.` });
   }
 
-  const regs = await readRegistrations();
-  const existing = regs.find(r => r.eventId === e.id && r.email === b.email);
+  const existing = await get('SELECT id FROM event_registrations WHERE eventId = ? AND email = ?', [e.id, String(b.email).trim()]);
   if (existing) return res.status(409).json({ error: 'This email is already registered for this event.' });
 
   const reg = {
@@ -201,12 +174,11 @@ router.post('/:id/register', requireAuth, async (req, res) => {
     abstractFile: null,
     attendanceStatus: 'absent',
     certificateIssued: false,
-    certificateData: null,
+    certificateData: JSON.stringify(null),
     createdAt: new Date().toISOString()
   };
 
-  regs.push(reg);
-  await writeRegistrations(regs);
+  await insert('event_registrations', reg);
   res.status(201).json({ message: 'Registered successfully.', registration: reg });
 });
 
@@ -214,52 +186,52 @@ router.get('/:id/registrations', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const regs = await readRegistrations();
-  const eventRegs = regs.filter(r => r.eventId === req.params.id);
-  res.json({ registrations: eventRegs });
+  const regs = await all('SELECT * FROM event_registrations WHERE eventId = ?', [req.params.id]);
+  res.json({ registrations: regs });
 });
 
 router.patch('/:id/registrations/:regId/attendance', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const regs = await readRegistrations();
-  const r = regs.find(x => x.id === req.params.regId && x.eventId === req.params.id);
+  const r = await get('SELECT * FROM event_registrations WHERE id = ? AND eventId = ?', [req.params.regId, req.params.id]);
   if (!r) return res.status(404).json({ error: 'Registration not found.' });
 
   const { attendanceStatus } = req.body || {};
-  if (attendanceStatus) r.attendanceStatus = String(attendanceStatus).trim();
-  await writeRegistrations(regs);
-  res.json({ message: 'Attendance updated.', registration: r });
+  if (attendanceStatus) await update('event_registrations', r.id, { attendanceStatus: String(attendanceStatus).trim() });
+  const updated = await get('SELECT * FROM event_registrations WHERE id = ?', [r.id]);
+  res.json({ message: 'Attendance updated.', registration: updated });
 });
 
 router.post('/:id/registrations/:regId/certificate', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const regs = await readRegistrations();
-  const r = regs.find(x => x.id === req.params.regId && x.eventId === req.params.id);
+  const r = await get('SELECT * FROM event_registrations WHERE id = ? AND eventId = ?', [req.params.regId, req.params.id]);
   if (!r) return res.status(404).json({ error: 'Registration not found.' });
 
   const b = req.body || {};
-  r.certificateIssued = true;
-  r.certificateData = {
+  const certificateData = {
     certificateNumber: b.certificateNumber ? String(b.certificateNumber).trim() : '',
     issuedAt: new Date().toISOString(),
     issuedBy: me.fullName || me.username
   };
-  await writeRegistrations(regs);
-  res.json({ message: 'Certificate issued.', registration: r });
+
+  await update('event_registrations', r.id, {
+    certificateIssued: true,
+    certificateData: JSON.stringify(certificateData)
+  });
+  const updated = await get('SELECT * FROM event_registrations WHERE id = ?', [r.id]);
+  res.json({ message: 'Certificate issued.', registration: updated });
 });
 
 router.get('/:id/certificates', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const regs = await readRegistrations();
-  const eventRegs = regs.filter(r => r.eventId === req.params.id);
+  const regs = await all('SELECT * FROM event_registrations WHERE eventId = ?', [req.params.id]);
   res.json({
-    certificates: eventRegs.map(r => ({
+    certificates: regs.map(r => ({
       id: r.id,
       participantName: r.participantName,
       email: r.email,
@@ -277,8 +249,7 @@ router.get('/:id/certificates', requireAuth, async (req, res) => {
 // ---------- Abstracts ----------
 router.post('/:id/abstracts', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const eventList = await readEvents();
-  const e = eventList.find(x => x.id === req.params.id);
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e) return res.status(404).json({ error: 'Event not found.' });
 
   const b = req.body || {};
@@ -300,9 +271,7 @@ router.post('/:id/abstracts', requireAuth, async (req, res) => {
     createdAt: new Date().toISOString()
   };
 
-  const list = await readAbstracts();
-  list.push(abs);
-  await writeAbstracts(list);
+  await insert('event_abstracts', abs);
   res.status(201).json({ message: 'Abstract submitted.', abstract: abs });
 });
 
@@ -310,24 +279,22 @@ router.get('/:id/abstracts', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const list = await readAbstracts();
-  const eventAbs = list.filter(a => a.eventId === req.params.id);
-  res.json({ abstracts: eventAbs });
+  const list = await all('SELECT * FROM event_abstracts WHERE eventId = ?', [req.params.id]);
+  res.json({ abstracts: list });
 });
 
 router.patch('/:id/abstracts/:absId/status', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const list = await readAbstracts();
-  const a = list.find(x => x.id === req.params.absId && x.eventId === req.params.id);
+  const a = await get('SELECT * FROM event_abstracts WHERE id = ? AND eventId = ?', [req.params.absId, req.params.id]);
   if (!a) return res.status(404).json({ error: 'Abstract not found.' });
 
   const { status } = req.body || {};
   if (!ABSTRACT_STATUS[status]) return res.status(400).json({ error: 'Invalid status.' });
-  a.status = status;
-  await writeAbstracts(list);
-  res.json({ message: 'Abstract status updated.', abstract: a });
+  await update('event_abstracts', a.id, { status });
+  const updated = await get('SELECT * FROM event_abstracts WHERE id = ?', [a.id]);
+  res.json({ message: 'Abstract status updated.', abstract: updated });
 });
 
 // ---------- Gallery ----------
@@ -335,8 +302,7 @@ router.post('/:id/gallery', requireAuth, async (req, res, next) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const eventList = await readEvents();
-  const e = eventList.find(x => x.id === req.params.id);
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e) return res.status(404).json({ error: 'Event not found.' });
   req._eventId = e.id;
   next();
@@ -353,24 +319,22 @@ router.post('/:id/gallery', requireAuth, async (req, res, next) => {
       });
     }
   }
-  const list = await readEvents();
-  const e = list.find(x => x.id === req.params.id);
-  e.gallery = e.gallery || [];
-  e.gallery.push(...items);
-  await writeEvents(list);
+
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
+  const gallery = e.gallery || [];
+  gallery.push(...items);
+  await update('events_module', e.id, { gallery: JSON.stringify(gallery), updatedAt: new Date().toISOString() });
   res.status(201).json({ message: 'Gallery items uploaded.', gallery: items });
 });
 
 router.get('/:id/gallery', async (req, res) => {
-  const list = await readEvents();
-  const e = list.find(x => x.id === req.params.id);
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e) return res.status(404).json({ error: 'Event not found.' });
   res.json({ gallery: e.gallery || [] });
 });
 
 router.get('/:id/gallery/:filename', async (req, res) => {
-  const list = await readEvents();
-  const e = list.find(x => x.id === req.params.id);
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e || !e.gallery) return res.status(404).json({ error: 'Not found.' });
 
   const item = e.gallery.find(g => g.filename === req.params.filename);
@@ -381,3 +345,4 @@ router.get('/:id/gallery/:filename', async (req, res) => {
 });
 
 export { router as eventsModuleRouter, PARTICIPANT_TYPES, ABSTRACT_STATUS, STAFF_ROLES };
+

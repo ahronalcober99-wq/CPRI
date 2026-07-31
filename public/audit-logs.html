@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Audit Logs | CPRI Admin</title>
+  <meta name="theme-color" content="#0F172A">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container-xl">
+        <span class="badge" style="background:rgba(255,255,255,.16);color:#fff;">Enterprise Audit</span>
+        <h1>Audit Logs</h1>
+        <p>System activity logs — user actions, timestamps, and changes across CPRI operations.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container-xl">
+        <div class="form-message" id="message"></div>
+        <div id="access-denied" class="empty-state" style="display:none;">Admin access required.</div>
+
+        <div class="admin-shell">
+          <!-- Sidebar -->
+          <aside class="admin-side">
+            <div class="as-brand">
+              <span class="logo">C</span>
+              <div><b>CPRI Admin</b><small>Control Center</small></div>
+            </div>
+            <div class="as-label">Operations</div>
+            <a href="admin-dashboard.html"><i class="bi bi-speedometer2"></i> Overview</a>
+            <a href="submissions.html"><i class="bi bi-send"></i> Submissions</a>
+            <a href="repository.html"><i class="bi bi-archive"></i> Repository</a>
+            <a href="publications.html"><i class="bi bi-journal-richtext"></i> Publications</a>
+            <a href="ethics.html"><i class="bi bi-shield-check"></i> Ethics Review</a>
+            <a href="researchers.html"><i class="bi bi-people"></i> Researchers</a>
+            <div class="as-label">Insights</div>
+            <a href="reports.html"><i class="bi bi-bar-chart"></i> Analytics &amp; Reports</a>
+            <a href="audit-logs.html" class="active"><i class="bi bi-activity"></i> Audit Logs</a>
+            <a href="calendar.html"><i class="bi bi-calendar3"></i> Calendar</a>
+            <a href="email-notifications.html"><i class="bi bi-envelope"></i> Email Notifications</a>
+            <a href="file-manager.html"><i class="bi bi-folder2"></i> File Manager</a>
+            <div class="as-user">
+              <span class="av">AD</span>
+              <div><b style="font-family:var(--font-head);color:var(--cpri-text)">Admin</b><small>Role-based access</small></div>
+            </div>
+          </aside>
+
+          <!-- Main -->
+          <div class="admin-main">
+            <div class="admin-toolbar">
+              <h2>System Audit Trail</h2>
+              <small style="color:var(--cpri-muted)">Track user actions and system events</small>
+            </div>
+
+            <div class="admin-card">
+              <h3><i class="bi bi-funnel"></i> Filter Logs</h3>
+              <div class="quick-actions" style="display:flex;flex-wrap:wrap;gap:14px;align-items:end;">
+                <div class="form-group" style="margin:0;min-width:160px;">
+                  <label>Action type</label>
+                  <select id="log-action">
+                    <option value="">All</option>
+                    <option value="login">Login</option>
+                    <option value="logout">Logout</option>
+                    <option value="content_update">Content Update</option>
+                    <option value="content_create">Content Create</option>
+                    <option value="content_delete">Content Delete</option>
+                    <option value="user_update">User Update</option>
+                    <option value="user_delete">User Delete</option>
+                    <option value="password_reset">Password Reset</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin:0;min-width:150px;">
+                  <label>From</label>
+                  <input type="date" id="log-from">
+                </div>
+                <div class="form-group" style="margin:0;min-width:150px;">
+                  <label>To</label>
+                  <input type="date" id="log-to">
+                </div>
+                <button class="btn btn-primary" id="load-logs"><i class="bi bi-arrow-clockwise"></i> Load Logs</button>
+                <button class="btn btn-outline-dark" id="clear-filters"><i class="bi bi-x-circle"></i> Clear</button>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3><i class="bi bi-list-columns"></i> Log Entries</h3>
+              <div id="logs-table"><p class="form-note">Click "Load Logs" to fetch system logs.</p></div>
+              <p class="form-note" id="log-count" style="margin-top:8px;"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '—';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function loadLogs() {
+      const params = new URLSearchParams();
+      const action = document.getElementById('log-action').value;
+      const from = document.getElementById('log-from').value;
+      const to = document.getElementById('log-to').value;
+      if (action) params.set('action', action);
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+
+      const res = await fetch('/api/admin/logs' + (params.toString() ? '?' + params.toString() : ''));
+      if (!res.ok) {
+        document.getElementById('logs-table').innerHTML = '<p class="form-note">Failed to load logs.</p>';
+        return;
+      }
+      const data = await res.json();
+      const el = document.getElementById('logs-table');
+      const countEl = document.getElementById('log-count');
+
+      if (!data.logs || !data.logs.length) {
+        el.innerHTML = '<p class="form-note">No logs found matching your criteria.</p>';
+        countEl.textContent = '0 entries';
+        return;
+      }
+
+      const statusBadge = (action) => {
+        const colors = {
+          login: 'status-pill active',
+          logout: 'status-pill disabled',
+          content_create: 'status-pill active',
+          content_update: 'status-pill pending',
+          content_delete: 'status-pill disabled',
+          user_update: 'status-pill pending',
+          user_delete: 'status-pill disabled',
+          password_reset: 'status-pill pending'
+        };
+        return `<span class="${colors[action] || 'status-pill'}">${escapeHtml(action.replace(/_/g, ' '))}</span>`;
+      };
+
+      el.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Action</th>
+                <th>Details</th>
+                <th>User ID</th>
+                <th>IP Address</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.logs.slice(0, 200).map(l => `
+                <tr>
+                  <td style="white-space:nowrap;">${new Date(l.timestamp).toLocaleString()}</td>
+                  <td>${statusBadge(l.action)}</td>
+                  <td>${escapeHtml(l.details)}</td>
+                  <td style="font-family:monospace;font-size:.85rem;">${l.userId ? l.userId.slice(0, 8) + '…' : '—'}</td>
+                  <td style="font-family:monospace;font-size:.85rem;">${l.ip || '—'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+      countEl.textContent = `Showing ${Math.min(data.logs.length, 200)} of ${data.logs.length} entries`;
+    }
+
+    document.getElementById('load-logs').addEventListener('click', loadLogs);
+    document.getElementById('clear-filters').addEventListener('click', () => {
+      document.getElementById('log-action').value = '';
+      document.getElementById('log-from').value = '';
+      document.getElementById('log-to').value = '';
+      loadLogs();
+    });
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { document.getElementById('access-denied').style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      if (!['admin', 'cpri_staff'].includes(user.role)) {
+        document.getElementById('access-denied').style.display = 'block';
+        return;
+      }
+      loadLogs();
+    })();
+  </script>
+</body>
+</html>
+

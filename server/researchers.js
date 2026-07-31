@@ -2,13 +2,11 @@ import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
+import { all, get, run, insert, update, remove } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const DATA_DIR = join(__dirname, 'data');
-const RESEARCHERS_FILE = join(DATA_DIR, 'researchers.json');
 
 const router = Router();
 
@@ -28,12 +26,6 @@ const OUTPUT_STATUS = {
 
 const STAFF_ROLES = ['admin', 'cpri_staff'];
 
-async function readResearchers() {
-  try { return JSON.parse(await fs.readFile(RESEARCHERS_FILE, 'utf8')); } catch { return []; }
-}
-async function writeResearchers(list) {
-  await fs.writeFile(RESEARCHERS_FILE, JSON.stringify(list, null, 2));
-}
 async function caller(req) {
   const users = await readUsers();
   return users.find(u => u.id === req.session.userId) || null;
@@ -44,46 +36,44 @@ function canEdit(me) {
 
 router.get('/', async (req, res) => {
   const q = req.query;
-  let list = await readResearchers();
+  let sql = 'SELECT * FROM researchers WHERE 1=1';
+  const params = [];
 
-  const match = (val, term) => !term || String(val || '').toLowerCase().includes(String(term).toLowerCase());
-  list = list.filter(r => {
-    if (q.fullName && !match(r.fullName, q.fullName)) return false;
-    if (q.department && !match(r.department, q.department)) return false;
-    if (q.program && !match(r.program, q.program)) return false;
-    if (q.type && r.type !== q.type) return false;
-    if (q.year && String(r.yearCompleted) !== String(q.year)) return false;
-    if (q.status && r.researchOutputStatus !== q.status) return false;
-    return true;
-  });
+  if (q.fullName) { sql += ' AND fullName LIKE ?'; params.push(`%${q.fullName}%`); }
+  if (q.department) { sql += ' AND department LIKE ?'; params.push(`%${q.department}%`); }
+  if (q.program) { sql += ' AND program LIKE ?'; params.push(`%${q.program}%`); }
+  if (q.type) { sql += ' AND type = ?'; params.push(q.type); }
+  if (q.year) { sql += ' AND yearCompleted = ?'; params.push(q.year); }
+  if (q.status) { sql += ' AND researchOutputStatus = ?'; params.push(q.status); }
+
+  sql += ' ORDER BY fullName ASC';
+  const list = await all(sql, params);
 
   res.json({
-    researchers: list
-      .sort((a, b) => String(a.fullName).localeCompare(String(b.fullName)))
-      .map(r => ({
-        id: r.id,
-        type: r.type,
-        fullName: r.fullName,
-        department: r.department,
-        program: r.program,
-        researchTitle: r.researchTitle,
-        adviser: r.adviser,
-        yearCompleted: r.yearCompleted,
-        researchOutputStatus: r.researchOutputStatus,
-        outputStatusLabel: OUTPUT_STATUS[r.researchOutputStatus] || r.researchOutputStatus,
-        researchInterests: r.researchInterests,
-        publications: r.publishedWorks ? r.publishedWorks.length : 0,
-        presentations: r.presentedPapers ? r.presentedPapers.length : 0,
-        awards: r.awards ? r.awards.length : 0,
-        orcid: r.orcid,
-        googleScholar: r.googleScholar,
-        researchGate: r.researchGate
-      }))
+    researchers: list.map(r => ({
+      id: r.id,
+      type: r.type,
+      fullName: r.fullName,
+      department: r.department,
+      program: r.program,
+      researchTitle: r.researchTitle,
+      adviser: r.adviser,
+      yearCompleted: r.yearCompleted,
+      researchOutputStatus: r.researchOutputStatus,
+      outputStatusLabel: OUTPUT_STATUS[r.researchOutputStatus] || r.researchOutputStatus,
+      researchInterests: r.researchInterests,
+      publications: r.publishedWorks ? r.publishedWorks.length : 0,
+      presentations: r.presentedPapers ? r.presentedPapers.length : 0,
+      awards: r.awards ? r.awards.length : 0,
+      orcid: r.orcid,
+      googleScholar: r.googleScholar,
+      researchGate: r.researchGate
+    }))
   });
 });
 
 router.get('/stats', async (req, res) => {
-  const list = await readResearchers();
+  const list = await all('SELECT type, completedResearches, publishedWorks, presentedPapers, innovationProjects, citations FROM researchers');
   const stats = {
     totalResearchers: list.length,
     faculty: list.filter(r => r.type === 'faculty').length,
@@ -107,8 +97,7 @@ router.get('/stats', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
-  const list = await readResearchers();
-  const r = list.find(x => x.id === req.params.id);
+  const r = await get('SELECT * FROM researchers WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Researcher profile not found.' });
   res.json({
     researcher: r,
@@ -134,11 +123,11 @@ router.post('/', requireAuth, async (req, res) => {
     department: b.department ? String(b.department).trim() : '',
     program: b.program ? String(b.program).trim() : '',
     researchInterests: b.researchInterests ? String(b.researchInterests).trim() : '',
-    completedResearches: Array.isArray(b.completedResearches) ? b.completedResearches : [],
-    publishedWorks: Array.isArray(b.publishedWorks) ? b.publishedWorks : [],
-    presentedPapers: Array.isArray(b.presentedPapers) ? b.presentedPapers : [],
-    awards: Array.isArray(b.awards) ? b.awards : [],
-    innovationProjects: Array.isArray(b.innovationProjects) ? b.innovationProjects : [],
+    completedResearches: JSON.stringify(Array.isArray(b.completedResearches) ? b.completedResearches : []),
+    publishedWorks: JSON.stringify(Array.isArray(b.publishedWorks) ? b.publishedWorks : []),
+    presentedPapers: JSON.stringify(Array.isArray(b.presentedPapers) ? b.presentedPapers : []),
+    awards: JSON.stringify(Array.isArray(b.awards) ? b.awards : []),
+    innovationProjects: JSON.stringify(Array.isArray(b.innovationProjects) ? b.innovationProjects : []),
     citations: typeof b.citations === 'number' ? b.citations : 0,
     orcid: b.orcid ? String(b.orcid).trim() : '',
     googleScholar: b.googleScholar ? String(b.googleScholar).trim() : '',
@@ -151,9 +140,7 @@ router.post('/', requireAuth, async (req, res) => {
     updatedAt: new Date().toISOString()
   };
 
-  const list = await readResearchers();
-  list.push(rec);
-  await writeResearchers(list);
+  await insert('researchers', rec);
   res.status(201).json({ message: 'Researcher profile added.', researcher: rec });
 });
 
@@ -161,11 +148,11 @@ router.patch('/:id', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const list = await readResearchers();
-  const r = list.find(x => x.id === req.params.id);
+  const r = await get('SELECT * FROM researchers WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Researcher profile not found.' });
 
   const b = req.body || {};
+  const changes = {};
   const editable = [
     'type', 'fullName', 'department', 'program', 'researchInterests',
     'completedResearches', 'publishedWorks', 'presentedPapers', 'awards',
@@ -174,25 +161,26 @@ router.patch('/:id', requireAuth, async (req, res) => {
   ];
   for (const f of editable) {
     if (b[f] !== undefined) {
-      if (Array.isArray(b[f])) r[f] = b[f];
-      else if (typeof b[f] === 'number') r[f] = b[f];
-      else r[f] = String(b[f]).trim();
+      if (Array.isArray(b[f])) changes[f] = JSON.stringify(b[f]);
+      else if (typeof b[f] === 'number') changes[f] = b[f];
+      else changes[f] = String(b[f]).trim();
     }
   }
-  r.updatedAt = new Date().toISOString();
-  await writeResearchers(list);
-  res.json({ message: 'Researcher profile updated.', researcher: r });
+  changes.updatedAt = new Date().toISOString();
+  await update('researchers', req.params.id, changes);
+  const updated = await get('SELECT * FROM researchers WHERE id = ?', [req.params.id]);
+  res.json({ message: 'Researcher profile updated.', researcher: updated });
 });
 
 router.delete('/:id', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const list = await readResearchers();
-  const filtered = list.filter(x => x.id !== req.params.id);
-  if (filtered.length === list.length) return res.status(404).json({ error: 'Researcher profile not found.' });
-  await writeResearchers(filtered);
+  const r = await get('SELECT * FROM researchers WHERE id = ?', [req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Researcher profile not found.' });
+  await remove('researchers', req.params.id);
   res.json({ message: 'Researcher profile removed.' });
 });
 
 export { router as researchersRouter, RESEARCHER_TYPES, OUTPUT_STATUS, STAFF_ROLES };
+

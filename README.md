@@ -92,7 +92,50 @@ Pages: `repository.html` (archive + search), `repository-detail.html` (details, 
 ## Tech stack
 
 - Front-end: static HTML, CSS, vanilla JS (no build step).
-- Back-end: Node.js + Express, `express-session` (sessions), `bcryptjs` (password hashing), `nodemailer` (email), content served from JSON files in `server/data/`.
+- Back-end: Node.js + Express, `express-session` (sessions), `bcryptjs` (password hashing), `nodemailer` (email).
+- Database: **MySQL** (`mysql2/promise` driver) — all runtime data is stored in MySQL tables.
+- Legacy: Static site content (profile, announcements, events listing, research highlights, agenda) is still served from JSON files in `server/data/`.
+
+## Database Setup
+
+The application requires a MySQL database. To set it up:
+
+### 1. Install MySQL
+
+Download and install MySQL Server from [mysql.com](https://dev.mysql.com/downloads/) or use a package manager.
+
+### 2. Create the database and tables
+
+```bash
+mysql -u root -p < server/init-db.sql
+```
+
+This creates the `cpri` database and all required tables with the correct schema.
+
+### 3. Configure environment variables
+
+Create a `.env` file in the project root (or set system environment variables):
+
+```env
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=your_mysql_password
+DB_NAME=cpri
+DB_POOL_LIMIT=10
+```
+
+If no `.env` file is present, the app defaults to `localhost:3306`, user `root`, no password, database `cpri`.
+
+### 4. (Optional) Migrate existing JSON data to MySQL
+
+If you have existing data in `server/data/*.json` files, you can migrate them to MySQL:
+
+```bash
+npm run seed
+```
+
+This reads each JSON file and inserts the records into the corresponding MySQL table.
 
 ## Project structure
 
@@ -132,8 +175,23 @@ CPRI3/
 
 ## Getting started
 
+### Prerequisites
+- Node.js 18+
+- MySQL Server (see [Database Setup](#database-setup) below)
+
+### Quick start
+
 ```bash
+# 1. Install dependencies
 npm install
+
+# 2. Set up MySQL database
+mysql -u root -p < server/init-db.sql
+
+# 3. (Optional) Create .env file with your MySQL credentials
+#    (see "Configure environment variables" above)
+
+# 4. Start the server
 npm start          # serves at http://localhost:3000
 ```
 

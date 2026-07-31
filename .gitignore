@@ -1,8 +1,5 @@
 node_modules/
-server/data/users.json
-server/data/inquiries.json
-server/data/submissions.json
-server/data/repository.json
+server/data/*.json
 public/assets/uploads/
 *.log
 .env

@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Manager | CPRI Admin</title>
+  <meta name="theme-color" content="#0F172A">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container-xl">
+        <span class="badge" style="background:rgba(255,255,255,.16);color:#fff;">Document Management</span>
+        <h1>File Manager</h1>
+        <p>Browse, upload, and manage documents and research files.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container-xl">
+        <div class="form-message" id="message"></div>
+        <div id="access-denied" class="empty-state" style="display:none;">Admin access required.</div>
+
+        <div class="admin-shell">
+          <!-- Sidebar -->
+          <aside class="admin-side">
+            <div class="as-brand">
+              <span class="logo">C</span>
+              <div><b>CPRI Admin</b><small>Control Center</small></div>
+            </div>
+            <div class="as-label">Operations</div>
+            <a href="admin-dashboard.html"><i class="bi bi-speedometer2"></i> Overview</a>
+            <a href="submissions.html"><i class="bi bi-send"></i> Submissions</a>
+            <a href="repository.html"><i class="bi bi-archive"></i> Repository</a>
+            <a href="publications.html"><i class="bi bi-journal-richtext"></i> Publications</a>
+            <a href="ethics.html"><i class="bi bi-shield-check"></i> Ethics Review</a>
+            <a href="researchers.html"><i class="bi bi-people"></i> Researchers</a>
+            <div class="as-label">Insights</div>
+            <a href="reports.html"><i class="bi bi-bar-chart"></i> Analytics &amp; Reports</a>
+            <a href="audit-logs.html"><i class="bi bi-activity"></i> Audit Logs</a>
+            <a href="calendar.html"><i class="bi bi-calendar3"></i> Calendar</a>
+            <a href="email-notifications.html"><i class="bi bi-envelope"></i> Email Notifications</a>
+            <a href="file-manager.html" class="active"><i class="bi bi-folder2"></i> File Manager</a>
+            <div class="as-user">
+              <span class="av">AD</span>
+              <div><b style="font-family:var(--font-head);color:var(--cpri-text)">Admin</b><small>Role-based access</small></div>
+            </div>
+          </aside>
+
+          <!-- Main -->
+          <div class="admin-main">
+            <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+              <div>
+                <h2>File Manager</h2>
+                <small style="color:var(--cpri-muted)">Upload and manage documents</small>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3><i class="bi bi-upload"></i> Upload File</h3>
+              <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end;">
+                <div class="form-group" style="margin:0;flex:1;min-width:200px;">
+                  <label>Select file</label>
+                  <input type="file" id="file-input" multiple>
+                </div>
+                <button class="btn btn-primary" id="upload-btn"><i class="bi bi-cloud-upload"></i> Upload</button>
+              </div>
+              <div id="upload-progress" style="margin-top:10px;display:none;">
+                <div class="gc-bar"><span id="progress-bar" style="width:0%;background:var(--grad-brand);"></span></div>
+                <small id="progress-text" class="form-note">Uploading…</small>
+              </div>
+            </div>
+
+            <div class="admin-card">
+              <h3><i class="bi bi-files"></i> Uploaded Files</h3>
+              <div id="file-list">
+                <p class="form-note">Loading files…</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '—';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function formatFileSize(bytes) {
+      if (bytes === 0) return '0 B';
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    function formatDate(ts) {
+      return new Date(ts).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function getFileIcon(name) {
+      const ext = name.split('.').pop().toLowerCase();
+      const icons = {
+        pdf: 'bi-filetype-pdf',
+        doc: 'bi-filetype-doc',
+        docx: 'bi-filetype-docx',
+        xls: 'bi-filetype-xls',
+        xlsx: 'bi-filetype-xlsx',
+        ppt: 'bi-filetype-ppt',
+        pptx: 'bi-filetype-pptx',
+        jpg: 'bi-filetype-jpg',
+        jpeg: 'bi-filetype-jpg',
+        png: 'bi-filetype-png',
+        gif: 'bi-filetype-gif',
+        svg: 'bi-filetype-svg',
+        txt: 'bi-filetype-txt',
+        csv: 'bi-filetype-csv',
+        zip: 'bi-filetype-zip',
+        json: 'bi-filetype-json',
+        html: 'bi-filetype-html',
+        js: 'bi-filetype-js',
+        css: 'bi-filetype-css'
+      };
+      return icons[ext] || 'bi-file-earmark';
+    }
+
+    async function loadFiles() {
+      const res = await fetch('/api/admin/files');
+      const el = document.getElementById('file-list');
+      if (!res.ok) {
+        el.innerHTML = '<p class="form-note">Failed to load files.</p>';
+        return;
+      }
+      const data = await res.json();
+
+      if (!data.files || !data.files.length) {
+        el.innerHTML = '<p class="form-note">No files uploaded yet.</p>';
+        return;
+      }
+
+      el.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th>Name</th>
+                <th>Size</th>
+                <th>Type</th>
+                <th>Uploaded</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.files.map(f => `
+                <tr>
+                  <td style="font-size:1.3rem;color:var(--cpri-secondary);"><i class="bi ${getFileIcon(f.name)}"></i></td>
+                  <td><b style="font-family:var(--font-head);color:var(--cpri-text)">${escapeHtml(f.name)}</b></td>
+                  <td>${formatFileSize(f.size)}</td>
+                  <td><span class="tag">${escapeHtml((f.type || f.name.split('.').pop() || 'unknown').toUpperCase())}</span></td>
+                  <td style="white-space:nowrap;">${formatDate(f.uploadedAt || f.mtime || Date.now())}</td>
+                  <td>
+                    <a class="btn btn-soft btn-sm" href="${escapeHtml(f.path)}" target="_blank" download="${escapeHtml(f.name)}"><i class="bi bi-download"></i> Download</a>
+                    <button class="btn btn-outline btn-sm delete-file" data-path="${escapeHtml(f.path || f.name)}" style="border-color:#b23b32;color:#b23b32;margin-left:4px;"><i class="bi bi-trash"></i></button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>`;
+
+      el.querySelectorAll('.delete-file').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          if (!confirm('Delete this file?')) return;
+          const filePath = btn.dataset.path;
+          const res = await fetch('/api/admin/files/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: filePath })
+          });
+          const out = await res.json();
+          if (!res.ok) return showMsg('error', out.error || 'Failed to delete file.');
+          showMsg('success', 'File deleted.');
+          loadFiles();
+        });
+      });
+    }
+
+    document.getElementById('upload-btn').addEventListener('click', async () => {
+      const input = document.getElementById('file-input');
+      if (!input.files.length) {
+        showMsg('error', 'Please select at least one file to upload.');
+        return;
+      }
+
+      const formData = new FormData();
+      for (const file of input.files) {
+        formData.append('files', file);
+      }
+
+      const progress = document.getElementById('upload-progress');
+      const progressBar = document.getElementById('progress-bar');
+      const progressText = document.getElementById('progress-text');
+      progress.style.display = 'block';
+      progressBar.style.width = '0%';
+      progressText.textContent = 'Uploading…';
+
+      try {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            progressBar.style.width = pct + '%';
+            progressText.textContent = `Uploading… ${pct}%`;
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status === 200 || xhr.status === 201) {
+            progressBar.style.width = '100%';
+            progressText.textContent = 'Upload complete!';
+            showMsg('success', 'Files uploaded successfully.');
+            input.value = '';
+            setTimeout(() => { progress.style.display = 'none'; }, 1500);
+            loadFiles();
+          } else {
+            progressText.textContent = 'Upload failed.';
+            showMsg('error', 'Failed to upload files.');
+          }
+        };
+
+        xhr.onerror = () => {
+          progressText.textContent = 'Upload failed.';
+          showMsg('error', 'Network error during upload.');
+        };
+
+        xhr.open('POST', '/api/admin/files/upload', true);
+        xhr.send(formData);
+      } catch (e) {
+        progressText.textContent = 'Upload failed.';
+        showMsg('error', 'An error occurred.');
+      }
+    });
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { document.getElementById('access-denied').style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      if (!['admin', 'cpri_staff'].includes(user.role)) {
+        document.getElementById('access-denied').style.display = 'block';
+        return;
+      }
+      loadFiles();
+    })();
+  </script>
+</body>
+</html>
+

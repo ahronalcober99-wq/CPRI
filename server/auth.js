@@ -58,18 +58,9 @@ const upload = multer({
   fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith('image/'))
 });
 
-// ---------- User store ----------
+// ---------- User store (MySQL) ----------
 async function readUsers() {
-  try {
-    const raw = await fs.readFile(USERS_FILE, 'utf8');
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-async function writeUsers(users) {
-  await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2));
+  return await all('SELECT * FROM users ORDER BY createdAt DESC');
 }
 
 function publicUser(u) {
@@ -116,27 +107,31 @@ function requireAuth(req, res, next) {
   next();
 }
 
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
   if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated.' });
-  readUsers().then(users => {
-    const user = users.find(u => u.id === req.session.userId);
+  try {
+    const user = await get('SELECT * FROM users WHERE id = ?', [req.session.userId]);
     if (!user || user.role !== 'admin' || user.status !== 'active') {
       return res.status(403).json({ error: 'Admin access required.' });
     }
     next();
-  }).catch(() => res.status(500).json({ error: 'Server error.' }));
+  } catch {
+    res.status(500).json({ error: 'Server error.' });
+  }
 }
 
 function requireRole(...roles) {
-  return (req, res, next) => {
+  return async (req, res, next) => {
     if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated.' });
-    readUsers().then(users => {
-      const user = users.find(u => u.id === req.session.userId);
+    try {
+      const user = await get('SELECT * FROM users WHERE id = ?', [req.session.userId]);
       if (!user || !roles.includes(user.role) || user.status !== 'active') {
         return res.status(403).json({ error: 'Access denied.' });
       }
       next();
-    }).catch(() => res.status(500).json({ error: 'Server error.' }));
+    } catch {
+      res.status(500).json({ error: 'Server error.' });
+    }
   };
 }
 
@@ -153,11 +148,15 @@ router.post('/register', async (req, res) => {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   }
 
-  const users = await readUsers();
-  if (users.find(u => u.username.toLowerCase() === String(username).toLowerCase())) {
-    return res.status(409).json({ error: 'Username already taken.' });
-  }
-  if (users.find(u => u.email.toLowerCase() === String(email).toLowerCase())) {
+  // Check for existing username or email
+  const existing = await get(
+    'SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)',
+    [String(username).toLowerCase(), String(email).toLowerCase()]
+  );
+  if (existing) {
+    if (existing.username && existing.username.toLowerCase() === String(username).toLowerCase()) {
+      return res.status(409).json({ error: 'Username already taken.' });
+    }
     return res.status(409).json({ error: 'Email already registered.' });
   }
 
@@ -175,13 +174,12 @@ router.post('/register', async (req, res) => {
     contactNumber: '',
     researchInterests: '',
     profilePhoto: null,
-    researches: [],
+    researches: JSON.stringify([]),
     resetToken: null,
     resetTokenExpiry: null,
     createdAt: new Date().toISOString()
   };
-  users.push(user);
-  await writeUsers(users);
+  await insert('users', user);
 
   if (needsApproval) {
     return res.status(202).json({
@@ -226,8 +224,7 @@ router.post('/logout', (req, res) => {
 // ---------- Current user ----------
 router.get('/me', async (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: 'Not authenticated.' });
-  const users = await readUsers();
-  const user = users.find(u => u.id === req.session.userId);
+  const user = await get('SELECT * FROM users WHERE id = ?', [req.session.userId]);
   if (!user) return res.status(401).json({ error: 'Not authenticated.' });
   res.json({ user: publicUser(user) });
 });
@@ -257,15 +254,12 @@ router.post('/reset', async (req, res) => {
   if (String(password).length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   }
-  const users = await readUsers();
-  const user = users.find(u => u.resetToken === token);
+  const user = await get('SELECT * FROM users WHERE resetToken = ?', [token]);
   if (!user || !user.resetTokenExpiry || user.resetTokenExpiry < Date.now()) {
     return res.status(400).json({ error: 'Invalid or expired reset token.' });
   }
-  user.passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-  user.resetToken = null;
-  user.resetTokenExpiry = null;
-  await writeUsers(users);
+  const hash = await bcrypt.hash(password, SALT_ROUNDS);
+  await update('users', user.id, { passwordHash: hash, resetToken: null, resetTokenExpiry: null });
   res.json({ message: 'Password has been reset. You may now log in.' });
 });
 
@@ -300,14 +294,13 @@ router.post('/profile/photo', requireAuth, upload.single('photo'), async (req, r
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
   } catch { /* exists */ }
   const rel = `/assets/uploads/profiles/${req.file.filename}`;
-  const user = await patchUser(req.session.userId, { profilePhoto: rel });
+  await patchUser(req.session.userId, { profilePhoto: rel });
   res.json({ message: 'Profile photo updated.', profilePhoto: rel });
 });
 
 // ---------- Researches (submitted / completed) ----------
 router.get('/researches', requireAuth, async (req, res) => {
-  const users = await readUsers();
-  const user = users.find(u => u.id === req.session.userId);
+  const user = await get('SELECT id, researches FROM users WHERE id = ?', [req.session.userId]);
   if (!user) return res.status(401).json({ error: 'Not authenticated.' });
   res.json({ researches: user.researches || [] });
 });
@@ -315,9 +308,9 @@ router.get('/researches', requireAuth, async (req, res) => {
 router.post('/researches', requireAuth, async (req, res) => {
   const { title, status, year, authors } = req.body || {};
   if (!title) return res.status(400).json({ error: 'Title is required.' });
-  const users = await readUsers();
-  const user = users.find(u => u.id === req.session.userId);
+  const user = await get('SELECT id, researches FROM users WHERE id = ?', [req.session.userId]);
   if (!user) return res.status(401).json({ error: 'Not authenticated.' });
+  const researches = user.researches || [];
   const entry = {
     id: randomUUID(),
     title: String(title).trim(),
@@ -326,25 +319,23 @@ router.post('/researches', requireAuth, async (req, res) => {
     authors: authors ? String(authors).trim() : '',
     createdAt: new Date().toISOString()
   };
-  user.researches = user.researches || [];
-  user.researches.push(entry);
-  await writeUsers(users);
+  researches.push(entry);
+  await update('users', user.id, { researches: JSON.stringify(researches) });
   res.status(201).json({ message: 'Research added.', research: entry });
 });
 
 router.delete('/researches/:id', requireAuth, async (req, res) => {
-  const users = await readUsers();
-  const user = users.find(u => u.id === req.session.userId);
+  const user = await get('SELECT id, researches FROM users WHERE id = ?', [req.session.userId]);
   if (!user) return res.status(401).json({ error: 'Not authenticated.' });
-  user.researches = (user.researches || []).filter(r => r.id !== req.params.id);
-  await writeUsers(users);
+  const researches = (user.researches || []).filter(r => r.id !== req.params.id);
+  await update('users', user.id, { researches: JSON.stringify(researches) });
   res.json({ message: 'Research removed.' });
 });
 
 // ---------- Admin: list pending ethics reviewers ----------
 router.get('/admin/reviewers/pending', requireAdmin, async (req, res) => {
-  const users = await readUsers();
-  res.json(users.filter(u => u.role === 'ethics_reviewer' && u.status === 'pending').map(publicUser));
+  const users = await all("SELECT * FROM users WHERE role = 'ethics_reviewer' AND status = 'pending'");
+  res.json(users.map(publicUser));
 });
 
 // ---------- Admin: approve / reject ethics reviewer ----------
@@ -353,19 +344,19 @@ router.post('/admin/reviewers/:id', requireAdmin, async (req, res) => {
   if (!['approve', 'reject'].includes(action)) {
     return res.status(400).json({ error: 'Action must be approve or reject.' });
   }
-  const users = await readUsers();
-  const user = users.find(u => u.id === req.params.id);
-  if (!user || user.role !== 'ethics_reviewer') {
+  const user = await get("SELECT * FROM users WHERE id = ? AND role = 'ethics_reviewer'", [req.params.id]);
+  if (!user) {
     return res.status(404).json({ error: 'Ethics reviewer not found.' });
   }
-  user.status = action === 'approve' ? 'active' : 'disabled';
-  await writeUsers(users);
-  res.json({ message: `Ethics reviewer ${action === 'approve' ? 'approved' : 'rejected'}.`, user: publicUser(user) });
+  const newStatus = action === 'approve' ? 'active' : 'disabled';
+  await update('users', user.id, { status: newStatus });
+  const updated = await get('SELECT * FROM users WHERE id = ?', [user.id]);
+  res.json({ message: `Ethics reviewer ${action === 'approve' ? 'approved' : 'rejected'}.`, user: publicUser(updated) });
 });
 
 // ---------- Admin: user management (RBAC assignment) ----------
 router.get('/admin/users', requireAdmin, async (req, res) => {
-  const users = await readUsers();
+  const users = await all('SELECT * FROM users ORDER BY createdAt DESC');
   res.json(users.map(publicUser));
 });
 
@@ -375,14 +366,15 @@ router.patch('/admin/users/:id', requireAdmin, async (req, res) => {
   if (status && !['active', 'pending', 'disabled'].includes(status)) {
     return res.status(400).json({ error: 'Invalid status.' });
   }
-  const users = await readUsers();
-  const user = users.find(u => u.id === req.params.id);
+  const user = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found.' });
-  if (role) user.role = role;
-  if (status) user.status = status;
-  if (department !== undefined) user.department = String(department).trim();
-  await writeUsers(users);
-  res.json({ message: 'User updated.', user: publicUser(user) });
+  const changes = {};
+  if (role) changes.role = role;
+  if (status) changes.status = status;
+  if (department !== undefined) changes.department = String(department).trim();
+  await update('users', req.params.id, changes);
+  const updated = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
+  res.json({ message: 'User updated.', user: publicUser(updated) });
 });
 
 router.delete('/admin/users/:id', requireAdmin, async (req, res) => {
@@ -394,9 +386,8 @@ router.delete('/admin/users/:id', requireAdmin, async (req, res) => {
 
 // ---------- Seed default admin ----------
 async function initAuth() {
-  const users = await readUsers();
-  const hasAdmin = users.some(u => u.role === 'admin');
-  if (!hasAdmin) {
+  const adminUser = await get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
+  if (!adminUser) {
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin12345';
     const admin = {
       id: randomUUID(),
@@ -406,9 +397,13 @@ async function initAuth() {
       role: 'admin',
       passwordHash: await bcrypt.hash(adminPassword, SALT_ROUNDS),
       status: 'active',
+      department: '',
+      contactNumber: '',
+      researchInterests: '',
+      profilePhoto: null,
+      researches: JSON.stringify([]),
       resetToken: null,
       resetTokenExpiry: null,
-      researches: JSON.stringify([]),
       createdAt: new Date().toISOString()
     };
     await insert('users', admin);
@@ -417,3 +412,4 @@ async function initAuth() {
 }
 
 export { router as authRouter, initAuth, requireAuth, requireAdmin, requireRole, readUsers };
+

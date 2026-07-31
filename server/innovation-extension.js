@@ -5,11 +5,10 @@ import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
+import { all, get, run, insert, update, remove } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const DATA_DIR = join(__dirname, 'data');
-const INNOVATION_FILE = join(DATA_DIR, 'innovation-extension.json');
 const UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'assets', 'uploads', 'innovation-extension');
 
 const router = Router();
@@ -21,12 +20,6 @@ const PROJECT_TYPES = {
 
 const STAFF_ROLES = ['admin', 'cpri_staff'];
 
-async function readRecords() {
-  try { return JSON.parse(await fs.readFile(INNOVATION_FILE, 'utf8')); } catch { return []; }
-}
-async function writeRecords(list) {
-  await fs.writeFile(INNOVATION_FILE, JSON.stringify(list, null, 2));
-}
 async function caller(req) {
   const users = await readUsers();
   return users.find(u => u.id === req.session.userId) || null;
@@ -54,40 +47,38 @@ const uploadDocs = upload.fields([
 
 router.get('/', async (req, res) => {
   const q = req.query;
-  let list = await readRecords();
+  let sql = 'SELECT * FROM innovation_extension WHERE 1=1';
+  const params = [];
 
-  const match = (val, term) => !term || String(val || '').toLowerCase().includes(String(term).toLowerCase());
-  list = list.filter(r => {
-    if (q.title && !match(r.title, q.title)) return false;
-    if (q.proponents && !match(r.proponents, q.proponents)) return false;
-    if (q.department && !match(r.department, q.department)) return false;
-    if (q.projectType && r.projectType !== q.projectType) return false;
-    if (q.communityPartner && !match(r.communityPartner, q.communityPartner)) return false;
-    if (q.year && String(r.implementationDate || r.createdAt).slice(0, 4) !== String(q.year)) return false;
-    return true;
-  });
+  if (q.title) { sql += ' AND title LIKE ?'; params.push(`%${q.title}%`); }
+  if (q.proponents) { sql += ' AND proponents LIKE ?'; params.push(`%${q.proponents}%`); }
+  if (q.department) { sql += ' AND department LIKE ?'; params.push(`%${q.department}%`); }
+  if (q.projectType) { sql += ' AND projectType = ?'; params.push(q.projectType); }
+  if (q.communityPartner) { sql += ' AND communityPartner LIKE ?'; params.push(`%${q.communityPartner}%`); }
+  if (q.year) { sql += ' AND (LEFT(implementationDate, 4) = ? OR LEFT(createdAt, 4) = ?)'; params.push(q.year, q.year); }
+
+  sql += ' ORDER BY createdAt DESC';
+  const list = await all(sql, params);
 
   res.json({
-    records: list
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map(r => ({
-        id: r.id,
-        title: r.title,
-        projectType: r.projectType,
-        projectTypeLabel: PROJECT_TYPES[r.projectType] || r.projectType,
-        proponents: r.proponents,
-        department: r.department,
-        implementationDate: r.implementationDate,
-        beneficiaries: r.beneficiaries,
-        communityOutcome: r.communityOutcome,
-        communityPartner: r.communityPartner,
-        createdAt: r.createdAt
-      }))
+    records: list.map(r => ({
+      id: r.id,
+      title: r.title,
+      projectType: r.projectType,
+      projectTypeLabel: PROJECT_TYPES[r.projectType] || r.projectType,
+      proponents: r.proponents,
+      department: r.department,
+      implementationDate: r.implementationDate,
+      beneficiaries: r.beneficiaries,
+      communityOutcome: r.communityOutcome,
+      communityPartner: r.communityPartner,
+      createdAt: r.createdAt
+    }))
   });
 });
 
 router.get('/stats', async (req, res) => {
-  const list = await readRecords();
+  const list = await all('SELECT projectType, beneficiaries, impactDocuments FROM innovation_extension');
   const stats = {
     total: list.length,
     innovation: list.filter(r => r.projectType === 'innovation_project').length,
@@ -104,8 +95,7 @@ router.get('/stats', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
-  const list = await readRecords();
-  const r = list.find(x => x.id === req.params.id);
+  const r = await get('SELECT * FROM innovation_extension WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Record not found.' });
   res.json({
     record: r,
@@ -155,15 +145,13 @@ router.post('/', requireAuth, async (req, res, next) => {
     evaluationResult: b.evaluationResult ? String(b.evaluationResult).trim() : '',
     communityOutcome: b.communityOutcome ? String(b.communityOutcome).trim() : '',
     sustainabilityPlan: b.sustainabilityPlan ? String(b.sustainabilityPlan).trim() : '',
-    supportingDocuments: supportingDocs,
-    impactDocuments: [],
+    supportingDocuments: JSON.stringify(supportingDocs),
+    impactDocuments: JSON.stringify([]),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
-  const list = await readRecords();
-  list.push(rec);
-  await writeRecords(list);
+  await insert('innovation_extension', rec);
   res.status(201).json({ message: 'Record added.', record: rec });
 });
 
@@ -171,11 +159,11 @@ router.patch('/:id', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const list = await readRecords();
-  const r = list.find(x => x.id === req.params.id);
+  const r = await get('SELECT * FROM innovation_extension WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Record not found.' });
 
   const b = req.body || {};
+  const changes = {};
   const editable = [
     'projectType', 'title', 'proponents', 'department', 'description',
     'beneficiaries', 'implementationDate', 'outputProduct', 'communityPartner',
@@ -184,21 +172,21 @@ router.patch('/:id', requireAuth, async (req, res) => {
   ];
   for (const f of editable) {
     if (b[f] !== undefined) {
-      if (f === 'beneficiaries') r[f] = parseInt(b[f], 10) || 0;
-      else r[f] = String(b[f]).trim();
+      if (f === 'beneficiaries') changes[f] = parseInt(b[f], 10) || 0;
+      else changes[f] = String(b[f]).trim();
     }
   }
-  r.updatedAt = new Date().toISOString();
-  await writeRecords(list);
-  res.json({ message: 'Record updated.', record: r });
+  changes.updatedAt = new Date().toISOString();
+  await update('innovation_extension', req.params.id, changes);
+  const updated = await get('SELECT * FROM innovation_extension WHERE id = ?', [req.params.id]);
+  res.json({ message: 'Record updated.', record: updated });
 });
 
 router.post('/:id/impact-docs', requireAuth, async (req, res, next) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const list = await readRecords();
-  const r = list.find(x => x.id === req.params.id);
+  const r = await get('SELECT * FROM innovation_extension WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Record not found.' });
   req._recordId = r.id;
   next();
@@ -215,18 +203,16 @@ router.post('/:id/impact-docs', requireAuth, async (req, res, next) => {
       });
     }
   }
-  const list = await readRecords();
-  const r = list.find(x => x.id === req.params.id);
-  r.impactDocuments = r.impactDocuments || [];
-  r.impactDocuments.push(...items);
-  r.updatedAt = new Date().toISOString();
-  await writeRecords(list);
+
+  const r = await get('SELECT * FROM innovation_extension WHERE id = ?', [req.params.id]);
+  const impactDocuments = r.impactDocuments || [];
+  impactDocuments.push(...items);
+  await update('innovation_extension', r.id, { impactDocuments: JSON.stringify(impactDocuments), updatedAt: new Date().toISOString() });
   res.status(201).json({ message: 'Impact documents uploaded.', impactDocuments: items });
 });
 
 router.get('/:id/file/:filename', async (req, res) => {
-  const list = await readRecords();
-  const r = list.find(x => x.id === req.params.id);
+  const r = await get('SELECT * FROM innovation_extension WHERE id = ?', [req.params.id]);
   if (!r) return res.status(404).json({ error: 'Record not found.' });
 
   const allDocs = [...(r.supportingDocuments || []), ...(r.impactDocuments || [])];
@@ -241,11 +227,11 @@ router.delete('/:id', requireAuth, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
-  const list = await readRecords();
-  const filtered = list.filter(x => x.id !== req.params.id);
-  if (filtered.length === list.length) return res.status(404).json({ error: 'Record not found.' });
-  await writeRecords(filtered);
+  const r = await get('SELECT * FROM innovation_extension WHERE id = ?', [req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Record not found.' });
+  await remove('innovation_extension', req.params.id);
   res.json({ message: 'Record removed.' });
 });
 
 export { router as innovationExtensionRouter, PROJECT_TYPES, STAFF_ROLES };
+

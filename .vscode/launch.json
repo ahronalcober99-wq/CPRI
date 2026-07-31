@@ -5,11 +5,44 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "type": "node",
+            "request": "launch",
+            "name": "Start CPRI Server",
+            "program": "${workspaceFolder}/server/server.js",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "NODE_ENV": "development",
+                "PORT": "3000",
+                "DB_HOST": "localhost",
+                "DB_PORT": "3306",
+                "DB_USER": "root",
+                "DB_PASSWORD": "",
+                "DB_NAME": "cpri"
+            },
+            "skipFiles": ["<node_internals>/**"],
+            "console": "integratedTerminal",
+            "outputCapture": "std"
+        },
+        {
             "type": "chrome",
             "request": "launch",
-            "name": "Launch Chrome against local file",
-            "url": "file:///c:/Users/Nicole/Downloads/CPRI3/public/index.html",
+            "name": "Open CPRI at localhost:3000",
+            "url": "http://localhost:3000",
             "webRoot": "${workspaceFolder}"
+        },
+        {
+            "type": "chrome",
+            "request": "launch",
+            "name": "Open CPRI Admin Login",
+            "url": "http://localhost:3000/login.html",
+            "webRoot": "${workspaceFolder}"
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Full CPRI Launch (Server + Browser)",
+            "configurations": ["Start CPRI Server", "Open CPRI at localhost:3000"],
+            "stopAll": true
         }
     ]
 }

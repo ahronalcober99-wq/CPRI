@@ -5,13 +5,11 @@ import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
+import { all, get, run, insert, update, remove } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const DATA_DIR = join(__dirname, 'data');
-const SUBMISSIONS_FILE = join(DATA_DIR, 'submissions.json');
-const REPO_FILE = join(DATA_DIR, 'repository.json');
-const SUB_UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'assets', 'uploads', 'submissions');
+const SUB_UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'submissions');
 
 const router = Router();
 
@@ -53,18 +51,6 @@ const REQUIRED_KEYS = FILE_FIELDS.filter(f => f.required).map(f => f.key);
 const SUBMIT_ROLES = ['faculty_researcher', 'student_researcher', 'adviser', 'cpri_staff'];
 // Roles allowed to review / change status
 const REVIEW_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer'];
-
-// ---------- Store helpers ----------
-async function readSubs() {
-  try {
-    return JSON.parse(await fs.readFile(SUBMISSIONS_FILE, 'utf8'));
-  } catch {
-    return [];
-  }
-}
-async function writeSubs(subs) {
-  await fs.writeFile(SUBMISSIONS_FILE, JSON.stringify(subs, null, 2));
-}
 
 async function caller(req) {
   const users = await readUsers();
@@ -146,51 +132,45 @@ router.post('/', requireAuth, (req, res, next) => {
     schoolYear: String(b.schoolYear).trim(),
     semester: String(b.semester).trim(),
     status: 'submitted',
-    statusHistory: [{ status: 'submitted', at: now, by: me.fullName || me.username }],
-    files,
-    additionalDocs,
-    versions: [{ version: 1, uploadedAt: now, by: me.fullName || me.username, note: 'Initial submission', files, additionalDocs }],
-    comments: [],
+    statusHistory: JSON.stringify([{ status: 'submitted', at: now, by: me.fullName || me.username }]),
+    files: JSON.stringify(files),
+    additionalDocs: JSON.stringify(additionalDocs),
+    versions: JSON.stringify([{ version: 1, uploadedAt: now, by: me.fullName || me.username, note: 'Initial submission', files, additionalDocs }]),
+    comments: JSON.stringify([]),
     createdAt: now,
     updatedAt: now
   };
 
-  const subs = await readSubs();
-  subs.push(sub);
-  await writeSubs(subs);
+  await insert('submissions', sub);
   res.status(201).json({ message: 'Research submitted successfully.', submission: sub });
 });
 
 // ---------- List submissions (role-aware) ----------
 router.get('/', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const subs = await readSubs();
-  const list = REVIEW_ROLES.includes(me.role)
-    ? subs
-    : subs.filter(s => s.submitterId === me.id);
-  // Return a compact view
+  const subs = REVIEW_ROLES.includes(me.role)
+    ? await all('SELECT * FROM submissions ORDER BY createdAt DESC')
+    : await all('SELECT * FROM submissions WHERE submitterId = ? ORDER BY createdAt DESC', [me.id]);
+
   res.json({
-    submissions: list
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .map(s => ({
-        id: s.id,
-        title: s.title,
-        authors: s.authors,
-        program: s.program,
-        researchType: s.researchType,
-        status: s.status,
-        statusLabel: STATUS_LABELS[s.status] || s.status,
-        createdAt: s.createdAt,
-        isOwner: s.submitterId === me.id
-      }))
+    submissions: subs.map(s => ({
+      id: s.id,
+      title: s.title,
+      authors: s.authors,
+      program: s.program,
+      researchType: s.researchType,
+      status: s.status,
+      statusLabel: STATUS_LABELS[s.status] || s.status,
+      createdAt: s.createdAt,
+      isOwner: s.submitterId === me.id
+    }))
   });
 });
 
 // ---------- Submission detail ----------
 router.get('/:id', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const subs = await readSubs();
-  const sub = subs.find(s => s.id === req.params.id);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
   if (!sub) return res.status(404).json({ error: 'Submission not found.' });
   if (!canAccess(me, sub)) return res.status(403).json({ error: 'Access denied.' });
   res.json({ submission: sub, statusLabel: STATUS_LABELS[sub.status] || sub.status });
@@ -203,34 +183,37 @@ router.patch('/:id/status', requireRole(...REVIEW_ROLES), async (req, res) => {
     return res.status(400).json({ error: 'Invalid status.' });
   }
   const me = await caller(req);
-  const subs = await readSubs();
-  const sub = subs.find(s => s.id === req.params.id);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
   if (!sub) return res.status(404).json({ error: 'Submission not found.' });
-  sub.status = status;
-  sub.statusHistory.push({
+
+  const statusHistory = sub.statusHistory || [];
+  statusHistory.push({
     status,
     at: new Date().toISOString(),
     by: me.fullName || me.username,
     note: note ? String(note).trim() : ''
   });
-  sub.updatedAt = new Date().toISOString();
-  await writeSubs(subs);
+
+  const now = new Date().toISOString();
+  await update('submissions', sub.id, { status, statusHistory: JSON.stringify(statusHistory), updatedAt: now });
+
   if (status === 'published' || status === 'approved') {
-    await syncRepository(sub);
+    await syncRepository(sub, status);
   }
-  res.json({ message: 'Status updated.', submission: sub });
+
+  const updated = await get('SELECT * FROM submissions WHERE id = ?', [sub.id]);
+  res.json({ message: 'Status updated.', submission: updated });
 });
 
 // Keep the institutional repository in sync with approved/published submissions
-async function syncRepository(sub) {
+async function syncRepository(sub, newStatus) {
   const year = (sub.schoolYear && sub.schoolYear.match(/\d{4}/g))
     ? sub.schoolYear.match(/\d{4}/g).pop()
     : new Date(sub.createdAt).getFullYear();
-  let repo = [];
-  try { repo = JSON.parse(await fs.readFile(REPO_FILE, 'utf8')); } catch { /* empty */ }
-  let rec = repo.find(r => r.sourceSubmissionId === sub.id);
+
+  let rec = await get('SELECT * FROM repository WHERE sourceSubmissionId = ?', [sub.id]);
+
   const base = {
-    sourceSubmissionId: sub.id,
     title: sub.title,
     authors: sub.authors,
     adviser: sub.adviser || '',
@@ -239,52 +222,57 @@ async function syncRepository(sub) {
     keywords: sub.keywords || '',
     category: sub.researchType,
     yearCompleted: String(year),
-    status: sub.status,
-    fileAvailable: !!(sub.files && sub.files.manuscript)
+    status: newStatus,
+    fileAvailable: sub.files && sub.files.manuscript ? 1 : 0
   };
+
   if (rec) {
-    Object.assign(rec, base);
-    rec.updatedAt = new Date().toISOString();
+    const citation = rec.citation || { apa: `${sub.authors} (${year}). ${sub.title}. ${sub.program}.` };
+    await update('repository', rec.id, {
+      ...base,
+      citation: JSON.stringify(citation),
+      updatedAt: new Date().toISOString()
+    });
   } else {
-    rec = {
+    const recData = {
       id: randomUUID(),
+      sourceSubmissionId: sub.id,
       ...base,
       accessLevel: 'downloadable',
-      citation: { apa: `${sub.authors} (${year}). ${sub.title}. ${sub.program}.` },
+      citation: JSON.stringify({ apa: `${sub.authors} (${year}). ${sub.title}. ${sub.program}.` }),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
-    repo.push(rec);
+    await insert('repository', recData);
   }
-  await fs.writeFile(REPO_FILE, JSON.stringify(repo, null, 2));
 }
 
 // ---------- Secure file download (supports versioned files) ----------
 router.get('/:id/file', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const subs = await readSubs();
-  const sub = subs.find(s => s.id === req.params.id);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
   if (!sub) return res.status(404).json({ error: 'Submission not found.' });
   if (!canAccess(me, sub)) return res.status(403).json({ error: 'Access denied.' });
 
   const { key, docId, version } = req.query;
-  // Choose the file set: a specific version, or the current/latest files
   let fileSet = sub;
   if (version) {
-    const v = (sub.versions || []).find(x => String(x.version) === String(version));
+    const versions = sub.versions || [];
+    const v = versions.find(x => String(x.version) === String(version));
     if (!v) return res.status(404).json({ error: 'Version not found.' });
     fileSet = v;
   }
 
   let meta = null;
   if (key === 'additional') {
-    meta = (fileSet.additionalDocs || []).find(d => d.id === docId);
+    const additionalDocs = fileSet.additionalDocs || [];
+    meta = additionalDocs.find(d => d.id === docId);
   } else if (key) {
-    meta = fileSet.files[key];
+    const files = fileSet.files || {};
+    meta = files[key];
   }
   if (!meta) return res.status(404).json({ error: 'File not found.' });
 
-  // Version 1 files live directly under <id>/; later revisions under <id>/vN/
   const folder = (version && Number(version) > 1) ? join(SUB_UPLOAD_DIR, sub.id, 'v' + version) : join(SUB_UPLOAD_DIR, sub.id);
   const p = join(folder, meta.filename);
   res.download(p, meta.originalName);
@@ -311,8 +299,7 @@ function canComment(me, sub) {
 
 router.get('/:id/comments', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const subs = await readSubs();
-  const sub = subs.find(s => s.id === req.params.id);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
   if (!sub) return res.status(404).json({ error: 'Submission not found.' });
   if (!canAccess(me, sub)) return res.status(403).json({ error: 'Access denied.' });
   res.json({ comments: sub.comments || [] });
@@ -320,12 +307,12 @@ router.get('/:id/comments', requireAuth, async (req, res) => {
 
 router.post('/:id/comments', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const subs = await readSubs();
-  const sub = subs.find(s => s.id === req.params.id);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
   if (!sub) return res.status(404).json({ error: 'Submission not found.' });
   if (!canComment(me, sub)) return res.status(403).json({ error: 'You are not allowed to comment on this submission.' });
   const { body, type } = req.body || {};
   if (!body || !String(body).trim()) return res.status(400).json({ error: 'Comment text is required.' });
+  const comments = sub.comments || [];
   const comment = {
     id: randomUUID(),
     authorId: me.id,
@@ -335,10 +322,8 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
     body: String(body).trim(),
     createdAt: new Date().toISOString()
   };
-  sub.comments = sub.comments || [];
-  sub.comments.push(comment);
-  sub.updatedAt = new Date().toISOString();
-  await writeSubs(subs);
+  comments.push(comment);
+  await update('submissions', sub.id, { comments: JSON.stringify(comments), updatedAt: new Date().toISOString() });
   res.status(201).json({ message: 'Comment added.', comment });
 });
 
@@ -363,8 +348,7 @@ const revisionFields = uploadRevision.fields([
 
 router.post('/:id/revisions', requireAuth, async (req, res, next) => {
   const me = await caller(req);
-  const subs = await readSubs();
-  const sub = subs.find(s => s.id === req.params.id);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
   if (!sub) return res.status(404).json({ error: 'Submission not found.' });
   if (sub.submitterId !== me.id) return res.status(403).json({ error: 'Only the researcher can upload revisions.' });
   req._subId = sub.id;
@@ -395,23 +379,30 @@ router.post('/:id/revisions', requireAuth, async (req, res, next) => {
     files,
     additionalDocs
   };
-  const subs = await readSubs();
-  const sub = subs.find(s => s.id === req.params.id);
-  sub.versions = sub.versions || [];
-  sub.versions.push(version);
-  sub.files = files;            // latest files become current
-  sub.additionalDocs = additionalDocs;
-  sub.updatedAt = now;
-  // Resubmission re-enters checking
-  sub.status = 'under_initial_checking';
-  sub.statusHistory.push({
+
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
+  const versions = sub.versions || [];
+  versions.push(version);
+  const statusHistory = sub.statusHistory || [];
+  statusHistory.push({
     status: 'under_initial_checking',
     at: now,
     by: version.by,
     note: 'Revised manuscript resubmitted (v' + req._version + ')'
   });
-  await writeSubs(subs);
-  res.status(201).json({ message: 'Revision uploaded.', version, submission: sub });
+
+  await update('submissions', sub.id, {
+    files: JSON.stringify(files),
+    additionalDocs: JSON.stringify(additionalDocs),
+    versions: JSON.stringify(versions),
+    status: 'under_initial_checking',
+    statusHistory: JSON.stringify(statusHistory),
+    updatedAt: now
+  });
+
+  const updated = await get('SELECT * FROM submissions WHERE id = ?', [sub.id]);
+  res.status(201).json({ message: 'Revision uploaded.', version, submission: updated });
 });
 
 export { router as submissionsRouter, STATUS_LABELS, RESEARCH_TYPES, FILE_FIELDS, COMMENT_TYPE_LABELS };
+

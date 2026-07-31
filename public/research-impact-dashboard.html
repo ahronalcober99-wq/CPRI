@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Impact Dashboard | CPRI</title>
+  <meta name="theme-color" content="#0F172A">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main" class="impact-dashboard-page py-4 py-lg-5">
+    <div class="container-xl">
+      <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 mb-4">
+        <div>
+          <span class="badge rounded-pill px-3 py-2 mb-2" style="background:rgba(30,58,138,.12);color:var(--cpri-secondary)">Live Research Monitor</span>
+          <h1 class="h2 mb-1" style="font-family:var(--font-head);color:var(--cpri-text)">Research Impact Dashboard</h1>
+          <p class="mb-0" style="color:var(--cpri-muted)">Real-time analytics for submissions, downloads, views, activity, and research growth.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-outline-dark btn-sm" id="themeToggle"><i class="bi bi-moon-stars"></i> Theme</button>
+          <button class="btn btn-outline-secondary btn-sm" id="exportCsv"><i class="bi bi-file-earmark-excel"></i> CSV</button>
+          <button class="btn btn-outline-secondary btn-sm" id="exportExcel"><i class="bi bi-file-earmark-spreadsheet"></i> Excel</button>
+          <button class="btn btn-outline-secondary btn-sm" id="exportPdf"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+          <button class="btn btn-gradient btn-sm" id="printReport"><i class="bi bi-printer"></i> Print</button>
+        </div>
+      </div>
+
+      <div class="card impact-card mb-4">
+        <div class="card-body">
+          <div class="row g-3 align-items-end">
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Academic Year</label>
+              <select id="filterYear" class="form-select form-select-sm"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Department</label>
+              <select id="filterDepartment" class="form-select form-select-sm"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Category</label>
+              <select id="filterCategory" class="form-select form-select-sm"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold">Adviser</label>
+              <select id="filterAdviser" class="form-select form-select-sm"></select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">From</label>
+              <input type="date" id="filterFrom" class="form-control form-control-sm">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small fw-semibold">To</label>
+              <input type="date" id="filterTo" class="form-control form-control-sm">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="small text-muted">Last updated: <span id="lastUpdated">Loading…</span></div>
+      </div>
+      <div id="statsGrid" class="row g-3 mb-4"></div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+          <div class="card impact-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0" style="font-family:var(--font-head)">Research Submissions by Month</h5>
+                <span class="badge rounded-pill bg-soft">Live trend</span>
+              </div>
+              <canvas id="submissionsChart" height="220"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card impact-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0" style="font-family:var(--font-head)">Research Status</h5>
+                <span class="badge rounded-pill bg-soft">Pulse</span>
+              </div>
+              <canvas id="statusChart" height="220"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+          <div class="card impact-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0" style="font-family:var(--font-head)">Downloads vs Views</h5>
+                <span class="badge rounded-pill bg-soft">Engagement</span>
+              </div>
+              <canvas id="engagementChart" height="220"></canvas>
+            </div>
+          </div>
+        </div>
+        <div class="col-lg-4">
+          <div class="card impact-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0" style="font-family:var(--font-head)">Research by Department</h5>
+                <span class="badge rounded-pill bg-soft">Distribution</span>
+              </div>
+              <canvas id="departmentChart" height="220"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4">
+        <div class="col-xl-8">
+          <div class="card impact-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="mb-0" style="font-family:var(--font-head)">Live Activity Feed</h5>
+                <span class="badge rounded-pill bg-soft">Updated every 8s</span>
+              </div>
+              <div id="activityFeed" class="activity-feed"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col-xl-4">
+          <div class="card impact-card mb-4">
+            <div class="card-body">
+              <h5 class="mb-3" style="font-family:var(--font-head)">Top 10 Most Viewed</h5>
+              <ol id="topViewedList" class="top-list"></ol>
+            </div>
+          </div>
+          <div class="card impact-card">
+            <div class="card-body">
+              <h5 class="mb-3" style="font-family:var(--font-head)">Top 10 Most Downloaded</h5>
+              <ol id="topDownloadedList" class="top-list"></ol>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const state = { charts: {}, dashboard: null };
+
+    function createSkeletons() {
+      const grid = document.getElementById('statsGrid');
+      grid.innerHTML = Array.from({ length: 6 }).map(() => `
+        <div class="col-12 col-sm-6 col-xl-4">
+          <div class="card impact-card stat-card skeleton-card">
+            <div class="skeleton-line w-50"></div>
+            <div class="skeleton-line w-75 mt-2"></div>
+            <div class="skeleton-line w-40 mt-3"></div>
+          </div>
+        </div>`).join('');
+      document.getElementById('activityFeed').innerHTML = '<div class="skeleton-card p-3 rounded-3"><div class="skeleton-line w-75"></div><div class="skeleton-line w-50 mt-2"></div></div>';
+    }
+
+    function destroyCharts() {
+      Object.values(state.charts).forEach(chart => chart?.destroy());
+      state.charts = {};
+    }
+
+    function formatMetric(value) {
+      return Number.isFinite(value) ? value.toLocaleString() : '0';
+    }
+
+    function renderStats(stats) {
+      const grid = document.getElementById('statsGrid');
+      const cards = [
+        { label: 'Total Research Papers', value: stats.totalResearchPapers, icon: 'bi-journal-richtext', tone: 'primary' },
+        { label: 'Published Research', value: stats.publishedResearch, icon: 'bi-check2-circle', tone: 'success' },
+        { label: 'Pending Research', value: stats.pendingResearch, icon: 'bi-hourglass-split', tone: 'warning' },
+        { label: 'Approved Research', value: stats.approvedResearch, icon: 'bi-award', tone: 'info' },
+        { label: 'Rejected Research', value: stats.rejectedResearch, icon: 'bi-x-circle', tone: 'danger' },
+        { label: 'Archived Research', value: stats.archivedResearch, icon: 'bi-archive', tone: 'secondary' },
+        { label: 'Total Registered Researchers', value: stats.totalResearchers, icon: 'bi-people', tone: 'success' },
+        { label: 'Total Faculty Advisers', value: stats.totalFacultyAdvisers, icon: 'bi-person-badge', tone: 'primary' },
+        { label: 'Total Downloads', value: stats.totalDownloads, icon: 'bi-download', tone: 'secondary' },
+        { label: 'Total Views', value: stats.totalViews, icon: 'bi-eye', tone: 'primary' },
+        { label: 'Active Users Online', value: stats.activeUsersOnline, icon: 'bi-activity', tone: 'info' },
+        { label: 'New Research Submitted Today', value: stats.newResearchSubmittedToday, icon: 'bi-calendar2-plus', tone: 'warning' }
+      ];
+      const hasData = stats.hasData;
+      grid.innerHTML = cards.map(card => `
+        <div class="col-12 col-sm-6 col-xl-4">
+          <div class="card impact-card stat-card h-100">
+            <div class="d-flex justify-content-between align-items-start">
+              <div>
+                <div class="small text-uppercase fw-semibold" style="letter-spacing:.08em;color:var(--cpri-muted)">${card.label}</div>
+                <div class="stat-value mt-2" data-value="${hasData ? card.value : ''}">${hasData ? formatMetric(card.value) : 'No data available'}</div>
+              </div>
+              <div class="stat-icon ${card.tone}"><i class="bi ${card.icon}"></i></div>
+            </div>
+          </div>
+        </div>`).join('');
+      if (hasData) animateValues();
+    }
+
+    function animateValues() {
+      document.querySelectorAll('.stat-value').forEach((el, index) => {
+        if (el.dataset.value === '') return;
+        const target = Number(el.dataset.value || 0);
+        const duration = 1100 + index * 70;
+        const start = performance.now();
+        const step = (now) => {
+          const progress = Math.min((now - start) / duration, 1);
+          const eased = 1 - Math.pow(1 - progress, 3);
+          const value = Math.floor(eased * target);
+          el.textContent = value.toLocaleString();
+          if (progress < 1) requestAnimationFrame(step);
+          else el.textContent = target.toLocaleString();
+        };
+        requestAnimationFrame(step);
+      });
+    }
+
+    function renderCharts(charts) {
+      destroyCharts();
+      const hasData = charts && (charts.monthlySubmissions.some(item => item.value > 0) || charts.departmentBreakdown.length || charts.categoryBreakdown.length || charts.statusBreakdown.some(item => item.value > 0));
+      const lineCtx = document.getElementById('submissionsChart');
+      if (!hasData) {
+        lineCtx.parentElement.innerHTML = '<div class="text-muted py-5 text-center">No data available</div>';
+        return;
+      }
+      state.charts.submissions = new Chart(lineCtx, {
+        type: 'line',
+        data: {
+          labels: charts.monthlySubmissions.map(item => item.label),
+          datasets: [{
+            label: 'Submissions',
+            data: charts.monthlySubmissions.map(item => item.value),
+            borderColor: '#1E3A8A',
+            backgroundColor: 'rgba(30,58,138,.16)',
+            pointRadius: 4,
+            fill: true,
+            tension: .35
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+
+      const statusCtx = document.getElementById('statusChart');
+      state.charts.status = new Chart(statusCtx, {
+        type: 'doughnut',
+        data: {
+          labels: charts.statusBreakdown.map(item => item.label),
+          datasets: [{ data: charts.statusBreakdown.map(item => item.value), backgroundColor: ['#1E3A8A','#14B8A6','#F59E0B','#EF4444'] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+      });
+
+      const engagementCtx = document.getElementById('engagementChart');
+      state.charts.engagement = new Chart(engagementCtx, {
+        type: 'line',
+        data: {
+          labels: charts.downloadsVsViews.map(item => item.label),
+          datasets: [
+            { label: 'Downloads', data: charts.downloadsVsViews.map(item => item.downloads), borderColor: '#14B8A6', backgroundColor: 'rgba(20,184,166,.16)', fill: true, tension: .35 },
+            { label: 'Views', data: charts.downloadsVsViews.map(item => item.views), borderColor: '#1E3A8A', backgroundColor: 'rgba(30,58,138,.16)', fill: true, tension: .35 }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+      });
+
+      const departmentCtx = document.getElementById('departmentChart');
+      state.charts.department = new Chart(departmentCtx, {
+        type: 'bar',
+        data: {
+          labels: charts.departmentBreakdown.map(item => item.label),
+          datasets: [{ label: 'Research Count', data: charts.departmentBreakdown.map(item => item.value), backgroundColor: '#1E3A8A' }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+    }
+
+    function renderActivity(activity) {
+      const feed = document.getElementById('activityFeed');
+      if (!activity.length) {
+        feed.innerHTML = '<div class="text-muted">No data available</div>';
+        return;
+      }
+      feed.innerHTML = activity.slice(0, 10).map(entry => `
+        <div class="activity-item">
+          <div class="d-flex justify-content-between gap-3">
+            <div>
+              <div class="fw-semibold">${entry.title}</div>
+              <div class="small text-muted">${entry.details}</div>
+            </div>
+            <div class="text-end">
+              <span class="badge rounded-pill ${entry.badgeClass}">${entry.status}</span>
+              <div class="small text-muted mt-1">${entry.timestamp}</div>
+            </div>
+          </div>
+        </div>`).join('');
+    }
+
+    function renderTopLists(viewed, downloaded) {
+      const viewedHtml = viewed.length ? viewed.slice(0, 10).map((item, index) => `<li class="mb-2"><span class="fw-semibold">${index + 1}. ${item.title}</span><div class="small text-muted">${item.views} views</div></li>`).join('') : '<li>No data available</li>';
+      const downloadedHtml = downloaded.length ? downloaded.slice(0, 10).map((item, index) => `<li class="mb-2"><span class="fw-semibold">${index + 1}. ${item.title}</span><div class="small text-muted">${item.downloads} downloads</div></li>`).join('') : '<li>No data available</li>';
+      document.getElementById('topViewedList').innerHTML = viewedHtml;
+      document.getElementById('topDownloadedList').innerHTML = downloadedHtml;
+    }
+
+    async function loadDashboard() {
+      createSkeletons();
+      const params = new URLSearchParams();
+      ['filterYear','filterDepartment','filterCategory','filterAdviser','filterFrom','filterTo'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && el.value) params.set(id.replace('filter','').replace(/^./, c => c.toLowerCase()), el.value);
+      });
+      const query = params.toString();
+      const res = await fetch(`/api/admin/impact-dashboard${query ? '?' + query : ''}`, { credentials: 'include', cache: 'no-store' });
+      if (!res.ok) {
+        document.getElementById('statsGrid').innerHTML = '<div class="col-12"><div class="alert alert-danger">Unable to load the dashboard. Please sign in as an administrator.</div></div>';
+        return;
+      }
+      const data = await res.json();
+      state.dashboard = data;
+      document.getElementById('lastUpdated').textContent = data.generatedAt ? new Date(data.generatedAt).toLocaleString() : 'Unavailable';
+      renderStats({ ...data.stats, hasData: data.hasData });
+      renderCharts(data.charts);
+      renderActivity(data.activity);
+      renderTopLists(data.charts.topViewed, data.charts.topDownloaded);
+      populateFilters(data.filters);
+    }
+
+    function populateFilters(filters) {
+      const setOptions = (selectId, values) => {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+        const current = select.value;
+        select.innerHTML = '<option value="">All</option>' + values.map(value => `<option value="${value}">${value}</option>`).join('');
+        if (current) select.value = current;
+      };
+      setOptions('filterYear', filters.academicYears);
+      setOptions('filterDepartment', filters.departments);
+      setOptions('filterCategory', filters.categories);
+      setOptions('filterAdviser', filters.advisers);
+    }
+
+    function getExportRows() {
+      const rows = [];
+      if (!state.dashboard) return rows;
+      rows.push(['Metric', 'Value']);
+      Object.entries(state.dashboard.stats).forEach(([key, value]) => rows.push([key, value]));
+      return rows;
+    }
+
+    function downloadFile(filename, content, type) {
+      const blob = new Blob([content], { type });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function exportCsv() {
+      const rows = getExportRows();
+      const csv = rows.map(row => row.join(',')).join('\n');
+      downloadFile('cpri-research-impact.csv', csv, 'text/csv;charset=utf-8;');
+    }
+
+    function exportExcel() {
+      const rows = getExportRows();
+      const html = `<table>${rows.map(row => '<tr>' + row.map(cell => `<td>${String(cell).replace(/</g,'&lt;')}</td>`).join('') + '</tr>').join('')}</table>`;
+      downloadFile('cpri-research-impact.xls', html, 'application/vnd.ms-excel;charset=utf-8;');
+    }
+
+    function exportPdf() {
+      const w = window.open('', '_blank', 'width=900,height=700');
+      const rows = getExportRows();
+      w.document.write(`<html><head><title>CPRI Research Impact Report</title><style>body{font-family:Arial,sans-serif;padding:24px}table{width:100%;border-collapse:collapse}td,th{border:1px solid #d1d5db;padding:8px}</style></head><body><h2>CPRI Research Impact Report</h2><table>${rows.map(row => '<tr>' + row.map(cell => `<td>${String(cell).replace(/</g,'&lt;')}</td>`).join('') + '</tr>').join('')}</table></body></html>`);
+      w.document.close();
+      w.print();
+    }
+
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', current);
+      localStorage.setItem('cpri-theme', current);
+    });
+    document.getElementById('exportCsv').addEventListener('click', exportCsv);
+    document.getElementById('exportExcel').addEventListener('click', exportExcel);
+    document.getElementById('exportPdf').addEventListener('click', exportPdf);
+    document.getElementById('printReport').addEventListener('click', () => window.print());
+
+    ['filterYear','filterDepartment','filterCategory','filterAdviser','filterFrom','filterTo'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => loadDashboard());
+      document.getElementById(id).addEventListener('input', () => loadDashboard());
+    });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const savedTheme = localStorage.getItem('cpri-theme');
+      if (savedTheme) document.documentElement.setAttribute('data-theme', savedTheme);
+      loadDashboard();
+      setInterval(loadDashboard, 8000);
+    });
+  </script>
+</body>
+</html>

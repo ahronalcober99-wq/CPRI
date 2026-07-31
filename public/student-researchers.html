@@ -7,72 +7,203 @@
   <meta name="description" content="Student researchers can submit capstone and research outputs, upload required documents, and track submission status." />
   <link rel="stylesheet" href="assets/css/styles.css">
 </head>
-<body>
+<body class="student-researchers">
   <a class="skip-link" href="#main">Skip to content</a>
   <div id="site-header"></div>
 
   <main id="main">
-    <section class="page-header">
+    <section class="student-hero section">
       <div class="container">
-        <h1>Student Researcher Portal</h1>
-        <p>Submit your capstone or student research output, upload required documentation, and monitor review status in one place.</p>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="container">
-        <div class="grid grid-2" style="gap:24px;">
-          <div class="card">
-            <h2>Submit Your Output</h2>
-            <p>Use the research submission form to submit capstone projects, student theses, or other research outputs. Be sure to choose the correct research type and attach all required documents.</p>
-            <ul class="feature-list">
-              <li>Title, authors, program, adviser, and research category</li>
-              <li>Choose <strong>Capstone</strong> or <strong>Student Thesis</strong> for research type</li>
-              <li>Upload manuscript, abstract, approval forms, similarity report, adviser endorsement, and panel sheet</li>
-              <li>Optional supporting files: ethics certificate, publication proof, and additional documents</li>
-            </ul>
-            <a class="btn btn-primary" href="submit.html">Submit Research</a>
-          </div>
-
-          <div class="card">
-            <h2>Track Submission Status</h2>
-            <p>After submission, track progress from "Submitted" through review stages to approval and publication. View detailed status history, uploaded documents, revision requests, and feedback.</p>
-            <ul class="feature-list">
-              <li>See current submission status at a glance</li>
-              <li>Open individual submission details for comments, files, and status history</li>
-              <li>Upload revisions when requested</li>
-              <li>Keep all capstone and thesis outputs organized</li>
-            </ul>
-            <a class="btn btn-navy" href="submissions.html">View My Submissions</a>
+        <div class="hero-panel">
+          <span class="hero-pill">Now accepting 2026 submissions</span>
+          <h1>Submit, track, and manage your student research in one portal.</h1>
+          <p class="hero-copy">Upload manuscripts, approvals, and ethics forms, then monitor review progress from submission through publication.</p>
+          <div class="hero-actions">
+            <a class="btn btn-primary" href="submit.html">Start a submission</a>
+            <a class="btn btn-ghost" href="repository.html">View repository</a>
           </div>
         </div>
       </div>
     </section>
 
-    <section class="section alt">
-      <div class="container">
-        <h2 class="section-title">Required Documents for Student Submissions</h2>
-        <div class="grid grid-3" style="gap:16px;">
-          <div class="card"><h3>Manuscript</h3><p>Complete research paper or thesis document.</p></div>
-          <div class="card"><h3>Abstract</h3><p>Executive summary of your research.</p></div>
-          <div class="card"><h3>Approval Form</h3><p>Evidence that the research has institutional approval.</p></div>
-          <div class="card"><h3>Similarity Report</h3><p>Academic integrity check report.</p></div>
-          <div class="card"><h3>Adviser Endorsement</h3><p>Written approval from your research adviser.</p></div>
-          <div class="card"><h3>Panel Approval Sheet</h3><p>Confirmation of capstone/project panel approval.</p></div>
+    <section class="stats-strip section">
+      <div class="container stats-grid">
+        <div class="stat-item">
+          <div class="stat-value">1,248</div>
+          <div class="stat-label">submissions filed</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">92%</div>
+          <div class="stat-label">approved to date</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">4.8d</div>
+          <div class="stat-label">avg review time</div>
         </div>
       </div>
     </section>
 
     <section class="section">
+      <div class="container tracker-card">
+        <div class="tracker-header">
+          <div>
+            <span class="eyebrow">Your submission</span>
+            <p class="tracker-copy">Review progress for your latest student research output.</p>
+          </div>
+          <span class="status-pill status-in-review">In review</span>
+        </div>
+
+        <div class="tracker-flow">
+          <div class="step completed">
+            <div class="step-circle">✓</div>
+            <div class="step-label">Submitted</div>
+          </div>
+          <div class="step-line filled"></div>
+          <div class="step current">
+            <div class="step-circle">2</div>
+            <div class="step-label">Ethics review</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step">
+            <div class="step-circle">3</div>
+            <div class="step-label">Approval</div>
+          </div>
+          <div class="step-line"></div>
+          <div class="step">
+            <div class="step-circle">4</div>
+            <div class="step-label">Published</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="data-grid section alt">
+      <div class="container grid grid-2">
+        <div class="chart-panel">
+          <div class="panel-head">
+            <h2 class="panel-title">Submissions this year</h2>
+            <p class="panel-copy">Last 6 months, current month highlighted.</p>
+          </div>
+          <div class="chart-bars">
+            <div class="bar">
+              <div class="bar-track"><span class="bar-fill" style="height:36%"></span></div>
+              <div class="bar-label">Jan</div>
+            </div>
+            <div class="bar">
+              <div class="bar-track"><span class="bar-fill" style="height:52%"></span></div>
+              <div class="bar-label">Feb</div>
+            </div>
+            <div class="bar">
+              <div class="bar-track"><span class="bar-fill" style="height:60%"></span></div>
+              <div class="bar-label">Mar</div>
+            </div>
+            <div class="bar">
+              <div class="bar-track"><span class="bar-fill" style="height:72%"></span></div>
+              <div class="bar-label">Apr</div>
+            </div>
+            <div class="bar">
+              <div class="bar-track"><span class="bar-fill" style="height:84%"></span></div>
+              <div class="bar-label">May</div>
+            </div>
+            <div class="bar">
+              <div class="bar-track"><span class="bar-fill current" style="height:100%"></span></div>
+              <div class="bar-label">Jun</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="category-panel">
+          <div class="panel-head">
+            <h2 class="panel-title">By category</h2>
+            <p class="panel-copy">Submission breakdown by student research type.</p>
+          </div>
+          <div class="category-progress">
+            <div class="category-row">
+              <div class="label">Capstone</div>
+              <div class="percentage">55%</div>
+            </div>
+            <div class="cat-bar"><span class="cat-fill capstone" style="width:55%"></span></div>
+            <div class="category-row">
+              <div class="label">Thesis</div>
+              <div class="percentage">28%</div>
+            </div>
+            <div class="cat-bar"><span class="cat-fill thesis" style="width:28%"></span></div>
+            <div class="category-row">
+              <div class="label">Applied work</div>
+              <div class="percentage">17%</div>
+            </div>
+            <div class="cat-bar"><span class="cat-fill applied" style="width:17%"></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="how-it-works section">
       <div class="container">
-        <h2 class="section-title">Submission Tips</h2>
-        <ul class="feature-list">
-          <li>Log in as a student researcher before submitting.</li>
-          <li>Keep document filenames clear and descriptive.</li>
-          <li>Review all required files before you click submit.</li>
-          <li>If revisions are requested, upload a revised manuscript through the submission detail page.</li>
-          <li>Contact your adviser or CPRI staff for help with ethics clearance.</li>
-        </ul>
+        <div class="section-head">
+          <h2 class="section-title">How it works</h2>
+          <p class="section-sub">The student research submission process is simple, traceable, and review-ready.</p>
+        </div>
+        <div class="grid grid-3">
+          <article class="work-card">
+            <div class="chip upload"><i class="bi bi-upload"></i></div>
+            <h3>Prepare your research</h3>
+            <p>Gather required files, confirm your category, and complete the submission form.</p>
+          </article>
+          <article class="work-card">
+            <div class="chip track"><i class="bi bi-bar-chart-line"></i></div>
+            <h3>Track review progress</h3>
+            <p>Follow your submission through ethics review, approval, and publication stages.</p>
+          </article>
+          <article class="work-card">
+            <div class="chip review"><i class="bi bi-check2-circle"></i></div>
+            <h3>Respond to feedback</h3>
+            <p>Receive revision requests, upload updates, and finalize your approved output.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="recent-submissions section">
+      <div class="container recent-card">
+        <div class="tracker-header" style="margin-bottom:18px;">
+          <div>
+            <h2 class="section-title">Recent submissions</h2>
+            <p class="panel-copy">Latest student work, with quick status indicators.</p>
+          </div>
+        </div>
+        <div class="submission-list">
+          <div class="submission-row">
+            <div class="submission-meta">
+              <div class="submission-avatar" style="background: rgba(59,130,246,.16); color: #1D4ED8;">AP</div>
+              <div class="submission-details">
+                <p class="submission-title">Autonomous Policy Framework</p>
+                <p class="submission-text">A. Perez · Applied work</p>
+              </div>
+            </div>
+            <span class="status-pill status-approved status-pill sm">Approved</span>
+          </div>
+          <div class="submission-row">
+            <div class="submission-meta">
+              <div class="submission-avatar" style="background: rgba(30,58,138,.12); color: var(--cpri-secondary);">LN</div>
+              <div class="submission-details">
+                <p class="submission-title">Thesis on Renewable Finance</p>
+                <p class="submission-text">L. Navarez · Thesis</p>
+              </div>
+            </div>
+            <span class="status-pill status-in-review status-pill sm">In review</span>
+          </div>
+          <div class="submission-row">
+            <div class="submission-meta">
+              <div class="submission-avatar" style="background: rgba(245,158,11,.16); color: #b45309;">SS</div>
+              <div class="submission-details">
+                <p class="submission-title">Capstone Data Ethics</p>
+                <p class="submission-text">S. Santos · Capstone</p>
+              </div>
+            </div>
+            <span class="status-pill status-revision status-pill sm">Revisions</span>
+          </div>
+        </div>
       </div>
     </section>
   </main>

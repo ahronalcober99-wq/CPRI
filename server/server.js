@@ -14,6 +14,7 @@ import { innovationExtensionRouter } from './innovation-extension.js';
 import { adminDashboardRouter } from './admin-dashboard.js';
 import { reportsRouter } from './reports.js';
 import { testConnection } from './db.js';
+import { insert } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -82,16 +83,14 @@ app.post('/api/contact', async (req, res) => {
   if (!name || !email || !message) {
     return res.status(400).json({ error: 'Name, email and message are required.' });
   }
-  const inquiry = {
-    id: Date.now(),
-    name: String(name).trim(),
-    email: String(email).trim(),
-    subject: subject ? String(subject).trim() : '',
-    message: String(message).trim(),
-    receivedAt: new Date().toISOString()
-  };
   try {
-    await fs.writeFile(join(DATA_DIR, 'inquiries.json'), JSON.stringify([inquiry], null, 2));
+    await insert('inquiries', {
+      name: String(name).trim(),
+      email: String(email).trim(),
+      subject: subject ? String(subject).trim() : '',
+      message: String(message).trim(),
+      receivedAt: new Date().toISOString()
+    });
   } catch (err) {
     console.error('Could not persist inquiry:', err);
   }

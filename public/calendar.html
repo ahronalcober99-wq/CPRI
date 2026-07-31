@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendar | CPRI Admin</title>
+  <meta name="theme-color" content="#0F172A">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container-xl">
+        <span class="badge" style="background:rgba(255,255,255,.16);color:#fff;">Schedule &amp; Events</span>
+        <h1>Calendar</h1>
+        <p>View and manage events, conferences, and scheduled activities.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container-xl">
+        <div class="form-message" id="message"></div>
+        <div id="access-denied" class="empty-state" style="display:none;">Admin access required.</div>
+
+        <div class="admin-shell">
+          <!-- Sidebar -->
+          <aside class="admin-side">
+            <div class="as-brand">
+              <span class="logo">C</span>
+              <div><b>CPRI Admin</b><small>Control Center</small></div>
+            </div>
+            <div class="as-label">Operations</div>
+            <a href="admin-dashboard.html"><i class="bi bi-speedometer2"></i> Overview</a>
+            <a href="submissions.html"><i class="bi bi-send"></i> Submissions</a>
+            <a href="repository.html"><i class="bi bi-archive"></i> Repository</a>
+            <a href="publications.html"><i class="bi bi-journal-richtext"></i> Publications</a>
+            <a href="ethics.html"><i class="bi bi-shield-check"></i> Ethics Review</a>
+            <a href="researchers.html"><i class="bi bi-people"></i> Researchers</a>
+            <div class="as-label">Insights</div>
+            <a href="reports.html"><i class="bi bi-bar-chart"></i> Analytics &amp; Reports</a>
+            <a href="audit-logs.html"><i class="bi bi-activity"></i> Audit Logs</a>
+            <a href="calendar.html" class="active"><i class="bi bi-calendar3"></i> Calendar</a>
+            <a href="email-notifications.html"><i class="bi bi-envelope"></i> Email Notifications</a>
+            <a href="file-manager.html"><i class="bi bi-folder2"></i> File Manager</a>
+            <div class="as-user">
+              <span class="av">AD</span>
+              <div><b style="font-family:var(--font-head);color:var(--cpri-text)">Admin</b><small>Role-based access</small></div>
+            </div>
+          </aside>
+
+          <!-- Main -->
+          <div class="admin-main">
+            <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+              <div>
+                <h2>Events Calendar</h2>
+                <small style="color:var(--cpri-muted)">Upcoming conferences, seminars, and workshops</small>
+              </div>
+              <a class="btn btn-gradient btn-sm" href="event-registration.html"><i class="bi bi-plus-lg"></i> Create Event</a>
+            </div>
+
+            <div class="admin-card" id="upcoming-events">
+              <h3><i class="bi bi-calendar-check"></i> Upcoming Events</h3>
+              <div id="events-list"><p class="form-note">Loading events…</p></div>
+            </div>
+
+            <div class="admin-card" id="past-events" style="display:none;">
+              <h3><i class="bi bi-calendar2-week"></i> Past Events</h3>
+              <div id="events-past-list"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '—';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function fmtDate(d) {
+      const date = new Date(d);
+      if (isNaN(date)) return d;
+      return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderEvents(events, containerId) {
+      const el = document.getElementById(containerId);
+      if (!events.length) {
+        el.innerHTML = '<p class="form-note">No events found.</p>';
+        return;
+      }
+
+      const now = Date.now();
+      const filtered = events.filter(e => {
+        const t = new Date(e.dateTime || e.date || 0).getTime();
+        return isNaN(t) ? true : containerId === 'events-list' ? t >= now : t < now;
+      }).sort((a, b) => new Date(a.dateTime || a.date || 0) - new Date(b.dateTime || b.date || 0));
+
+      if (!filtered.length) {
+        el.innerHTML = '<p class="form-note">No events in this category.</p>';
+        if (containerId === 'events-list') {
+          document.getElementById('upcoming-events').style.display = 'block';
+          document.getElementById('past-events').style.display = 'none';
+        }
+        return;
+      }
+
+      const past = containerId === 'events-past-list';
+      if (past) document.getElementById('past-events').style.display = 'block';
+
+      el.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Date &amp; Time</th>
+                <th>Venue / Location</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filtered.slice(0, 50).map(e => {
+                const dt = new Date(e.dateTime || e.date || 0);
+                const isPast = isNaN(dt.getTime()) ? false : dt.getTime() < now;
+                return `
+                  <tr>
+                    <td><b style="font-family:var(--font-head);color:var(--cpri-text)">${escapeHtml(e.title)}</b></td>
+                    <td style="white-space:nowrap;">${fmtDate(e.dateTime || e.date)}</td>
+                    <td>${escapeHtml(e.venue || e.location || '—')}</td>
+                    <td><span class="tag">${escapeHtml(e.type || e.theme || 'General')}</span></td>
+                    <td>${isPast ? '<span class="status-pill disabled">Past</span>' : '<span class="status-pill active">Upcoming</span>'}</td>
+                    <td><a class="btn btn-soft btn-sm" href="event-detail.html?id=${e.id || ''}">View <i class="bi bi-arrow-right"></i></a></td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+
+      if (containerId === 'events-list' && filtered.length === 0) {
+        document.getElementById('past-events').style.display = 'none';
+      }
+    }
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { document.getElementById('access-denied').style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      if (!['admin', 'cpri_staff'].includes(user.role)) {
+        document.getElementById('access-denied').style.display = 'block';
+        return;
+      }
+
+      try {
+        const eventsRes = await fetch('/api/events');
+        if (eventsRes.ok) {
+          const events = await eventsRes.json();
+          renderEvents(Array.isArray(events) ? events : [], 'events-list');
+          renderEvents(Array.isArray(events) ? events : [], 'events-past-list');
+        } else {
+          document.getElementById('events-list').innerHTML = '<p class="form-note">Failed to load events.</p>';
+        }
+      } catch (e) {
+        document.getElementById('events-list').innerHTML = '<p class="form-note">Error loading events.</p>';
+      }
+    })();
+  </script>
+</body>
+</html>
+
