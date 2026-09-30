@@ -266,3 +266,5 @@ Contact form submissions are appended to `server/data/inquiries.json`.
 | POST   | `/api/repository`                | Publish a submission/manual record (admin/cpri_staff)         |
 | PATCH  | `/api/repository/:id`            | Update access level/citation/metadata (admin/cpri_staff)      |
 | DELETE | `/api/repository/:id`            | Remove record (admin/cpri_staff)                              |
+#   C P R I  
+ 
