@@ -88,7 +88,62 @@ class DirectFileStore extends session.Store {
   }
 }
 
+// ---- Cross-origin front end (the GitHub Pages copy) ----------------------
+// The static site can be hosted apart from this API. CORS_ORIGINS is a
+// comma-separated allowlist of front-end origins, e.g.
+//   CORS_ORIGINS=https://ahronalcober99-wq.github.io
+// Leaving it empty keeps the API same-origin only — the default, and the safest
+// option for local development.
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || '')
+  .split(',')
+  .map((s) => s.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+const CROSS_SITE = CORS_ORIGINS.length > 0;
+
 const app = express();
+
+// Hosting platforms (Render, Railway, Fly, nginx, the cloudflared share tunnel)
+// terminate TLS and forward X-Forwarded-Proto, so Express must be told to trust
+// that header or it never sees the request as secure — and a session cookie
+// marked Secure is then either omitted (express-session) or rejected by the
+// browser. Set TRUST_PROXY=1 (or a hop count) on those hosts; leave it unset
+// when the API is exposed directly, since the header is otherwise spoofable.
+const TRUST_PROXY = (process.env.TRUST_PROXY || '').trim();
+const TRUST_PROXY_ENABLED = TRUST_PROXY !== '' && TRUST_PROXY !== '0' && TRUST_PROXY.toLowerCase() !== 'false';
+if (TRUST_PROXY_ENABLED) {
+  app.set('trust proxy', Number(TRUST_PROXY) || true);
+}
+
+// Requests are credentialed (the session cookie is what keeps a user logged in),
+// so the allowed origin is echoed back exactly rather than answering '*'.
+if (CROSS_SITE) {
+  if (CORS_ORIGINS.includes('*')) {
+    console.warn('[cors] CORS_ORIGINS=* reflects any origin; combined with credentialed requests that lets any website act as a signed-in user. List exact origins instead.');
+  }
+  console.log('[cors] cross-origin front end allowed for:', CORS_ORIGINS.join(', '));
+  if (!TRUST_PROXY_ENABLED) {
+    console.warn('[cors] TRUST_PROXY is not set. Behind a TLS-terminating host the request never looks secure, so the session cookie will be sent without the Secure flag and browsers will reject the SameSite=None cookie — sign-in then silently fails cross-site. Set TRUST_PROXY=1 on such hosts.');
+  }
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    const allowed = Boolean(origin) && (CORS_ORIGINS.includes('*') || CORS_ORIGINS.includes(origin));
+    if (allowed) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Vary', 'Origin');
+    }
+    if (req.method === 'OPTIONS') {
+      if (allowed) {
+        res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers', req.headers['access-control-request-headers'] || 'Content-Type');
+        res.setHeader('Access-Control-Max-Age', '600');
+      }
+      return res.sendStatus(204);
+    }
+    next();
+  });
+}
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -100,8 +155,15 @@ app.use(session({
   store: new DirectFileStore(SESSIONS_DIR),
   cookie: {
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    // SameSite=None is required for a cross-site front end: a Lax cookie is not
+    // sent on requests originating from the Pages site, so the visitor would
+    // look signed out. None also requires Secure, hence the API must be reached
+    // over HTTPS in that setup. 'auto' emits Secure only for requests Express can
+    // tell arrived over TLS — with a literal `true`, express-session silently
+    // omits the cookie entirely on a non-HTTPS connection instead. Without
+    // CORS_ORIGINS nothing changes here (the same-origin dev flow is untouched).
+    sameSite: CROSS_SITE ? 'none' : 'lax',
+    secure: CROSS_SITE ? 'auto' : process.env.NODE_ENV === 'production',
     maxAge: SESSION_TTL_MS
   }
 }));

@@ -127,6 +127,38 @@ DB_POOL_LIMIT=10
 
 If no `.env` file is present, the app defaults to `localhost:3306`, user `root`, no password, database `cpri`.
 
+### Optional: host the front end separately (e.g. GitHub Pages)
+
+The static front end in `public/` can be published on its own host while this API keeps running
+elsewhere. Two settings make that work:
+
+- **Front end** — tell it where the API lives, before `assets/js/main.js` loads:
+  ```html
+  <script>window.CPRI_API_BASE = 'https://your-api.example.com';</script>
+  ```
+  or at runtime with `localStorage.setItem('cpri-api-base', 'https://your-api.example.com')`.
+  Every `/api/...` call is then sent to that origin with credentials included.
+- **API** — allow that front-end origin (comma-separated for several):
+  ```env
+  CORS_ORIGINS=https://ahronalcober99-wq.github.io
+  ```
+  Setting it also switches the session cookie to `SameSite=None; Secure`, without which a
+  signed-in visitor looks logged out on every cross-site request.
+- **Proxy trust** — `SameSite=None` requires `Secure`, so the API must be reached over **HTTPS**.
+  Hosts that terminate TLS for you (Render, Railway, Fly, nginx, the `npm run share` tunnel) must
+  be trusted or Express never marks the request secure and the cookie is dropped:
+  ```env
+  TRUST_PROXY=1
+  ```
+  The server logs a warning when `CORS_ORIGINS` is set without `TRUST_PROXY`.
+
+A plain `http://localhost` split cannot carry a `SameSite=None` cookie — browsers reject it —
+so exercise that setup through the HTTPS share tunnel. Leaving `CORS_ORIGINS` empty keeps the API
+same-origin only, which is the default and what local development uses.
+
+When no API base is configured the front end stays same-origin, and a page that cannot reach
+any API reports it in plain language instead of failing on JSON parsing.
+
 ### 4. (Optional) Migrate existing JSON data to MySQL
 
 If you have existing data in `server/data/*.json` files, you can migrate them to MySQL:

@@ -35,6 +35,9 @@ const CPRI = (() => {
     window.fetch = function (input, init) {
       if (typeof input === 'string' && input.startsWith('/api/')) {
         input = API_BASE + input;
+        // The session cookie is what keeps a visitor signed in, and a cross-origin
+        // fetch omits it unless credentials are requested. An explicit value wins.
+        init = { credentials: 'include', ...(init || {}) };
       } else if (typeof Request !== 'undefined' && input instanceof Request) {
         const u = new URL(input.url, location.href);
         if (u.pathname.startsWith('/api/')) input = new Request(API_BASE + u.pathname + u.search, input);
@@ -47,7 +50,10 @@ const CPRI = (() => {
   // /api/* with a 404 HTML document, which reached users as
   // `Unexpected token '<', "<html> <he"... is not valid JSON`.
   async function apiFetch(path, options) {
-    if (API_BASE && path.startsWith('/api/')) path = API_BASE + path;
+    if (API_BASE && path.startsWith('/api/')) {
+      path = API_BASE + path;
+      options = { credentials: 'include', ...(options || {}) };
+    }
     let response;
     try {
       response = await fetch(path, options);
