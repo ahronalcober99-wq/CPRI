@@ -7,6 +7,7 @@
   <meta name="theme-color" content="#0F172A">
   <link rel="stylesheet" href="assets/css/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -15,9 +16,8 @@
   <main id="main">
     <section class="page-header">
       <div class="container-xl">
-        <span class="badge" style="background:rgba(255,255,255,.16);color:#fff;">Enterprise Console</span>
-        <h1>Admin Dashboard</h1>
-        <p>Monitoring, governance, and decision-making center for CPRI research operations.</p>
+        <h1>Admin Console</h1>
+        <p>Manage CPRI research operations — metrics, users, content, and audit logs in one place.</p>
       </div>
     </section>
 
@@ -42,10 +42,10 @@
             <a href="researchers.html"><i class="bi bi-people"></i> Researchers</a>
             <div class="as-label">Insights</div>
             <a href="reports.html"><i class="bi bi-bar-chart"></i> Analytics &amp; Reports</a>
-            <a href="#logs"><i class="bi bi-activity"></i> Audit Logs</a>
-            <a href="#"><i class="bi bi-calendar3"></i> Calendar</a>
-            <a href="#"><i class="bi bi-envelope"></i> Email Notifications</a>
-            <a href="#"><i class="bi bi-folder2"></i> File Manager</a>
+            <a href="audit-logs.html"><i class="bi bi-activity"></i> Audit Logs</a>
+            <a href="calendar.html"><i class="bi bi-calendar3"></i> Calendar</a>
+            <a href="email-notifications.html"><i class="bi bi-envelope"></i> Email Notifications</a>
+            <a href="file-manager.html"><i class="bi bi-folder2"></i> File Manager</a>
             <div class="as-user">
               <span class="av">AD</span>
               <div><b style="font-family:var(--font-head);color:var(--cpri-text)">Admin</b><small>Role-based access</small></div>
@@ -56,40 +56,60 @@
           <div class="admin-main">
             <div class="admin-toolbar">
               <div>
-                <h2>Operations Overview</h2>
-                <small style="color:var(--cpri-muted)">Real-time research management metrics</small>
+                <h2 id="toolbarTitle">Operations Overview</h2>
+                <small id="toolbarSub" style="color:var(--cpri-muted)">Real-time research management metrics</small>
               </div>
-              <a class="btn btn-gradient btn-sm" href="submissions.html"><i class="bi bi-plus-lg"></i> New Submission</a>
-            </div>
-
-            <div id="dashboard-summary" class="kpi-row"></div>
-
-            <div class="admin-grid">
-              <div class="admin-card">
-                <h3><i class="bi bi-bar-chart-line"></i> Research Output per Department</h3>
-                <canvas id="chart-dept"></canvas>
-              </div>
-              <div class="admin-card">
-                <h3><i class="bi bi-graph-up"></i> Research Output per Year</h3>
-                <canvas id="chart-year"></canvas>
-              </div>
-              <div class="admin-card">
-                <h3><i class="bi bi-hourglass-split"></i> Submissions by Status</h3>
-                <canvas id="chart-submissions"></canvas>
-              </div>
-              <div class="admin-card">
-                <h3><i class="bi bi-shield-check"></i> Ethics Applications by Status</h3>
-                <canvas id="chart-ethics"></canvas>
+              <div class="admin-toolbar-actions">
+                <button type="button" class="btn btn-soft btn-sm" id="dash-bell" title="Notifications" aria-label="Notifications">
+                  <i class="bi bi-bell"></i> Notifications <span class="dot" id="dashNotifBadge" style="display:none"></span>
+                </button>
+                <button type="button" class="btn btn-soft btn-sm" id="dash-settings" title="Notification settings" aria-label="Notification settings">
+                  <i class="bi bi-gear"></i> Settings
+                </button>
+                <a class="btn btn-gradient btn-sm" href="submissions.html"><i class="bi bi-plus-lg"></i> New Submission</a>
               </div>
             </div>
 
-            <div class="admin-card">
-              <h3><i class="bi bi-people"></i> User Management <span class="status-pill active">Role-based</span></h3>
-              <div id="user-management"></div>
+            <div class="admin-tabs" id="adminTabs">
+              <button type="button" class="atab active" data-tab="overview"><i class="bi bi-speedometer2"></i> Overview</button>
+              <button type="button" class="atab" data-tab="users"><i class="bi bi-people"></i> Users</button>
+              <button type="button" class="atab" data-tab="content"><i class="bi bi-sliders"></i> Content</button>
+              <button type="button" class="atab" data-tab="logs"><i class="bi bi-activity"></i> Logs</button>
             </div>
 
-            <div class="admin-card">
-              <h3><i class="bi bi-sliders"></i> Content Management</h3>
+            <div class="admin-panel active" data-panel="overview">
+              <div id="dashboard-summary" class="kpi-row"></div>
+
+              <div class="admin-grid">
+                <div class="admin-card">
+                  <h3><i class="bi bi-bar-chart-line"></i> Research Output per Department</h3>
+                  <canvas id="chart-dept"></canvas>
+                </div>
+                <div class="admin-card">
+                  <h3><i class="bi bi-graph-up"></i> Research Output per Year</h3>
+                  <canvas id="chart-year"></canvas>
+                </div>
+                <div class="admin-card">
+                  <h3><i class="bi bi-hourglass-split"></i> Submissions by Status</h3>
+                  <canvas id="chart-submissions"></canvas>
+                </div>
+                <div class="admin-card">
+                  <h3><i class="bi bi-shield-check"></i> Ethics Applications by Status</h3>
+                  <canvas id="chart-ethics"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-panel" data-panel="users">
+              <div class="admin-card">
+                <h3><i class="bi bi-people"></i> User Management <span class="status-pill active">Role-based</span></h3>
+                <div id="user-management"></div>
+              </div>
+            </div>
+
+            <div class="admin-panel" data-panel="content">
+              <div class="admin-card">
+                <h3><i class="bi bi-sliders"></i> Content Management</h3>
               <div class="sub-cards">
                 <div>
                   <h4 style="font-family:var(--font-head)">Homepage Content</h4>
@@ -106,40 +126,79 @@
                   </form>
                 </div>
                 <div>
-                  <h4 style="font-family:var(--font-head)">Announcements</h4>
-                  <form id="announcement-form">
-                    <div class="form-group">
-                      <label>Title</label>
-                      <input type="text" id="a-title" required style="margin-bottom:8px;">
-                    </div>
-                    <div class="form-group">
-                      <label>Content</label>
-                      <textarea id="a-content" rows="3" required></textarea>
-                    </div>
-                    <button type="submit" class="btn btn-primary">Post Announcement</button>
-                  </form>
-                </div>
-                <div>
                   <h4 style="font-family:var(--font-head)">Events</h4>
                   <form id="event-form">
+                    <input type="hidden" id="e-id">
                     <div class="form-group">
                       <label>Title</label>
                       <input type="text" id="e-title" required style="margin-bottom:8px;">
                     </div>
                     <div class="form-group">
-                      <label>Theme</label>
-                      <input type="text" id="e-theme" required style="margin-bottom:8px;">
+                      <label>Type</label>
+                      <select id="e-type" style="margin-bottom:8px;">
+                        <option>Conference</option>
+                        <option>Symposium</option>
+                        <option>Seminar</option>
+                        <option>Workshop</option>
+                        <option>Training</option>
+                        <option>Capability Building</option>
+                        <option>Webinar</option>
+                        <option>Other</option>
+                      </select>
                     </div>
                     <div class="form-group">
-                      <label>Date &amp; Time</label>
-                      <input type="datetime-local" id="e-datetime" required style="margin-bottom:8px;">
+                      <label>Date</label>
+                      <input type="date" id="e-date" required style="margin-bottom:8px;">
                     </div>
                     <div class="form-group">
-                      <label>Venue</label>
-                      <input type="text" id="e-venue" required style="margin-bottom:8px;">
+                      <label>Location / Venue</label>
+                      <input type="text" id="e-location" required style="margin-bottom:8px;">
                     </div>
-                    <button type="submit" class="btn btn-primary">Create Event</button>
+                    <div class="form-group">
+                      <label>Description</label>
+                      <textarea id="e-desc" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Photo</label>
+                      <input type="file" id="e-photo" accept="image/*" style="margin-bottom:8px;">
+                      <div id="e-photo-preview" style="display:none;margin-top:4px;">
+                        <img id="e-photo-img" alt="Event photo preview" style="max-width:100%;max-height:120px;border-radius:8px;border:1px solid var(--cpri-border);display:block;">
+                        <button type="button" class="btn btn-outline btn-sm" id="e-photo-clear" style="margin-top:6px;border-color:#b23b32;color:#b23b32;">Remove photo</button>
+                      </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="e-submit">Publish Event</button>
+                    <button type="button" class="btn btn-outline" id="e-cancel" style="display:none;margin-left:8px;">Cancel Edit</button>
                   </form>
+                  <div id="events-list" style="margin-top:16px;"></div>
+                </div>
+                <div>
+                  <h4 style="font-family:var(--font-head)">Featured Research</h4>
+                  <form id="research-form">
+                    <input type="hidden" id="r-id">
+                    <div class="form-group">
+                      <label>Title</label>
+                      <input type="text" id="r-title" required style="margin-bottom:8px;">
+                    </div>
+                    <div class="form-group">
+                      <label>Summary</label>
+                      <textarea id="r-summary" rows="3" required></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label>Author(s)</label>
+                      <input type="text" id="r-author" style="margin-bottom:8px;">
+                    </div>
+                    <div class="form-group">
+                      <label>Date</label>
+                      <input type="date" id="r-date" style="margin-bottom:8px;">
+                    </div>
+                    <div class="form-group">
+                      <label>Read time (minutes)</label>
+                      <input type="number" id="r-read" min="1" value="8" style="margin-bottom:8px;">
+                    </div>
+                    <button type="submit" class="btn btn-primary" id="r-submit">Feature Research</button>
+                    <button type="button" class="btn btn-outline" id="r-cancel" style="display:none;margin-left:8px;">Cancel Edit</button>
+                  </form>
+                  <div id="research-list" style="margin-top:16px;"></div>
                 </div>
                 <div>
                   <h4 style="font-family:var(--font-head)">Research Agenda</h4>
@@ -156,9 +215,11 @@
                   </form>
                 </div>
               </div>
+              </div>
             </div>
 
-            <div class="admin-card" id="logs">
+            <div class="admin-panel" data-panel="logs">
+              <div class="admin-card" id="logs">
               <h3><i class="bi bi-activity"></i> System Logs <span class="status-pill pending">Audit</span></h3>
               <div class="quick-actions" style="margin-bottom:16px;">
                 <div class="form-group" style="margin:0;">
@@ -186,6 +247,7 @@
               </div>
               <button class="btn btn-navy" id="load-logs" style="margin-bottom:14px;"><i class="bi bi-arrow-clockwise"></i> Load Logs</button>
               <div id="logs-table"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -195,6 +257,39 @@
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
+
+  <!-- In-page confirmation dialog (native confirm() is blocked in sandboxed iframes) -->
+  <div class="confirm-overlay" id="confirmOverlay" hidden>
+    <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+      <div class="confirm-icon"><i class="bi bi-exclamation-triangle"></i></div>
+      <h3 id="confirmTitle">Are you sure?</h3>
+      <p id="confirmMsg"></p>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-navy" id="confirmCancel">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmOk">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- In-page password prompt dialog (replaces native prompt(), which is also
+       blocked in sandboxed iframes) -->
+  <div class="confirm-overlay" id="pwdOverlay" hidden>
+    <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="pwdTitle">
+      <div class="confirm-icon" style="background:linear-gradient(135deg,#1E3A8A,#14B8A6);"><i class="bi bi-key"></i></div>
+      <h3 id="pwdTitle">Reset Password</h3>
+      <p id="pwdMsg" style="margin-bottom:14px;"></p>
+      <div class="pwd-field">
+        <input type="password" id="pwdInput" autocomplete="new-password" placeholder="New password (min 8 chars)" aria-label="New password" style="width:100%;padding:11px 44px 11px 14px;border:1px solid var(--cpri-border);border-radius:12px;font-size:.95rem;background:var(--cpri-bg);color:var(--cpri-text);">
+        <button type="button" class="pwd-toggle" aria-label="Hold to show password" aria-pressed="false" title="Hold to see" style="right:10px;"><i class="bi bi-eye"></i></button>
+      </div>
+      <div class="form-message" id="pwdError" style="margin-top:8px;" hidden></div>
+      <div class="confirm-actions" style="margin-top:18px;">
+        <button type="button" class="btn btn-navy" id="pwdCancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="pwdOk">Set Password</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const message = document.getElementById('message');
     const accessDenied = document.getElementById('access-denied');
@@ -204,6 +299,56 @@
       message.textContent = text;
     }
 
+    // In-page confirm dialog (native confirm() is blocked in sandboxed iframes)
+    let confirmResolve = null;
+    function confirmDialog(message, okLabel) {
+      // Never orphan a previously pending confirmation
+      if (confirmResolve) { confirmResolve(false); confirmResolve = null; }
+      document.getElementById('confirmMsg').textContent = message;
+      document.getElementById('confirmOk').textContent = okLabel || 'Delete';
+      document.getElementById('confirmOverlay').hidden = false;
+      document.getElementById('confirmOk').focus();
+      return new Promise(resolve => { confirmResolve = resolve; });
+    }
+    function closeConfirm(result) {
+      document.getElementById('confirmOverlay').hidden = true;
+      if (confirmResolve) { confirmResolve(result); confirmResolve = null; }
+    }
+
+    // In-page password prompt (native prompt() is blocked in sandboxed iframes).
+    // Resolves with the entered password, or null when cancelled.
+    let pwdResolve = null;
+    function passwordPrompt(message) {
+      if (pwdResolve) { pwdResolve(null); pwdResolve = null; }
+      document.getElementById('pwdMsg').textContent = message;
+      const input = document.getElementById('pwdInput');
+      const err = document.getElementById('pwdError');
+      input.value = '';
+      err.className = 'form-message';
+      err.textContent = '';
+      err.hidden = true;
+      document.getElementById('pwdOverlay').hidden = false;
+      setTimeout(() => input.focus(), 30);
+      return new Promise(resolve => { pwdResolve = resolve; });
+    }
+    function closePwdPrompt() {
+      document.getElementById('pwdOverlay').hidden = true;
+      if (pwdResolve) { pwdResolve(null); pwdResolve = null; }
+    }
+    function submitPwdPrompt() {
+      const value = document.getElementById('pwdInput').value;
+      const err = document.getElementById('pwdError');
+      if (!value || value.length < 8) {
+        err.className = 'form-message error';
+        err.textContent = 'Password must be at least 8 characters.';
+        err.hidden = false;
+        document.getElementById('pwdInput').focus();
+        return;
+      }
+      document.getElementById('pwdOverlay').hidden = true;
+      if (pwdResolve) { pwdResolve(value); pwdResolve = null; }
+    }
+
     async function loadSummary() {
       const res = await fetch('/api/admin/summary');
       if (!res.ok) { accessDenied.style.display = 'block'; return; }
@@ -211,6 +356,7 @@
       document.getElementById('dashboard-summary').innerHTML = [
         { label: 'Total Submitted Research', value: summary.totalSubmissions, i:'bi-send' },
         { label: 'Total Approved Researches', value: summary.approvedResearches, i:'bi-check2-circle' },
+        { label: 'Total Rejected Researches', value: summary.rejectedResearches, i:'bi-x-circle' },
         { label: 'Total Archived Researches', value: summary.archivedResearches, i:'bi-archive' },
         { label: 'Total Published Papers', value: summary.publishedPapers, i:'bi-journal-richtext' },
         { label: 'Total Ethics Applications', value: summary.ethicsApplications, i:'bi-shield-check' },
@@ -228,7 +374,7 @@
       if (!res.ok) return;
       const { users } = await res.json();
       const el = document.getElementById('user-management');
-      el.innerHTML = '<table><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
+      el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
         users.map(u => `
           <tr>
             <td>${escapeHtml(u.fullName || u.username)}</td>
@@ -254,10 +400,10 @@
             </td>
             <td>
               <button class="btn btn-navy reset-pwd" data-userid="${u.id}" style="padding:6px 10px;font-size:.85rem;">Reset Password</button>
-              <button class="btn btn-outline del-user" data-userid="${u.id}" style="padding:6px 10px;font-size:.85rem;border-color:#b23b32;color:#b23b32;">Delete</button>
+              <button class="btn btn-outline del-user" data-userid="${u.id}" data-name="${escapeHtml(u.fullName || u.username)}" style="padding:6px 10px;font-size:.85rem;border-color:#b23b32;color:#b23b32;">Delete</button>
             </td>
           </tr>
-        `).join('') + '</tbody></table>';
+        `).join('') + '</tbody></table></div>';
 
       el.querySelectorAll('.user-role-select').forEach(sel => {
         sel.addEventListener('change', async (ev) => {
@@ -280,8 +426,8 @@
       el.querySelectorAll('.reset-pwd').forEach(btn => {
         btn.addEventListener('click', async (ev) => {
           const userId = ev.target.dataset.userid;
-          const newPwd = prompt('Enter new password (min 8 chars):');
-          if (!newPwd || newPwd.length < 8) return showMsg('error', 'Password must be at least 8 characters.');
+          const newPwd = await passwordPrompt('Enter a new password for this user. The user will need to use it on their next login.');
+          if (!newPwd) return;
           const res = await fetch('/api/admin/users/' + userId + '/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: newPwd }) });
           const out = await res.json();
           if (!res.ok) return showMsg('error', out.error);
@@ -291,11 +437,12 @@
       el.querySelectorAll('.del-user').forEach(btn => {
         btn.addEventListener('click', async (ev) => {
           const userId = ev.target.dataset.userid;
-          if (!confirm('Delete this user?')) return;
+          const name = ev.target.dataset.name || 'this user';
+          if (!await adminConfirmDialog('Delete "' + name + '"? This action cannot be undone.')) return;
           const res = await fetch('/api/admin/users/' + userId, { method: 'DELETE' });
           const out = await res.json();
           if (!res.ok) return showMsg('error', out.error);
-          showMsg('success', 'User deleted.');
+          showMsg('success', 'User "' + name + '" deleted.');
           loadUserManagement();
         });
       });
@@ -317,26 +464,28 @@
       const chartDefaults = { responsive: true, plugins: { legend: { labels: { color: '#5b6b7b' } } } };
       const gridColor = '#e2e8f0';
 
-      new Chart(document.getElementById('chart-dept'), {
-        type: 'bar',
-        data: { labels: deptData.report.map(r => r.department), datasets: [{ label: 'Researches', data: deptData.report.map(r => r.count), backgroundColor: '#2a9d8f' }] },
-        options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } } } }
-      });
-      new Chart(document.getElementById('chart-year'), {
-        type: 'bar',
-        data: { labels: yearData.report.map(r => r.year), datasets: [{ label: 'Outputs', data: yearData.report.map(r => r.count), backgroundColor: '#13518f' }] },
-        options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } } } }
-      });
-      new Chart(document.getElementById('chart-submissions'), {
-        type: 'doughnut',
-        data: { labels: subData.report.map(r => r.status), datasets: [{ data: subData.report.map(r => r.count), backgroundColor: ['#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#264653', '#a8dadc'] }] },
-        options: chartDefaults
-      });
-      new Chart(document.getElementById('chart-ethics'), {
-        type: 'doughnut',
-        data: { labels: ethicsData.report.map(r => r.status), datasets: [{ data: ethicsData.report.map(r => r.count), backgroundColor: ['#457b9d', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#1d3557'] }] },
-        options: chartDefaults
-      });
+      return [
+        new Chart(document.getElementById('chart-dept'), {
+          type: 'bar',
+          data: { labels: deptData.report.map(r => r.department), datasets: [{ label: 'Researches', data: deptData.report.map(r => r.count), backgroundColor: '#2a9d8f' }] },
+          options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } } } }
+        }),
+        new Chart(document.getElementById('chart-year'), {
+          type: 'bar',
+          data: { labels: yearData.report.map(r => r.year), datasets: [{ label: 'Outputs', data: yearData.report.map(r => r.count), backgroundColor: '#13518f' }] },
+          options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } } } }
+        }),
+        new Chart(document.getElementById('chart-submissions'), {
+          type: 'doughnut',
+          data: { labels: subData.report.map(r => r.status), datasets: [{ data: subData.report.map(r => r.count), backgroundColor: ['#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#264653', '#a8dadc'] }] },
+          options: chartDefaults
+        }),
+        new Chart(document.getElementById('chart-ethics'), {
+          type: 'doughnut',
+          data: { labels: ethicsData.report.map(r => r.status), datasets: [{ data: ethicsData.report.map(r => r.count), backgroundColor: ['#457b9d', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#1d3557'] }] },
+          options: chartDefaults
+        })
+      ];
     }
 
     async function loadLogs() {
@@ -351,8 +500,8 @@
       const data = await res.json();
       const el = document.getElementById('logs-table');
       if (!data.logs.length) { el.innerHTML = '<p class="form-note">No logs found.</p>'; return; }
-      el.innerHTML = '<table><thead><tr><th>Timestamp</th><th>Action</th><th>Details</th><th>User ID</th><th>IP</th></tr></thead><tbody>' +
-        data.logs.slice(0, 100).map(l => `<tr><td>${new Date(l.timestamp).toLocaleString()}</td><td>${escapeHtml(l.action)}</td><td>${escapeHtml(l.details || '')}</td><td>${l.userId ? l.userId.slice(0, 8) : '—'}</td><td>${l.ip || '—'}</td></tr>`).join('') + '</tbody></table>';
+      el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>Timestamp</th><th>Action</th><th>Details</th><th>User ID</th><th>IP</th></tr></thead><tbody>' +
+        data.logs.slice(0, 100).map(l => `<tr><td>${new Date(l.timestamp).toLocaleString()}</td><td>${escapeHtml(l.action)}</td><td>${escapeHtml(l.details || '')}</td><td>${l.userId ? l.userId.slice(0, 8) : '—'}</td><td>${l.ip || '—'}</td></tr>`).join('') + '</tbody></table></div>';
     }
 
     function escapeHtml(text) {
@@ -369,23 +518,195 @@
       showMsg('success', 'Homepage updated.');
     });
 
-    document.getElementById('announcement-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const res = await fetch('/api/admin/content/announcement', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: document.getElementById('a-title').value, content: document.getElementById('a-content').value }) });
-      const out = await res.json();
-      if (!res.ok) return showMsg('error', out.error);
-      showMsg('success', 'Announcement created.');
-      e.target.reset();
+
+    // ---- Events & Featured Research management (JSON-backed content) ----
+    let eventPhotoUrl = ''; // public URL of the current event photo ('' = none)
+    let eventPhotoObjectUrl = null; // blob URL preview of a freshly picked file
+
+    function setEventPhotoPreview(url, isObjectUrl) {
+      if (eventPhotoObjectUrl) { URL.revokeObjectURL(eventPhotoObjectUrl); eventPhotoObjectUrl = null; }
+      const img = document.getElementById('e-photo-img');
+      const wrap = document.getElementById('e-photo-preview');
+      if (!img || !wrap) return;
+      if (url) {
+        img.src = url;
+        wrap.style.display = 'block';
+        if (isObjectUrl) eventPhotoObjectUrl = url;
+      } else {
+        wrap.style.display = 'none';
+        img.removeAttribute('src');
+      }
+    }
+
+    document.getElementById('e-photo').addEventListener('change', (ev) => {
+      const file = ev.target.files[0];
+      setEventPhotoPreview(file ? URL.createObjectURL(file) : '', !!file);
     });
+    document.getElementById('e-photo-clear').addEventListener('click', () => {
+      document.getElementById('e-photo').value = '';
+      eventPhotoUrl = '';
+      setEventPhotoPreview('');
+    });
+
+    async function loadEventsList() {
+      const el = document.getElementById('events-list'); if (!el) return;
+      const res = await fetch('/api/events');
+      const allEvents = res.ok ? await res.json() : [];
+      // The Content tab manages content events (events.json) only — module
+      // events live in the Events & Conferences module and are edited there.
+      const events = allEvents.filter(e => e.source !== 'module');
+      el.innerHTML = events.length
+        ? '<div class="table-scroll"><table><thead><tr><th>Event</th><th>Date</th><th>Type</th><th>Actions</th></tr></thead><tbody>' +
+          events.map(e => `
+            <tr>
+              <td>${escapeHtml(e.title)}</td>
+              <td>${escapeHtml(String(e.date || '').slice(0, 10))}</td>
+              <td>${escapeHtml(e.type || '')}</td>
+              <td>
+                <button class="btn btn-navy ed-event" data-id="${e.id}" style="padding:4px 10px;font-size:.82rem;">Edit</button>
+                <button class="btn btn-outline del-event" data-id="${e.id}" style="padding:4px 10px;font-size:.82rem;border-color:#b23b32;color:#b23b32;">Delete</button>
+              </td>
+            </tr>`).join('') + '</tbody></table></div>'
+        : '<p class="form-note">No events published yet.</p>';
+      el.querySelectorAll('.del-event').forEach(b => b.addEventListener('click', async () => {
+        const r = await fetch('/api/admin/content/event/' + b.dataset.id, { method: 'DELETE' });
+        const out = await r.json();
+        showMsg(r.ok ? 'success' : 'error', out.message || out.error);
+        if (document.getElementById('e-id').value === b.dataset.id) resetEventEdit();
+        loadEventsList();
+      }));
+      el.querySelectorAll('.ed-event').forEach(b => b.addEventListener('click', () => {
+        const ev = events.find(x => x.id === b.dataset.id); if (!ev) return;
+        document.getElementById('e-id').value = ev.id;
+        document.getElementById('e-title').value = ev.title || '';
+        document.getElementById('e-type').value = ev.type || 'Conference';
+        document.getElementById('e-date').value = String(ev.date || '').slice(0, 10);
+        document.getElementById('e-location').value = ev.location || '';
+        document.getElementById('e-desc').value = ev.description || '';
+        document.getElementById('e-photo').value = '';
+        eventPhotoUrl = ev.photo || '';
+        setEventPhotoPreview(eventPhotoUrl);
+        document.getElementById('e-submit').textContent = 'Update Event';
+        document.getElementById('e-cancel').style.display = 'inline-block';
+        document.getElementById('event-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }));
+    }
+
+    async function loadResearchList() {
+      const el = document.getElementById('research-list'); if (!el) return;
+      const res = await fetch('/api/research');
+      const items = res.ok ? await res.json() : [];
+      el.innerHTML = items.length
+        ? '<div class="table-scroll"><table><thead><tr><th>Research</th><th>Author</th><th>Date</th><th>Actions</th></tr></thead><tbody>' +
+          items.map(r => `
+            <tr>
+              <td>${escapeHtml(r.title)}</td>
+              <td>${escapeHtml(r.author || r.researchers || 'CPRI')}</td>
+              <td>${escapeHtml(String(r.date || '').slice(0, 10))}</td>
+              <td>
+                <button class="btn btn-navy ed-research" data-id="${r.id}" style="padding:4px 10px;font-size:.82rem;">Edit</button>
+                <button class="btn btn-outline del-research" data-id="${r.id}" style="padding:4px 10px;font-size:.82rem;border-color:#b23b32;color:#b23b32;">Delete</button>
+              </td>
+            </tr>`).join('') + '</tbody></table></div>'
+        : '<p class="form-note">No featured research yet.</p>';
+      el.querySelectorAll('.del-research').forEach(b => b.addEventListener('click', async () => {
+        const r = await fetch('/api/admin/content/research/' + b.dataset.id, { method: 'DELETE' });
+        const out = await r.json();
+        showMsg(r.ok ? 'success' : 'error', out.message || out.error);
+        if (document.getElementById('r-id').value === b.dataset.id) resetResearchEdit();
+        loadResearchList();
+      }));
+      el.querySelectorAll('.ed-research').forEach(b => b.addEventListener('click', () => {
+        const item = items.find(x => x.id === b.dataset.id); if (!item) return;
+        document.getElementById('r-id').value = item.id;
+        document.getElementById('r-title').value = item.title || '';
+        document.getElementById('r-summary').value = item.summary || '';
+        document.getElementById('r-author').value = item.author || item.researchers || '';
+        document.getElementById('r-date').value = String(item.date || '').slice(0, 10);
+        document.getElementById('r-read').value = item.read || 8;
+        document.getElementById('r-submit').textContent = 'Update Research';
+        document.getElementById('r-cancel').style.display = 'inline-block';
+        document.getElementById('research-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }));
+    }
 
     document.getElementById('event-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const res = await fetch('/api/admin/content/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: document.getElementById('e-title').value, theme: document.getElementById('e-theme').value, dateTime: document.getElementById('e-datetime').value, venue: document.getElementById('e-venue').value }) });
+      const id = document.getElementById('e-id').value;
+      let photo = eventPhotoUrl || '';
+      const fileInput = document.getElementById('e-photo');
+      if (fileInput && fileInput.files.length) {
+        const fd = new FormData();
+        fd.append('photo', fileInput.files[0]);
+        const up = await fetch('/api/admin/content/event/photo', { method: 'POST', body: fd });
+        const upOut = await up.json().catch(() => null);
+        if (!up.ok) {
+          showMsg('error', (upOut && upOut.error) || 'Photo upload failed.');
+          setEventPhotoPreview(eventPhotoUrl); // revert preview to the stored photo
+          return;
+        }
+        photo = upOut.photo;
+        eventPhotoUrl = photo;
+      }
+      const payload = {
+        title: document.getElementById('e-title').value,
+        type: document.getElementById('e-type').value,
+        date: document.getElementById('e-date').value,
+        location: document.getElementById('e-location').value,
+        description: document.getElementById('e-desc').value,
+        photo
+      };
+      const res = await fetch('/api/admin/content/event' + (id ? '/' + id : ''), { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const out = await res.json();
       if (!res.ok) return showMsg('error', out.error);
-      showMsg('success', 'Event created.');
+      showMsg('success', id ? 'Event updated.' : 'Event published — it now appears on the homepage, events page, and calendar.');
       e.target.reset();
+      document.getElementById('e-id').value = '';
+      document.getElementById('e-submit').textContent = 'Publish Event';
+      document.getElementById('e-cancel').style.display = 'none';
+      loadEventsList();
     });
+
+    function resetEventEdit() {
+      document.getElementById('event-form').reset();
+      document.getElementById('e-id').value = '';
+      eventPhotoUrl = '';
+      setEventPhotoPreview('');
+      document.getElementById('e-submit').textContent = 'Publish Event';
+      document.getElementById('e-cancel').style.display = 'none';
+    }
+    document.getElementById('e-cancel').addEventListener('click', resetEventEdit);
+
+    document.getElementById('research-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const id = document.getElementById('r-id').value;
+      const payload = {
+        title: document.getElementById('r-title').value,
+        summary: document.getElementById('r-summary').value,
+        author: document.getElementById('r-author').value,
+        date: document.getElementById('r-date').value,
+        read: Number(document.getElementById('r-read').value) || 8
+      };
+      const res = await fetch('/api/admin/content/research' + (id ? '/' + id : ''), { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error);
+      showMsg('success', id ? 'Research updated.' : 'Research featured — it now appears on the homepage.');
+      e.target.reset();
+      document.getElementById('r-read').value = 8;
+      document.getElementById('r-id').value = '';
+      document.getElementById('r-submit').textContent = 'Feature Research';
+      document.getElementById('r-cancel').style.display = 'none';
+      loadResearchList();
+    });
+
+    function resetResearchEdit() {
+      document.getElementById('research-form').reset();
+      document.getElementById('r-read').value = 8;
+      document.getElementById('r-id').value = '';
+      document.getElementById('r-submit').textContent = 'Feature Research';
+      document.getElementById('r-cancel').style.display = 'none';
+    }
+    document.getElementById('r-cancel').addEventListener('click', resetResearchEdit);
 
     document.getElementById('agenda-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -398,17 +719,80 @@
 
     document.getElementById('load-logs').addEventListener('click', loadLogs);
 
+    // ---- In-page confirmation dialog wiring ----
+    document.getElementById('confirmOk').addEventListener('click', () => closeConfirm(true));
+    document.getElementById('confirmCancel').addEventListener('click', () => closeConfirm(false));
+    document.getElementById('confirmOverlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeConfirm(false); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !document.getElementById('confirmOverlay').hidden) closeConfirm(false);
+      if (e.key === 'Escape' && !document.getElementById('pwdOverlay').hidden) closePwdPrompt();
+    });
+
+    // ---- In-page password prompt wiring (Enter submits, Escape cancels) ----
+    document.getElementById('pwdOk').addEventListener('click', submitPwdPrompt);
+    document.getElementById('pwdCancel').addEventListener('click', closePwdPrompt);
+    document.getElementById('pwdOverlay').addEventListener('click', (e) => { if (e.target === e.currentTarget) closePwdPrompt(); });
+    document.getElementById('pwdInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); submitPwdPrompt(); }
+      if (e.key === 'Escape') closePwdPrompt();
+    });
+
+    // main.js injects a shared window.confirmDialog (cpriConfirmOverlay) on
+    // DOMContentLoaded, which would shadow this page's local confirmDialog.
+    // Capture the local implementation now so delete handlers here always use
+    // THIS overlay (#confirmOverlay) and its OK/Cancel wiring.
+    const adminConfirmDialog = confirmDialog;
+
+    // ---- Tabbed navigation: one focused section at a time ----
+    const TAB_META = {
+      overview: { title: 'Operations Overview', sub: 'Real-time research management metrics' },
+      users: { title: 'User Management', sub: 'Roles, access and account status' },
+      content: { title: 'Content Management', sub: 'Publish events and featured research' },
+      logs: { title: 'System Logs', sub: 'Audit trail of administrative actions' }
+    };
+    let chartInstances = [];
+
+    function switchAdminTab(tab) {
+      if (!TAB_META[tab]) tab = 'overview';
+      document.querySelectorAll('.admin-tabs .atab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      document.querySelectorAll('.admin-panel').forEach(p => p.classList.toggle('active', p.dataset.panel === tab));
+      document.getElementById('toolbarTitle').textContent = TAB_META[tab].title;
+      document.getElementById('toolbarSub').textContent = TAB_META[tab].sub;
+      // Charts created while hidden have zero size; resize once the panel is visible.
+      if (tab === 'overview') requestAnimationFrame(() => chartInstances.forEach(c => c && c.resize()));
+    }
+    document.querySelectorAll('.admin-tabs .atab').forEach(btn => {
+      btn.addEventListener('click', () => switchAdminTab(btn.dataset.tab));
+    });
+    // Deep-link support: /admin-dashboard.html#users opens the Users tab — the
+    // bell notification for new Google sign-ups points here so admins land
+    // directly on User Management.
+    const hashTab = (location.hash || '').replace('#', '');
+    if (TAB_META[hashTab]) switchAdminTab(hashTab);
+    // Handle hash-only navigations (e.g. clicking a bell notification while
+    // already on this page) without a full reload.
+    window.addEventListener('hashchange', () => {
+      const t = (location.hash || '').replace('#', '');
+      if (TAB_META[t]) switchAdminTab(t);
+    });
+
     (async () => {
       const summary = await loadSummary();
       if (!summary) return;
-      loadCharts();
+      chartInstances = (await loadCharts()) || [];
       loadUserManagement();
       loadLogs();
+      loadEventsList();
+      loadResearchList();
       const profile = await (await fetch('/api/site')).json();
       if (profile) {
         document.getElementById('h-tagline').value = profile.tagline || '';
         document.getElementById('h-desc').value = profile.description || '';
       }
+      // Keep the deep-linked tab (e.g. #users from a bell notification) instead
+      // of always forcing Overview once the async load completes.
+      const finalTab = (location.hash || '').replace('#', '');
+      switchAdminTab(TAB_META[finalTab] ? finalTab : 'overview');
     })();
   </script>
 </body>

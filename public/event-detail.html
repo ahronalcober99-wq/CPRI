@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Event Detail | CPRI</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -218,7 +219,7 @@
       const { certificates } = await res.json();
       const el = document.getElementById('cert-monitoring');
       if (!certificates.length) { el.innerHTML = '<p class="form-note">No participants yet.</p>'; return; }
-      el.innerHTML = '<table><thead><tr><th>Participant</th><th>Email</th><th>Institution</th><th>Type</th><th>Attendance</th><th>Certificate</th><th>Actions</th></tr></thead><tbody>' +
+      el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>Participant</th><th>Email</th><th>Institution</th><th>Type</th><th>Attendance</th><th>Certificate</th><th>Actions</th></tr></thead><tbody>' +
         certificates.map(c => `
           <tr>
             <td>${escapeHtml(c.participantName)}</td>
@@ -236,7 +237,7 @@
               ${!c.certificateIssued ? `<button class="btn btn-primary issue-cert" data-regid="${c.id}">Issue</button>` : '—'}
             </td>
           </tr>
-        `).join('') + '</tbody></table>';
+        `).join('') + '</tbody></table></div>';
 
       el.querySelectorAll('.attendance-select').forEach(sel => {
         sel.addEventListener('change', async (ev) => {

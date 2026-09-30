@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Publication Detail | CPRI</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -44,6 +45,7 @@
               <div class="contact-row"><span class="label">Department</span><span id="d-dept"></span></div>
               <div class="contact-row"><span class="label">School Year</span><span id="d-sy"></span></div>
               <div class="contact-row"><span class="label">Submitted by</span><span id="d-submitter"></span></div>
+              <div class="contact-row" id="source-row" style="display:none;"><span class="label">Source</span><span id="d-source"></span></div>
             </div>
 
             <div class="card">
@@ -133,6 +135,13 @@
       document.getElementById('d-dept').textContent = p.department || '—';
       document.getElementById('d-sy').textContent = p.schoolYear || '—';
       document.getElementById('d-submitter').textContent = p.submitterName || '—';
+
+      // Auto-added publications (linked via sourceSubmissionId) jump back to
+      // the original research submission record.
+      if (p.sourceSubmissionId) {
+        document.getElementById('source-row').style.display = 'flex';
+        document.getElementById('d-source').innerHTML = `<i class="bi bi-magic"></i> <a href="submission.html?id=${encodeURIComponent(p.sourceSubmissionId)}">Published from a research submission — view submission record</a>`;
+      }
 
       const proofsEl = document.getElementById('proofs');
       if (!p.proofDocuments || !p.proofDocuments.length) {

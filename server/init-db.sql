@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
   researchInterests TEXT,
   profilePhoto VARCHAR(255) DEFAULT NULL,
   researches JSON,
+  user_prefs JSON,
   resetToken VARCHAR(120) DEFAULT NULL,
   resetTokenExpiry BIGINT DEFAULT NULL,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -56,7 +57,8 @@ CREATE TABLE IF NOT EXISTS publications (
   publicationLink VARCHAR(255), indexingStatus VARCHAR(120), pubType VARCHAR(60),
   status VARCHAR(40), authorType VARCHAR(40), department VARCHAR(160),
   schoolYear VARCHAR(40), proofDocuments JSON, submitterId VARCHAR(36),
-  submitterName VARCHAR(160), createdAt DATETIME, updatedAt DATETIME
+  submitterName VARCHAR(160), createdAt DATETIME, updatedAt DATETIME,
+  sourceSubmissionId VARCHAR(36)
 );
 
 -- Ethics table
@@ -84,7 +86,7 @@ CREATE TABLE IF NOT EXISTS researchers (
 CREATE TABLE IF NOT EXISTS events_module (
   id VARCHAR(36) PRIMARY KEY, title VARCHAR(255), theme VARCHAR(255),
   dateTime VARCHAR(40), venue VARCHAR(255), description TEXT, registrationLink VARCHAR(255),
-  programFlow TEXT, speakers TEXT, gallery JSON, createdAt DATETIME, updatedAt DATETIME
+  programFlow TEXT, speakers TEXT, photo VARCHAR(500) DEFAULT '', gallery JSON, createdAt DATETIME, updatedAt DATETIME
 );
 
 -- Event registrations table
@@ -127,10 +129,19 @@ CREATE TABLE IF NOT EXISTS system_logs (
   userAgent TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+-- In-app notifications (bell) — mirrors user-scoped events from system_logs
+CREATE TABLE IF NOT EXISTS notifications (
+  id VARCHAR(36) PRIMARY KEY, userId VARCHAR(36) DEFAULT NULL,
+  action VARCHAR(80), title VARCHAR(255), message TEXT, link VARCHAR(255),
+  readAt DATETIME DEFAULT NULL, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(userId, createdAt);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_submissions_submitter ON submissions(submitterId);
 CREATE INDEX IF NOT EXISTS idx_repo_source ON repository(sourceSubmissionId);
 CREATE INDEX IF NOT EXISTS idx_pubs_submitter ON publications(submitterId);
+CREATE INDEX IF NOT EXISTS idx_pubs_source ON publications(sourceSubmissionId);
 CREATE INDEX IF NOT EXISTS idx_eth_submitter ON ethics(submitterId);
 CREATE INDEX IF NOT EXISTS idx_reg_event ON event_registrations(eventId);
 CREATE INDEX IF NOT EXISTS idx_abs_event ON event_abstracts(eventId);

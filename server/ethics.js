@@ -6,10 +6,12 @@ import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
+import { addLog } from './audit.js';
+import { notify } from './notifications.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const ETHICS_UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'assets', 'uploads', 'ethics');
+const ETHICS_UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'ethics');
 
 const router = Router();
 
@@ -24,7 +26,7 @@ const ETHICS_STATUS = {
 };
 
 const REVIEWER_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer'];
-const SUBMIT_ROLES = ['faculty_researcher', 'student_researcher', 'adviser', 'cpri_staff', 'ethics_reviewer'];
+const SUBMIT_ROLES = ['admin', 'faculty_researcher', 'student_researcher', 'adviser', 'cpri_staff', 'ethics_reviewer'];
 
 const FILE_FIELDS = [
   { key: 'ethics_application', label: 'Ethics Application Form', required: true },
@@ -47,9 +49,10 @@ function canReview(me) {
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: async (req, file, cb) => {
     const dir = join(ETHICS_UPLOAD_DIR, req._ethId);
-    fs.mkdir(dir, { recursive: true }, () => cb(null, dir));
+    try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
+    catch (err) { cb(err); }
   },
   filename: (req, file, cb) => {
     const safe = file.fieldname.replace(/[^a-z0-9]/gi, '_');
@@ -188,6 +191,18 @@ router.patch('/:id/status', requireRole(...REVIEWER_ROLES), async (req, res) => 
   });
 
   await update('ethics', a.id, { status, statusHistory: JSON.stringify(statusHistory), updatedAt: new Date().toISOString() });
+
+  await addLog(`ethics_${status}`, `${ETHICS_STATUS[status] || status} ethics application "${a.title}"`, req);
+
+  // In-app notification to the applicant on decisions.
+  const labels = {
+    approved: 'approved', disapproved: 'not approved',
+    exempted_from_full_review: 'exempted from full review', for_revision: 'sent back for revision'
+  };
+  await notify(a.submitterId, `ethics_${status}`,
+    `Ethics review ${labels[status] || status}`, `Your ethics application "${a.title}" was ${labels[status] || status}.`,
+    `ethics-detail.html?id=${a.id}`);
+
   const updated = await get('SELECT * FROM ethics WHERE id = ?', [a.id]);
   res.json({ message: 'Status updated.', application: updated });
 });

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ethics Application Detail | CPRI</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -318,18 +319,18 @@
         certSection.style.display = 'block';
         const c = a.certificate;
         document.getElementById('cert-detail').innerHTML = `
-          <div class="contact-row"><span class="label">Certificate Number</span><span id="cert-num"></span></div>
-          <div class="contact-row"><span class="label">Approved Title</span><span id="cert-title"></span></div>
-          <div class="contact-row"><span class="label">Principal Investigator</span><span id="cert-pi"></span></div>
-          <div class="contact-row"><span class="label">Date Issued</span><span id="cert-date"></span></div>
-          <div class="contact-row"><span class="label">Validity Period</span><span id="cert-valid"></span></div>
+          <div class="contact-row"><span class="label">Certificate Number</span><span id="cert-num-out"></span></div>
+          <div class="contact-row"><span class="label">Approved Title</span><span id="cert-title-out"></span></div>
+          <div class="contact-row"><span class="label">Principal Investigator</span><span id="cert-pi-out"></span></div>
+          <div class="contact-row"><span class="label">Date Issued</span><span id="cert-date-out"></span></div>
+          <div class="contact-row"><span class="label">Validity Period</span><span id="cert-valid-out"></span></div>
           <a class="btn btn-primary" id="download-cert" style="margin-top:10px;display:inline-block;">Download Certificate</a>
         `;
-        document.getElementById('cert-num').textContent = c.certificateNumber;
-        document.getElementById('cert-title').textContent = c.approvedTitle;
-        document.getElementById('cert-pi').textContent = c.principalInvestigator;
-        document.getElementById('cert-date').textContent = c.dateIssued;
-        document.getElementById('cert-valid').textContent = c.validityPeriod;
+        document.getElementById('cert-num-out').textContent = c.certificateNumber;
+        document.getElementById('cert-title-out').textContent = c.approvedTitle;
+        document.getElementById('cert-pi-out').textContent = c.principalInvestigator;
+        document.getElementById('cert-date-out').textContent = c.dateIssued;
+        document.getElementById('cert-valid-out').textContent = c.validityPeriod;
         document.getElementById('download-cert').href = '/api/ethics/' + a.id + '/certificate';
       }
 

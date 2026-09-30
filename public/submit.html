@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Submit Research | CPRI</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -141,7 +142,10 @@
     const notLogged = document.getElementById('not-logged');
 
     (async () => {
-      const res = await fetch('/api/auth/me');
+      const [res, profRes] = await Promise.all([
+        fetch('/api/auth/me'),
+        fetch('/api/auth/profile').catch(() => null)
+      ]);
       if (!res.ok) { notLogged.style.display = 'block'; return; }
       const { user } = await res.json();
       const allowed = ['faculty_researcher','student_researcher','adviser','cpri_staff'];
@@ -149,6 +153,14 @@
         notLogged.style.display = 'block';
         notLogged.innerHTML = 'Your role (' + (user.roleLabel||user.role) + ') is not allowed to submit research.';
         return;
+      }
+      // Pre-fill Program / Department: honor ?program= (e.g. from the Student
+      // Researcher Portal) and fall back to the user's profile department.
+      const programField = document.getElementById('program');
+      if (programField) {
+        const params = new URLSearchParams(window.location.search);
+        const profile = profRes && profRes.ok ? (await profRes.json()).profile : null;
+        programField.value = params.get('program') || (profile && profile.department) || '';
       }
       form.style.display = 'block';
     })();

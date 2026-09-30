@@ -7,8 +7,14 @@
   "scripts": {
     "start": "node server/server.js",
     "dev": "node --watch server/server.js",
+    "share": "node server/share.mjs",
+    "share:setup": "node server/share.mjs --setup",
+    "backup": "node server/backup.mjs",
     "seed": "node server/server/seed.mjs",
-    "migrate": "node server/server/seed.mjs"
+    "seed:demo": "node server/server/seed-demo.mjs",
+    "seed:demo:clear": "node server/server/seed-demo.mjs --clear",
+    "migrate": "node server/server/seed.mjs",
+    "test:dropdowns": "node server/dev/test-dropdowns.mjs"
   },
   "engines": {
     "node": ">=18"
@@ -20,6 +26,7 @@
     "express-session": "^1.18.0",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.10.0",
-    "nodemailer": "^6.9.14"
+    "nodemailer": "^6.9.14",
+    "session-file-store": "^1.5.0"
   }
 }

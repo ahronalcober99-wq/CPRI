@@ -6,6 +6,7 @@
   <title>Calendar | CPRI Admin</title>
   <meta name="theme-color" content="#0F172A">
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -126,7 +127,7 @@
 
       el.innerHTML = `
         <div style="overflow-x:auto;">
-          <table>
+          <table style="min-width:860px;">
             <thead>
               <tr>
                 <th>Title</th>
@@ -141,14 +142,17 @@
               ${filtered.slice(0, 50).map(e => {
                 const dt = new Date(e.dateTime || e.date || 0);
                 const isPast = isNaN(dt.getTime()) ? false : dt.getTime() < now;
+                // Content events (Admin Console) don't have a module detail page.
+                const viewHref = (e.source === 'content') ? 'events.html' : 'event-detail.html?id=' + (e.id || '');
+                const viewLabel = (e.source === 'content') ? 'Open' : 'View';
                 return `
                   <tr>
-                    <td><b style="font-family:var(--font-head);color:var(--cpri-text)">${escapeHtml(e.title)}</b></td>
-                    <td style="white-space:nowrap;">${fmtDate(e.dateTime || e.date)}</td>
-                    <td>${escapeHtml(e.venue || e.location || '—')}</td>
-                    <td><span class="tag">${escapeHtml(e.type || e.theme || 'General')}</span></td>
-                    <td>${isPast ? '<span class="status-pill disabled">Past</span>' : '<span class="status-pill active">Upcoming</span>'}</td>
-                    <td><a class="btn btn-soft btn-sm" href="event-detail.html?id=${e.id || ''}">View <i class="bi bi-arrow-right"></i></a></td>
+                    <td class="ev-title"><b style="font-family:var(--font-head);color:var(--cpri-text)">${escapeHtml(e.title)}</b></td>
+                    <td data-label="Date &amp; Time" style="white-space:nowrap;">${fmtDate(e.dateTime || e.date)}</td>
+                    <td data-label="Venue" style="min-width:150px;">${escapeHtml(e.venue || e.location || '—')}</td>
+                    <td data-label="Type"><span class="tag" style="white-space:nowrap;">${escapeHtml(e.type || e.theme || 'General')}</span></td>
+                    <td data-label="Status"><span class="status-pill ${isPast ? 'disabled' : 'active'}" style="white-space:nowrap;">${isPast ? 'Past' : 'Upcoming'}</span></td>
+                    <td class="ev-actions" data-label="Action"><a class="btn btn-soft btn-sm" href="${viewHref}">${viewLabel} <i class="bi bi-arrow-right"></i></a><button class="btn btn-soft btn-sm btn-danger" data-action="delete" data-id="${e.id}" data-source="${e.source || 'content'}"><i class="bi bi-trash"></i> Delete</button></td>
                   </tr>
                 `;
               }).join('')}
@@ -182,6 +186,41 @@
       } catch (e) {
         document.getElementById('events-list').innerHTML = '<p class="form-note">Error loading events.</p>';
       }
+
+      document.querySelectorAll('[data-action="delete"]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          if (!confirm('Delete this event?')) return;
+          const id = btn.getAttribute('data-id');
+          const source = btn.getAttribute('data-source') || 'content';
+          btn.disabled = true;
+          btn.innerHTML = '<span class="spinner spinner-sm"></span> Deleting…';
+          try {
+            const url = source === 'module'
+              ? '/api/events-module/' + id
+              : '/api/admin/content/event/' + id;
+            const res = await fetch(url, { method: 'DELETE' });
+            const data = await res.json();
+            if (!res.ok) {
+              showMsg('error', data.error || 'Delete failed: ' + (data.message || ''));
+              btn.disabled = false;
+              btn.innerHTML = '<i class="bi bi-trash"></i> Delete';
+              return;
+            }
+
+            showMsg('success', 'Event deleted.');
+            const eventsRes = await fetch('/api/events');
+            if (eventsRes.ok) {
+              const updated = await eventsRes.json();
+              renderEvents(Array.isArray(updated) ? updated : [], 'events-list');
+              renderEvents(Array.isArray(updated) ? updated : [], 'events-past-list');
+            }
+          } catch (err) {
+            showMsg('error', 'Delete failed: ' + (err.message || 'Network error'));
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-trash"></i> Delete';
+          }
+        });
+      });
     })();
   </script>
 </body>

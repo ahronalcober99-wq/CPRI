@@ -1,0 +1,47 @@
+# Publish the CPRI website (the static front-end in `public/`) to GitHub Pages.
+#
+# Why a workflow instead of Settings -> Pages -> "Deploy from a branch":
+#   * branch publishing can only serve the repository root ("/") or "/docs",
+#     and this project's site lives in "public/";
+#   * publishing the repository root serves README.md as the homepage and would
+#     also expose server/, package.json and local machine state;
+#   * this workflow uploads ONLY public/, so the Express back end and every other
+#     file stay private, and `npm start` keeps working unchanged for local dev.
+name: Deploy website to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; a newer push cancels an in-flight one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload public/ as the Pages site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4

@@ -9,7 +9,7 @@ import { all, get, run, insert, update, remove } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'assets', 'uploads', 'innovation-extension');
+const UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'innovation-extension');
 
 const router = Router();
 
@@ -29,9 +29,10 @@ function canEdit(me) {
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: async (req, file, cb) => {
     const dir = join(UPLOAD_DIR, req._recordId);
-    fs.mkdir(dir, { recursive: true }, () => cb(null, dir));
+    try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
+    catch (err) { cb(err); }
   },
   filename: (req, file, cb) => {
     const safe = file.fieldname.replace(/[^a-z0-9]/gi, '_');

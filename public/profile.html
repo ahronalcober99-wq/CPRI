@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Profile | CPRI</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -30,16 +31,19 @@
             <!-- Photo + identity -->
             <div class="card" style="grid-column: span 1;">
               <div style="text-align:center;">
-                <img id="photo" alt="Profile photo" style="width:120px;height:120px;border-radius:50%;object-fit:cover;background:#e2e8f0;margin:0 auto 12px;display:block;">
+                <div id="photo-wrap" role="img" aria-label="Profile avatar" style="width:120px;height:120px;border-radius:50%;background:var(--grad-brand);margin:0 auto 12px;display:grid;place-items:center;overflow:hidden;font-family:var(--font-head);font-weight:800;font-size:2.6rem;color:#fff;box-shadow:0 10px 26px rgba(30,58,138,.3);">
+                  <img id="photo" alt="Profile photo" style="width:100%;height:100%;object-fit:cover;display:none;">
+                  <span id="photo-initials" style="line-height:1;padding:0 6px;">—</span>
+                </div>
                 <h3 id="p-name" style="margin:0 0 4px;">—</h3>
                 <div class="meta" id="p-role">—</div>
               </div>
               <form id="photo-form" style="margin-top:14px;">
-                <div class="form-group">
-                  <label for="photo-input">Profile photo</label>
-                  <input type="file" id="photo-input" name="photo" accept="image/*">
+                <input type="file" id="photo-input" name="photo" accept="image/*" style="display:none;">
+                <div style="display:flex;gap:8px;">
+                  <button type="button" class="btn btn-navy" id="edit-photo-btn" style="flex:1;"><i class="bi bi-camera"></i> Edit Photo</button>
+                  <button type="button" class="btn btn-outline" id="remove-photo-btn" style="flex:1;border-color:#b23b32;color:#b23b32;display:none;"><i class="bi bi-trash"></i> Remove</button>
                 </div>
-                <button type="submit" class="btn btn-navy" style="width:100%;">Upload Photo</button>
               </form>
             </div>
 
@@ -71,6 +75,29 @@
                 <button type="submit" class="btn btn-primary">Save Changes</button>
               </form>
             </div>
+          </div>
+
+          <!-- Notification Preferences -->
+          <div class="card" id="prefs" style="margin-top:22px;">
+            <h3><i class="bi bi-bell"></i> Notification Preferences</h3>
+            <p class="form-note">Choose what shows up in your notification bell and how you are alerted.</p>
+            <div class="prefs-row">
+              <div class="prefs-info"><b>In-app notifications</b><small>Show alerts in the bell on the site.</small></div>
+              <label class="switch"><input type="checkbox" id="pref-inapp"><span></span></label>
+            </div>
+            <div class="prefs-row">
+              <div class="prefs-info"><b>Email copies</b><small>Also send each alert to your email address.</small></div>
+              <label class="switch"><input type="checkbox" id="pref-email"><span></span></label>
+            </div>
+            <div class="prefs-quiet-times">
+              <label class="switch" title="Suppress email copies during quiet hours"><input type="checkbox" id="pref-quiet"><span></span></label>
+              <div class="prefs-info"><b>Quiet hours</b><small>Pause email alerts between these times.</small></div>
+              <div style="margin-left:auto;display:flex;gap:10px;align-items:flex-end;">
+                <div class="form-group"><label for="pref-start">From</label><input type="time" id="pref-start" value="22:00"></div>
+                <div class="form-group"><label for="pref-end">To</label><input type="time" id="pref-end" value="07:00"></div>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="prefs-save" style="margin-top:14px;">Save Preferences</button>
           </div>
 
           <!-- Researches -->
@@ -116,6 +143,32 @@
     const profileArea = document.getElementById('profile-area');
     const notLogged = document.getElementById('not-logged');
 
+    // Initials avatar (matches the My Account navbar icon): a gradient circle
+    // with the user's initials, replaced by the uploaded photo when one exists.
+    function initialsFor(name) {
+      if (!name) return '?';
+      const parts = String(name).trim().split(/\s+/).filter(Boolean);
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    function setAvatar(photoUrl, name) {
+      const img = document.getElementById('photo');
+      const initials = document.getElementById('photo-initials');
+      // If a stored photo file is missing on disk, fall back to initials instead
+      // of showing a broken-image icon.
+      img.onerror = () => { img.style.display = 'none'; initials.textContent = initialsFor(name); initials.style.display = 'block'; };
+      if (photoUrl) {
+        img.src = photoUrl;
+        img.style.display = 'block';
+        initials.style.display = 'none';
+      } else {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+        initials.textContent = initialsFor(name);
+        initials.style.display = 'block';
+      }
+    }
+
     function showMsg(type, text) {
       message.className = 'form-message ' + type;
       message.textContent = text;
@@ -127,7 +180,8 @@
       const { profile } = await res.json();
       profileArea.style.display = 'block';
 
-      document.getElementById('photo').src = profile.profilePhoto || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="120"%3E%3Crect width="120" height="120" fill="%23e2e8f0"/%3E%3Ctext x="50%25" y="52%25" dominant-baseline="middle" text-anchor="middle" font-size="44" fill="%235b6b7b"%3E%3C/text%3E%3C/svg%3E';
+      setAvatar(profile.profilePhoto, profile.fullName || profile.username);
+      document.getElementById('remove-photo-btn').style.display = profile.profilePhoto ? 'block' : 'none';
       document.getElementById('p-name').textContent = profile.fullName || profile.username;
       document.getElementById('p-role').textContent = profile.roleLabel + ' · ' + profile.status;
       document.getElementById('fullName').value = profile.fullName || '';
@@ -144,14 +198,14 @@
         wrap.innerHTML = '<p class="form-note">No researches recorded yet.</p>';
         return;
       }
-      wrap.innerHTML = `<table><thead><tr><th>Title</th><th>Authors</th><th>Year</th><th>Status</th><th></th></tr></thead><tbody>` +
+      wrap.innerHTML = `<div class="table-scroll"><table><thead><tr><th>Title</th><th>Authors</th><th>Year</th><th>Status</th><th></th></tr></thead><tbody>` +
         list.map(r => `<tr>
           <td>${r.title}</td>
           <td>${r.authors || '—'}</td>
           <td>${r.year || '—'}</td>
           <td><span class="badge">${r.status}</span></td>
           <td><button class="btn btn-navy" data-del="${r.id}" style="padding:6px 12px;">Remove</button></td>
-        </tr>`).join('') + '</tbody></table>';
+        </tr>`).join('') + '</tbody></table></div>';
       wrap.querySelectorAll('button[data-del]').forEach(btn => {
         btn.addEventListener('click', () => removeResearch(btn.dataset.del));
       });
@@ -170,6 +224,13 @@
       document.getElementById('p-name').textContent = out.profile.fullName || out.profile.username;
     });
 
+    // Edit photo: open the picker, upload immediately on selection
+    document.getElementById('edit-photo-btn').addEventListener('click', () => {
+      document.getElementById('photo-input').click();
+    });
+    document.getElementById('photo-input').addEventListener('change', () => {
+      if (document.getElementById('photo-input').files.length) document.getElementById('photo-form').requestSubmit();
+    });
     // Upload photo
     document.getElementById('photo-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -179,7 +240,19 @@
       const out = await res.json();
       if (!res.ok) return showMsg('error', out.error || 'Upload failed');
       showMsg('success', out.message);
-      document.getElementById('photo').src = out.profilePhoto;
+      setAvatar(out.profilePhoto, document.getElementById('p-name').textContent);
+      document.getElementById('remove-photo-btn').style.display = 'block';
+    });
+
+    // Remove photo (with in-page confirmation)
+    document.getElementById('remove-photo-btn').addEventListener('click', async () => {
+      if (!await window.confirmDialog('Remove your profile photo? You can upload a new one anytime.')) return;
+      const res = await fetch('/api/auth/profile/photo', { method: 'DELETE' });
+      const out = await res.json();
+      if (!res.ok) return showMsg('error', out.error || 'Remove failed');
+      showMsg('success', out.message);
+      setAvatar('', document.getElementById('p-name').textContent);
+      document.getElementById('remove-photo-btn').style.display = 'none';
     });
 
     // Add research
@@ -197,6 +270,36 @@
       renderResearches(me.profile.researches);
     });
 
+    // Notification preferences
+    (async () => {
+      const r = await fetch('/api/auth/profile/prefs');
+      if (!r.ok) return;
+      const { prefs } = await r.json();
+      document.getElementById('pref-inapp').checked = prefs.inApp !== false;
+      document.getElementById('pref-email').checked = !!prefs.email;
+      document.getElementById('pref-quiet').checked = !!(prefs.quietHours && prefs.quietHours.enabled);
+      if (prefs.quietHours) {
+        document.getElementById('pref-start').value = prefs.quietHours.start || '22:00';
+        document.getElementById('pref-end').value = prefs.quietHours.end || '07:00';
+      }
+    })();
+    document.getElementById('prefs-save').addEventListener('click', async () => {
+      const body = {
+        inApp: document.getElementById('pref-inapp').checked,
+        email: document.getElementById('pref-email').checked,
+        quietHours: {
+          enabled: document.getElementById('pref-quiet').checked,
+          start: document.getElementById('pref-start').value,
+          end: document.getElementById('pref-end').value
+        }
+      };
+      const res = await fetch('/api/auth/profile/prefs', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+      });
+      const out = await res.json();
+      showMsg(res.ok ? 'success' : 'error', out.message || out.error || 'Failed to save preferences.');
+    });
+
     async function removeResearch(id) {
       const res = await fetch('/api/auth/researches/' + id, { method: 'DELETE' });
       const out = await res.json();
@@ -205,6 +308,7 @@
       const me = await (await fetch('/api/auth/profile')).json();
       renderResearches(me.profile.researches);
     }
+
   </script>
 </body>
 </html>

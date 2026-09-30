@@ -1,38 +1,72 @@
 [
   {
-    "id": 1,
-    "title": "2026 National Policy Research Conference",
-    "type": "Conference",
-    "date": "2026-09-18",
-    "location": "University Conference Center, Main Campus",
-    "description": "A two-day conference gathering researchers, policymakers, and practitioners to discuss evidence-based approaches to national development challenges.",
-    "photo": ""
+    "id": "demo-ev-2",
+    "title": "Policy Forum: Digital Governance",
+    "type": "Forum",
+    "date": "2026-10-09",
+    "location": "University Boardroom",
+    "description": "Public forum on inclusive, accountable e-government with national and local experts.",
+    "photo": "",
+    "createdAt": "2026-08-01T09:00:00.000Z"
   },
   {
-    "id": 2,
-    "title": "CPRI Research Symposium: Climate & Health",
-    "type": "Symposium",
-    "date": "2026-08-15",
-    "location": "Hybrid (On-site + Zoom)",
-    "description": "A focused symposium presenting interdisciplinary research at the intersection of climate change and public health.",
-    "photo": ""
+    "id": "demo-ev-3",
+    "title": "Capability Building: Impact Evaluation",
+    "type": "Workshop",
+    "date": "2026-11-12",
+    "location": "CPRI Training Room 2",
+    "description": "Two-day workshop on impact evaluation design for faculty and student researchers.",
+    "photo": "",
+    "createdAt": "2026-08-01T09:00:00.000Z"
   },
   {
-    "id": 3,
-    "title": "Research Methods Training Series",
+    "id": "demo-ev-4",
+    "title": "Research Ethics Training 2026",
     "type": "Training",
-    "date": "2026-08-02",
-    "location": "CPRI Training Room 302",
-    "description": "A five-module capacity-building program on research design, data analysis, and academic writing.",
-    "photo": ""
+    "date": "2027-01-15",
+    "location": "CPRI Training Room 1",
+    "description": "Required ethics certification for researchers working with human participants.",
+    "photo": "",
+    "createdAt": "2026-08-01T09:00:00.000Z"
   },
   {
-    "id": 4,
-    "title": "Workshop: Grant Writing for Early-Career Researchers",
-    "type": "Capability Building",
-    "date": "2026-07-25",
-    "location": "CPRI Training Room 302",
-    "description": "A hands-on workshop equipping early-career researchers with the skills to develop competitive research proposals.",
-    "photo": ""
+    "id": "8f72ebb2-37e6-4388-ac87-5bf684f6c55c",
+    "title": "Past Webinar: UHC Progress in the Regions",
+    "type": "Webinar",
+    "date": "2026-05-22",
+    "location": "Online",
+    "description": "Webinar on Universal Health Coverage implementation progress across partner provinces.",
+    "photo": "",
+    "createdAt": "2026-09-05T09:57:45.996Z"
+  },
+  {
+    "id": "4b7d55f2-c140-48a8-9429-35e0f0d0d523",
+    "title": "Policy Forum: Digital Governance",
+    "type": "Forum",
+    "date": "2026-10-09",
+    "location": "University Boardroom",
+    "description": "Public forum on inclusive, accountable e-government with national and local experts.",
+    "photo": "",
+    "createdAt": "2026-09-05T09:57:57.740Z"
+  },
+  {
+    "id": "960fc450-06b2-4c15-8b25-682f2cc892f4",
+    "title": "Capability Building: Impact Evaluation",
+    "type": "Workshop",
+    "date": "2026-11-12",
+    "location": "CPRI Training Room 2",
+    "description": "Two-day workshop on impact evaluation design for faculty and student researchers.",
+    "photo": "",
+    "createdAt": "2026-09-05T09:57:57.802Z"
+  },
+  {
+    "id": "4354995e-63a6-4dfe-a8f1-2a8bd23365b0",
+    "title": "Research Ethics Training 2026",
+    "type": "Training",
+    "date": "2027-01-15",
+    "location": "CPRI Training Room 1",
+    "description": "Required ethics certification for researchers working with human participants.",
+    "photo": "",
+    "createdAt": "2026-09-05T09:57:57.858Z"
   }
 ]

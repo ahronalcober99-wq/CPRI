@@ -1,5 +1,18 @@
 node_modules/
+.tools/
 server/data/*.json
+server/data/demo-access.key
+server/data/sessions/
+backups/
 public/assets/uploads/
 *.log
 .env
+
+# Local machine state / credentials — must never be committed.
+# `git add .` used to sweep these in accidentally (Chrome test profile with the
+# browser's saved logins and cookies, the Freebuff app database, cookie jars).
+# `run.md` is the one .freebuff file worth keeping, so re-include it.
+.freebuff/*
+!.freebuff/run.md
+public/.freebuff/
+cookies.txt

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reset Password | CPRI Account</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -24,11 +25,17 @@
         <form id="reset-form" class="card">
           <div class="form-group">
             <label for="password">New Password * (min 8 characters)</label>
-            <input type="password" id="password" name="password" required minlength="8">
+            <div class="pwd-field">
+              <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+              <button type="button" class="pwd-toggle" aria-label="Hold to show password" aria-pressed="false" title="Hold to see"><i class="bi bi-eye"></i></button>
+            </div>
           </div>
           <div class="form-group">
             <label for="confirm">Confirm New Password *</label>
-            <input type="password" id="confirm" name="confirm" required minlength="8">
+            <div class="pwd-field">
+              <input type="password" id="confirm" name="confirm" required minlength="8" autocomplete="new-password">
+              <button type="button" class="pwd-toggle" aria-label="Hold to show confirm password" aria-pressed="false" title="Hold to see"><i class="bi bi-eye"></i></button>
+            </div>
           </div>
           <button type="submit" class="btn btn-primary" id="submit-btn" style="width:100%;">Reset Password</button>
           <p class="form-note" style="margin-top:14px;">

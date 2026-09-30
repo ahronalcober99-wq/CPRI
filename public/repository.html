@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Research Repository | CPRI</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -69,7 +70,7 @@
         </div>
 
         <!-- Admin: publish submission -->
-        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:#e6f4f1;">
+        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:var(--cpri-bg-2);">
           <h3>CPRI Staff / Admin</h3>
           <p class="form-note">Publish an approved submission to the repository by its ID.</p>
           <form id="publish-form" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">

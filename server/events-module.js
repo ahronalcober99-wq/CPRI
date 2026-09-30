@@ -6,12 +6,36 @@ import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
+import pool from './db.js';
+import { notify } from './notifications.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'assets', 'uploads', 'events-module');
+const UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'events-module');
+const DATA_DIR = join(__dirname, 'data');
 
 const router = Router();
+
+// Add the `photo` column on existing installs (fresh installs get it from
+// init-db.sql). Called once at boot. Only the duplicate-column error is
+// expected; anything else is logged so a real failure isn't hidden.
+export async function ensureEventsSchema() {
+  try {
+    await pool.query(
+      "ALTER TABLE events_module ADD COLUMN photo VARCHAR(500) DEFAULT ''"
+    );
+  } catch (err) {
+    if (err && (err.code === 'ER_DUP_FIELDNAME' || err.errno === 1060)) {
+      // Already migrated.
+    } else {
+      console.error('[events] schema ensure failed:', err && err.message);
+    }
+  }
+  // Sweep leftover temp folders from crashed/interrupted requests.
+  try {
+    await fs.rm(join(UPLOAD_DIR, '_tmp'), { recursive: true, force: true });
+  } catch { /* no-op */ }
+}
 
 const PARTICIPANT_TYPES = {
   presenter: 'Research Presenter',
@@ -36,9 +60,10 @@ function canEdit(me) {
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: async (req, file, cb) => {
     const dir = join(UPLOAD_DIR, req._eventId);
-    fs.mkdir(dir, { recursive: true }, () => cb(null, dir));
+    try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
+    catch (err) { cb(err); }
   },
   filename: (req, file, cb) => {
     const safe = file.fieldname.replace(/[^a-z0-9]/gi, '_');
@@ -51,6 +76,23 @@ const uploadGallery = upload.fields([
   { name: 'poster', maxCount: 1 },
   { name: 'certificate', maxCount: 1 }
 ]);
+
+// Cover-photo upload for the Create Event form. The event id doesn't exist
+// yet at upload time, so files land in a per-request temp folder and are
+// moved into <UPLOAD_DIR>/<eventId>/ once the event row is created.
+const coverStorage = multer.diskStorage({
+  destination: async (req, file, cb) => {
+    const dir = join(UPLOAD_DIR, '_tmp', req._tmpId);
+    try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
+    catch (err) { cb(err); }
+  },
+  filename: (req, file, cb) => cb(null, `cover${extname(file.originalname).toLowerCase() || '.jpg'}`)
+});
+const uploadCover = multer({
+  storage: coverStorage,
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith('image/'))
+}).single('photo');
 
 // ---------- Events ----------
 router.get('/', async (req, res) => {
@@ -67,8 +109,41 @@ router.get('/', async (req, res) => {
   sql += ' ORDER BY dateTime ASC';
   const list = await all(sql, params);
 
-  res.json({
-    events: list.map(e => ({
+  // Unified feed: module events PLUS content events (events.json, published
+  // from the Admin Console Content tab). Both carry a `source` flag so the
+  // frontend can route detail links appropriately.
+  const content = JSON.parse(await fs.readFile(join(DATA_DIR, 'events.json'), 'utf8').catch(() => '[]'));
+  const contentEvents = (Array.isArray(content) ? content : []).map(e => {
+    // Apply the same filters as the module query so search behaves uniformly.
+    const title = e.title || '', theme = e.type || '', venue = e.location || '', date = e.date || '';
+    const matches =
+      (!q.title || title.toLowerCase().includes(String(q.title).toLowerCase())) &&
+      (!q.theme || theme.toLowerCase().includes(String(q.theme).toLowerCase())) &&
+      (!q.venue || venue.toLowerCase().includes(String(q.venue).toLowerCase())) &&
+      (!q.fromDate || date >= q.fromDate) &&
+      (!q.toDate || date <= q.toDate);
+    if (!matches) return null;
+    return {
+      id: e.id,
+      title,
+      theme,
+      dateTime: date,
+      venue,
+      description: (e.description || '').slice(0, 200),
+      registrationLink: e.registrationLink || '',
+      programFlow: '',
+      speakers: '',
+      photo: e.photo || '',
+      createdAt: e.createdAt || '',
+      source: 'content'
+    };
+  }).filter(Boolean);
+
+  // Dedupe by title: the seed mirrors the same events in both stores. The
+  // module copy (richer: registration, program flow) wins on this page; only
+  // events that exist solely as content events fall through.
+  const merged = [
+    ...list.map(e => ({
       id: e.id,
       title: e.title,
       theme: e.theme,
@@ -78,9 +153,21 @@ router.get('/', async (req, res) => {
       registrationLink: e.registrationLink,
       programFlow: e.programFlow,
       speakers: e.speakers,
-      createdAt: e.createdAt
-    }))
-  });
+      photo: e.photo || '',
+      createdAt: e.createdAt,
+      source: 'module'
+    })),
+    ...contentEvents
+  ];
+  const seen = new Set();
+  const events = merged.filter(e => {
+    const key = String(e.title || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).sort((a, b) => new Date(a.dateTime || 0) - new Date(b.dateTime || 0));
+
+  res.json({ events });
 });
 
 router.get('/:id', async (req, res) => {
@@ -89,18 +176,53 @@ router.get('/:id', async (req, res) => {
   res.json({ event: e });
 });
 
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, (req, res, next) => {
+  // The event id doesn't exist until the row is created, so the photo lands
+  // in a temp folder keyed by a throwaway id; the handler moves it after insert.
+  req._tmpId = randomUUID();
+  next();
+}, uploadCover, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
   const b = req.body || {};
+  const id = randomUUID();
+  const tmpDir = join(UPLOAD_DIR, '_tmp', req._tmpId);
+  let photo = '';
+
+  // Make sure the temp folder is removed whether validation fails below or the
+  // move above succeeded — no orphaned uploads left behind.
+  async function cleanupTmp() {
+    try {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    } catch (cleanupErr) {
+      console.error('[events] temp cleanup failed:', cleanupErr.message);
+    }
+  }
+
   const required = ['title', 'theme', 'dateTime', 'venue'];
   for (const f of required) {
-    if (!b[f]) return res.status(400).json({ error: `Field "${f}" is required.` });
+    if (!b[f]) {
+      await cleanupTmp();
+      return res.status(400).json({ error: `Field "${f}" is required.` });
+    }
+  }
+
+  try {
+    if (req.file) {
+      const dir = join(UPLOAD_DIR, id);
+      await fs.mkdir(dir, { recursive: true });
+      await fs.rename(join(tmpDir, req.file.filename), join(dir, req.file.filename));
+      // Public path, matching what content events use (e.g. /assets/uploads/events/...).
+      photo = `/assets/uploads/events-module/${id}/${req.file.filename}`;
+    }
+  } catch (err) {
+    console.error('[events] cover move failed:', err.message);
+    photo = '';
   }
 
   const rec = {
-    id: randomUUID(),
+    id,
     title: String(b.title).trim(),
     theme: String(b.theme).trim(),
     dateTime: String(b.dateTime).trim(),
@@ -109,13 +231,24 @@ router.post('/', requireAuth, async (req, res) => {
     registrationLink: b.registrationLink ? String(b.registrationLink).trim() : '',
     programFlow: b.programFlow ? String(b.programFlow).trim() : '',
     speakers: b.speakers ? String(b.speakers).trim() : '',
+    photo,
     gallery: JSON.stringify([]),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
   await insert('events_module', rec);
+  await cleanupTmp();
   res.status(201).json({ message: 'Event created.', event: rec });
+});
+
+// Turn multer failures (oversized file, bad content type) into clean 400s
+// instead of the generic 500 the global handler would produce.
+router.use((err, req, res, next) => {
+  if (err && (err instanceof multer.MulterError || err.code === 'LIMIT_FILE_SIZE')) {
+    return res.status(400).json({ error: 'Photo upload failed: ' + (err.message || 'invalid file.') });
+  }
+  next(err);
 });
 
 router.patch('/:id', requireAuth, async (req, res) => {
@@ -127,7 +260,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
 
   const b = req.body || {};
   const changes = {};
-  const editable = ['title', 'theme', 'dateTime', 'venue', 'description', 'registrationLink', 'programFlow', 'speakers'];
+  const editable = ['title', 'theme', 'dateTime', 'venue', 'description', 'registrationLink', 'programFlow', 'speakers', 'photo'];
   for (const f of editable) {
     if (b[f] !== undefined) changes[f] = String(b[f]).trim();
   }
@@ -144,6 +277,8 @@ router.delete('/:id', requireAuth, async (req, res) => {
   const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e) return res.status(404).json({ error: 'Event not found.' });
   await remove('events_module', req.params.id);
+  // Clean up the event's photo/gallery folder.
+  await fs.rm(join(UPLOAD_DIR, req.params.id), { recursive: true, force: true }).catch(() => {});
   res.json({ message: 'Event removed.' });
 });
 
@@ -179,6 +314,11 @@ router.post('/:id/register', requireAuth, async (req, res) => {
   };
 
   await insert('event_registrations', reg);
+
+  // In-app notification confirming the registration to the user.
+  await notify(me.id, 'event_registered', 'Event registration confirmed',
+    `You are registered for "${e.title}".`, `event-detail.html?id=${e.id}`);
+
   res.status(201).json({ message: 'Registered successfully.', registration: reg });
 });
 

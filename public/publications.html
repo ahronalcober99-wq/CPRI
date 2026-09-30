@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Publications | CPRI</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -27,7 +28,7 @@
         <div id="breakdown" class="grid grid-2" style="margin-bottom:28px;"></div>
 
         <!-- Admin: Add publication -->
-        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:#e6f4f1;">
+        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:var(--cpri-bg-2);">
           <h3>CPRI Staff / Admin</h3>
           <p class="form-note">Register a new publication record.</p>
           <a class="btn btn-primary" href="publication-form.html" style="display:inline-block;margin-top:8px;">+ Add Publication</a>
@@ -116,6 +117,12 @@
     const dashboard = document.getElementById('dashboard');
     const breakdown = document.getElementById('breakdown');
     const recordsEl = document.getElementById('records');
+    let isStaff = false;
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
 
     const TYPE_LABELS = {
       institutional_journal: 'Institutional Journal', local_journal: 'Local Journal', national_journal: 'National Journal',
@@ -190,9 +197,29 @@
               <div class="meta">${escapeHtml(p.authors)} · ${escapeHtml(p.journalOrConference)} · ${p.pubTypeLabel} · ${p.statusLabel}</div>
               <div class="meta" style="margin-top:4px;">${p.publicationDate} · Vol. ${p.volume || '—'} Issue ${p.issue || '—'} pp. ${p.pages || '—'} · ${p.authorTypeLabel}</div>
               ${p.doi ? `<div class="meta" style="margin-top:4px;">DOI: ${escapeHtml(p.doi)}</div>` : ''}
+              ${p.sourceSubmissionId ? '<div class="meta" style="margin-top:6px;color:var(--cpri-secondary);"><i class="bi bi-magic"></i> Auto-added from an approved research submission</div>' : ''}
             </div>
+            ${isStaff && p.sourceSubmissionId ? `
+              <button type="button" class="btn btn-outline btn-sm remove-pub" data-id="${p.id}" data-title="${escapeHtml(p.title)}" style="border-color:#b23b32;color:#b23b32;white-space:nowrap;" aria-label="Remove ${escapeHtml(p.title)} from Publications">
+                <i class="bi bi-x-circle"></i> Remove from Publications
+              </button>` : ''}
           </div>
         </div>`).join('');
+
+      recordsEl.querySelectorAll('.remove-pub').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          // In-page confirm (native confirm() is blocked in sandboxed iframes).
+          const ask = window.confirmDialog || ((msg) => Promise.resolve(window.confirm(msg)));
+          const ok = await ask(`Remove "${btn.dataset.title}" from Publications? The research submission and its repository entry stay untouched.`, 'Remove');
+          if (!ok) return;
+          const res = await fetch('/api/publications/' + btn.dataset.id, { method: 'DELETE' });
+          const out = await res.json();
+          if (!res.ok) return showMsg('error', out.error || 'Could not remove the publication.');
+          showMsg('success', 'Removed from Publications.');
+          loadStats();
+          load();
+        });
+      });
     }
 
     function escapeHtml(text) {
@@ -208,15 +235,18 @@
     });
 
     (async () => {
-      await loadStats();
-      await load();
+      // Resolve the viewer's role before rendering so auto-added publications
+      // show the staff-only "Remove from Publications" action on first paint.
       const meRes = await fetch('/api/auth/me');
       if (meRes.ok) {
         const { user } = await meRes.json();
         if (['admin', 'cpri_staff'].includes(user.role)) {
+          isStaff = true;
           document.getElementById('admin-panel').style.display = 'block';
         }
       }
+      await loadStats();
+      await load();
     })();
   </script>
 </body>

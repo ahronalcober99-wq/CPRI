@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
@@ -9,19 +10,83 @@ import { repositoryRouter } from './repository.js';
 import { publicationsRouter } from './publications.js';
 import { ethicsRouter } from './ethics.js';
 import { researchersRouter } from './researchers.js';
-import { eventsModuleRouter } from './events-module.js';
+import { eventsModuleRouter, ensureEventsSchema } from './events-module.js';
 import { innovationExtensionRouter } from './innovation-extension.js';
 import { adminDashboardRouter } from './admin-dashboard.js';
 import { adminInsightsRouter } from './admin-insights.js';
 import { reportsRouter } from './reports.js';
+import { notificationsRouter, ensureNotificationsTable } from './notifications.js';
+import { messagesRouter, ensureMessagesTable } from './messages.js';
 import { testConnection } from './db.js';
-import { insert } from './server/db/queries.js';
+import { insert, all } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, 'data');
 const PUBLIC_DIR = join(__dirname, '..', 'public');
 const PORT = process.env.PORT || 3000;
+
+// ---- Process-level crash guards ----------------------------------------
+// One uncaught error used to take the whole server down (e.g. the MariaDB
+// datetime rejection). Log these instead of letting the process exit, so the
+// site keeps serving. Tradeoff: an uncaughtException can leave a request in a
+// broken state, but for this app keeping the server alive beats a full outage.
+process.on('uncaughtException', (err) => {
+  console.error('[process] Uncaught exception (server keeps running):', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[process] Unhandled promise rejection (server keeps running):', reason);
+});
+
+// ---- Persistent sessions (survive server restarts) ----------------------
+// The default in-memory MemoryStore logs everyone out on every restart. A
+// file-backed store also works when MySQL is down (file-only mode).
+//
+// We deliberately do NOT use session-file-store's write-file-atomic: on
+// Windows its temp-file-then-rename pattern intermittently fails with EPERM
+// (antivirus / open-handle race), and the error was being swallowed — the
+// session write silently never landed, so logins (especially the Google OAuth
+// callback) randomly "didn't stick". This store writes each session directly
+// to its own file (no rename), which sidesteps that failure mode entirely.
+const SESSIONS_DIR = join(__dirname, 'data', 'sessions');
+await fs.mkdir(SESSIONS_DIR, { recursive: true });
+
+const SESSION_TTL_MS = 1000 * 60 * 60 * 8; // 8h, matches the cookie maxAge
+
+class DirectFileStore extends session.Store {
+  constructor(dir) {
+    super();
+    this.dir = dir;
+  }
+  _file(sid) {
+    // session IDs are URL-safe base64; strip any residual unsafe chars
+    return join(this.dir, String(sid).replace(/[^A-Za-z0-9_-]/g, '') + '.json');
+  }
+  get(sid, cb) {
+    fs.readFile(this._file(sid), 'utf8')
+      .then((raw) => {
+        let data;
+        try { data = JSON.parse(raw); } catch { return cb(null, null); }
+        if (data.cookie && data.cookie.expires && new Date(data.cookie.expires).getTime() < Date.now()) {
+          return fs.unlink(this._file(sid)).catch(() => {}).then(() => cb(null, null));
+        }
+        cb(null, data);
+      })
+      .catch(() => cb(null, null)); // missing file = no session, not an error
+  }
+  set(sid, sess, cb) {
+    const write = () => fs.writeFile(this._file(sid), JSON.stringify(sess), 'utf8');
+    // Transient write errors (AV scan, handle race) — retry briefly before
+    // giving up, but direct write has no rename step to fail on.
+    write().catch(() => write()).then(() => cb && cb()).catch((err) => cb && cb(err));
+  }
+  touch(sid, sess, cb) {
+    this.set(sid, sess, cb);
+  }
+  destroy(sid, cb) {
+    fs.unlink(this._file(sid)).catch(() => {}).then(() => cb && cb());
+  }
+}
 
 const app = express();
 app.use(express.json());
@@ -32,11 +97,12 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'cpri-dev-secret-change-me',
   resave: false,
   saveUninitialized: false,
+  store: new DirectFileStore(SESSIONS_DIR),
   cookie: {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 1000 * 60 * 60 * 8
+    maxAge: SESSION_TTL_MS
   }
 }));
 
@@ -51,8 +117,22 @@ app.use('/api/innovation-extension', innovationExtensionRouter);
 app.use('/api/admin', adminDashboardRouter);
 app.use('/api/admin', adminInsightsRouter);
 app.use('/api/reports', reportsRouter);
+app.use('/api', notificationsRouter);
+app.use('/api/messages', messagesRouter);
 
-app.use(express.static(PUBLIC_DIR));
+// Serve static assets with `Cache-Control: no-cache` (revalidate every load via
+// ETag/Last-Modified) instead of default heuristic caching. In-app browsers
+// (Messenger, Facebook, etc.) cache aggressively and were serving stale
+// styles.css — e.g. the old wide Login/Register pills — making the mobile
+// header look broken after CSS changes. no-cache means unchanged files still
+// get a fast 304; changed files are fetched fresh immediately.
+app.use(express.static(PUBLIC_DIR, {
+  etag: true,
+  lastModified: true,
+  setHeaders(res) {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
+}));
 
 // Content APIs (switch from readJson to SQL)
 app.get('/api/site', async (req, res) => {
@@ -66,8 +146,42 @@ app.get('/api/announcements', async (req, res) => {
 });
 
 app.get('/api/events', async (req, res) => {
-  const items = await fs.readFile(join(DATA_DIR, 'events.json'), 'utf8').catch(() => '[]');
-  res.json(JSON.parse(items).sort((a, b) => new Date(a.date) - new Date(b.date)));
+  // Unified events feed: content events (events.json, from the Admin Console
+  // Content tab) PLUS module events (events_module table, from the Events &
+  // Conferences page). Each row is tagged with a `source` field so pages can
+  // route links to the right detail view.
+  const content = JSON.parse(await fs.readFile(join(DATA_DIR, 'events.json'), 'utf8').catch(() => '[]'));
+  let moduleEvents = [];
+  try {
+    moduleEvents = await all('SELECT * FROM events_module');
+  } catch (err) {
+    console.error('[events] module read failed:', err.message);
+  }
+  // Merge both stores, deduped by title (the seed mirrors the same events in
+  // both stores). For this public feed, the content copy wins because it can
+  // carry a hero photo; module-only events still appear.
+  const merged = [
+    ...(Array.isArray(content) ? content : []).map(e => ({ ...e, source: 'content' })),
+    ...(Array.isArray(moduleEvents) ? moduleEvents : []).map(e => ({
+      id: e.id,
+      title: e.title,
+      type: e.theme || 'Event',
+      date: e.dateTime || '',
+      location: e.venue || '',
+      description: e.description || '',
+      photo: e.photo || '',
+      registrationLink: e.registrationLink || '',
+      source: 'module'
+    }))
+  ];
+  const seen = new Set();
+  const items = merged.filter(e => {
+    const key = String(e.title || '').trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  res.json(items.sort((a, b) => new Date(a.date) - new Date(b.date)));
 });
 
 app.get('/api/research', async (req, res) => {
@@ -103,9 +217,44 @@ app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(join(PUBLIC_DIR, 'index.html'));
 });
 
+// JSON 404 for unknown API routes (instead of the Express HTML default)
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found.' });
+});
+
+// Central error handler — log the failure, return JSON, keep serving.
+// (Async handler rejections in Express 4 fall through to the
+// unhandledRejection guard above; this catches sync/next(err) errors.)
+app.use((err, req, res, next) => {
+  console.error(`[error] ${req.method} ${req.originalUrl}:`, err && (err.message || err));
+  if (res.headersSent) return next(err);
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: status >= 500 ? 'Internal server error.' : (err.message || 'Request failed.') });
+});
+
 const server = app.listen(PORT, async () => {
   await testConnection();
   await initAuth();
+  await ensureNotificationsTable().catch(err => console.error('[notifications] table ensure failed:', err.message));
+  await ensureMessagesTable().catch(err => console.error('[messages] table ensure failed:', err.message));
+  await ensureEventsSchema().catch(err => console.error('[events] schema ensure failed:', err.message));
+
+  // Startup diagnostics for the email verification flow
+  // (booleans only — never print the actual password)
+  const hasUser = Boolean(process.env.GMAIL_USER);
+  const hasPass = Boolean(process.env.GMAIL_APP_PASSWORD);
+  console.log('[mail] GMAIL_USER set:', hasUser);
+  console.log('[mail] GMAIL_APP_PASSWORD set:', hasPass);
+  if (!hasUser || !hasPass) {
+    console.log('[mail] Gmail not fully configured — verification codes will be logged to the server console (DEV fallback) instead of emailed.');
+  }
+  try {
+    const { verifyGmailTransporter } = await import('./lib/mail.js');
+    await verifyGmailTransporter();
+  } catch (err) {
+    console.error('[mail] Gmail SMTP auth check failed:', err && (err.response || err.message || err));
+  }
+
   console.log(`CPRI public website running at http://localhost:${PORT}`);
 }).on('error', (err) => {
   if (err.code === 'EADDRINUSE') {

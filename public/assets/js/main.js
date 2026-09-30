@@ -23,42 +23,60 @@ const CPRI = (() => {
         { label: 'Events', href: 'events.html', icon: 'bi-calendar-event', desc: 'Workshops & talks' },
         { label: 'Events & Conferences', href: 'events-module.html', icon: 'bi-people', desc: 'Symposia' }
       ]},
-      { label: 'Research', icon: 'bi-journal-richtext', group: [        { label: 'Student Researcher Portal', href: 'student-researchers.html', icon: 'bi-mortarboard', desc: 'Submit capstone and research outputs' },        { label: 'Submissions', href: 'submissions.html', icon: 'bi-send', desc: 'Submit research' },
-        { label: 'Repository', href: 'repository.html', icon: 'bi-archive', desc: 'Open repository' },
-        { label: 'Publications', href: 'publications.html', icon: 'bi-journal-richtext', desc: 'Papers & briefs' },
-        { label: 'Ethics Review', href: 'ethics.html', icon: 'bi-shield-check', desc: 'Ethics clearance' },
-        { label: 'Researchers', href: 'researchers.html', icon: 'bi-people', desc: 'Our people' },
-        { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb', desc: 'Applied work' },
-        { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph', desc: 'Annual reports' }
+      // Large menus can be split into labeled sections; each section renders
+      // as its own column with a heading (desktop) / a small label (mobile)
+      // instead of one long flat list.
+      { label: 'Research', icon: 'bi-journal-richtext', group: [
+        { section: 'Get involved', items: [
+          { label: 'Student Researcher Portal', href: 'student-researchers.html', icon: 'bi-mortarboard', desc: 'Submit capstone and research outputs' },
+          { label: 'Submissions', href: 'submissions.html', icon: 'bi-send', desc: 'Submit research' },
+          { label: 'Ethics Review', href: 'ethics.html', icon: 'bi-shield-check', desc: 'Ethics clearance' }
+        ]},
+        { section: 'Explore', items: [
+          { label: 'Repository', href: 'repository.html', icon: 'bi-archive', desc: 'Open repository' },
+          { label: 'Publications', href: 'publications.html', icon: 'bi-journal-richtext', desc: 'Papers & briefs' },
+          { label: 'Researchers', href: 'researchers.html', icon: 'bi-people', desc: 'Our people' },
+          { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb', desc: 'Applied work' },
+          { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph', desc: 'Annual reports' }
+        ]}
       ]},
-      { label: 'Admin', href: 'admin-dashboard.html', icon: 'bi-speedometer2' }
     ]
-  };
-
-  const PAGE_LABELS = {
-    'index.html':'Home','about.html':'About CPRI','research-agenda.html':'Research Agenda',
-    'contact.html':'Contact','announcements.html':'Announcements','events.html':'Events',
-    'events-module.html':'Events & Conferences','student-researchers.html':'Student Researchers',
-    'submissions.html':'Submissions','repository.html':'Repository','publications.html':'Publications','ethics.html':'Ethics Review',
-    'researchers.html':'Researchers','innovation-extension.html':'Innovation & Extension',
-    'reports.html':'Reports','admin-dashboard.html':'Admin Console','account.html':'My Account',
-    'login.html':'Login','register.html':'Register','forgot.html':'Forgot Password',
-    'reset.html':'Reset Password','profile.html':'Profile','submission.html':'Submission',
-    'submit.html':'Submit','repository-detail.html':'Repository Item','publication-detail.html':'Publication',
-    'publication-form.html':'Edit Publication','researcher-detail.html':'Researcher',
-    'researcher-form.html':'Edit Researcher','event-detail.html':'Event','event-registration.html':'Event Registration',
-    'event-abstract.html':'Event Abstract','ethics-detail.html':'Ethics Detail','ethics-form.html':'Ethics Form',
-    'innovation-extension-detail.html':'Innovation Detail','innovation-extension-form.html':'Innovation Form'
   };
 
   const currentPage = () => location.pathname.split('/').pop() || 'index.html';
 
+  // /api/auth/me with one retry: the file-backed session store can transiently
+  // drop a read (Windows AV / handle race) and answer 401 even for a live
+  // session, which would otherwise render the guest Login/Register header for
+  // a signed-in visitor. Retry once before giving up.
+  async function fetchMe() {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const r = await fetch('/api/auth/me');
+        if (r.ok) return await r.json();
+      } catch { /* fall through to retry */ }
+      if (attempt === 0) await new Promise(res => setTimeout(res, 80));
+    }
+    return null;
+  }
+
   async function getNavItems() {
     const auth = [];
+    let isAdmin = false;
+    let me = null;
     try {
-      const me = await fetch('/api/auth/me').then(r => r.ok ? r.json() : null).catch(() => null);
+      me = await fetchMe();
       if (me && me.user) {
-        auth.push({ label: 'Dashboard', href: 'admin-dashboard.html', primary: true });
+        isAdmin = me.user.role === 'admin';
+        // The Admin console is admin-only — hidden from the nav for every other
+        // role (mirrors the server's requireAdmin gate on /api/admin/*).
+        if (isAdmin) {
+          auth.push({ label: 'Dashboard', href: 'admin-dashboard.html', primary: true });
+        }
+        // Direct messaging is for all registered roles — mirror the server's DM gate.
+        if (['admin','cpri_staff','faculty_researcher','adviser','ethics_reviewer','student_researcher','public_visitor'].includes(me.user.role)) {
+          auth.push({ label: 'Messages', href: 'messages.html' });
+        }
         auth.push({ label: 'My Account', href: 'account.html' });
         auth.push({ label: 'Logout', href: '#', action: 'logout' });
       } else {
@@ -69,31 +87,67 @@ const CPRI = (() => {
       auth.push({ label: 'Login', href: 'login.html' });
       auth.push({ label: 'Register', href: 'register.html', primary: true });
     }
-    return { nav: SITE.baseNav, auth };
+    // Desktop navbar entry for admins only. The mobile menu already surfaces
+    // the console via the Dashboard auth item, so buildMobileNav skips desktopOnly.
+    const nav = SITE.baseNav.slice();
+    if (isAdmin) {
+      nav.push({ label: 'Admin Console', href: 'admin-dashboard.html', icon: 'bi-speedometer2', desktopOnly: true });
+    }
+    // Avatar photo (Google OAuth URL or uploaded file) + display name, used by
+    // headerHtml to render the My Account circle as a photo when one exists.
+    return {
+      nav,
+      auth,
+      photo: (me && me.user && me.user.profilePhoto) || '',
+      name: (me && me.user && (me.user.fullName || me.user.username)) || '',
+      // First-time Google sign-ins must finish profile setup (pick a role).
+      needsSetup: !!(me && me.user && me.user.needsSetup)
+    };
   }
 
-  function breadcrumbHtml(active) {
-    if (active === 'index.html') return '';
-    const label = PAGE_LABELS[active] || active.replace('.html','');
-    return `<nav class="breadcrumb-bar" aria-label="Breadcrumb">
-      <div class="container-xl">
-        <a href="index.html"><i class="bi bi-house"></i> Home</a>
-        <i class="bi bi-chevron-right"></i><span aria-current="page">${label}</span>
-      </div></nav>`;
+  // Shared avatar helpers (desktop navbar, mobile menu, bottom nav):
+  // name-based initials fallback, and an <img> (or initials) with an onerror
+  // fallback so a missing/broken photo never shows a broken-image icon.
+  function avatarInitials(name) {
+    const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+    if (!parts.length) return 'CP';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  function avatarHtml(photo, name) {
+    const fallback = avatarInitials(name);
+    if (photo) {
+      return `<img src="${escapeHtml(String(photo))}" alt="" onerror="this.style.display='none';this.parentElement.textContent='${escapeHtml(fallback)}';">`;
+    }
+    return escapeHtml(fallback);
   }
 
   function headerHtml(active, navItems) {
     const links = navItems.nav.map(item => {
       const icon = item.icon ? `<i class="bi ${item.icon}"></i>` : '';
       if (item.group) {
-        const sub = item.group.map(s => {
+        const submenuItem = s => {
           const isActive = s.href === active ? ' class="active"' : '';
           const si = s.icon ? `<i class="bi ${s.icon}"></i>` : '';
           const sd = s.desc ? `<small>${s.desc}</small>` : '';
           return `<li><a href="${s.href}"${isActive}>${si}<span>${s.label}${sd}</span></a></li>`;
-        }).join('');
-        const isActiveGroup = item.group.some(g => g.href === active);
-        const panelCls = item.group.length > 5 ? ' cols-2' : '';
+        };
+        // Sectioned groups (e.g. Research) render each labeled section as its
+        // own column; plain groups stay a flat list (2 columns when long).
+        const isSectioned = item.group.some(g => g.items);
+        let sub, panelCls;
+        if (isSectioned) {
+          sub = item.group.map(sec => `
+            <li class="cpri-submenu-section">
+              <span class="cpri-submenu-heading">${sec.section}</span>
+              <ul class="cpri-submenu-items">${sec.items.map(submenuItem).join('')}</ul>
+            </li>`).join('');
+          panelCls = ' cols-sections';
+        } else {
+          sub = item.group.map(submenuItem).join('');
+          panelCls = item.group.length > 5 ? ' cols-2' : '';
+        }
+        const isActiveGroup = item.group.some(g => (g.items ? g.items : [g]).some(s => s.href === active));
         return `<li class="cpri-group${isActiveGroup ? ' active' : ''}">
           <a href="#" class="cpri-group-label" aria-haspopup="true" aria-expanded="false">${icon}<span>${item.label}</span><i class="bi bi-chevron-down cpri-caret-icon"></i></a>
           <ul class="cpri-submenu${panelCls}">${sub}</ul>
@@ -104,10 +158,20 @@ const CPRI = (() => {
     }).join('');
 
     const loggedIn = navItems.auth.some(a => a.action === 'logout');
+    // The quick dashboard icon is admin-only — the Dashboard auth item is only
+    // pushed into navItems.auth for role === 'admin'.
+    const isAdmin = navItems.auth.some(a => a.href === 'admin-dashboard.html');
+    // The messages icon shows for all registered roles (matches getNavItems push).
+    const isMessenger = navItems.auth.some(a => a.href === 'messages.html');
     let authHtml;
     if (loggedIn) {
-      authHtml = `<a class="cpri-icon-btn" href="admin-dashboard.html" aria-label="Quick dashboard" title="Dashboard"><i class="bi bi-grid-1x2"></i></a>
-        <a class="cpri-avatar" href="account.html" aria-label="My account" title="My Account">CP</a>`;
+      // My Account avatar: show the profile photo when one exists (Google OAuth
+      // picture URL or an uploaded file), otherwise fall back to the user's
+      // name initials. A missing/broken photo hides the img and shows initials.
+      const avatarInner = avatarHtml(navItems.photo, navItems.name);
+      authHtml = `${isAdmin ? `<a class="cpri-icon-btn" href="admin-dashboard.html" aria-label="Quick dashboard" title="Dashboard"><i class="bi bi-grid-1x2"></i></a>
+        ` : ''}${isMessenger ? `<a class="cpri-icon-btn" href="messages.html" aria-label="Direct messages" title="Messages"><i class="bi bi-chat-left-text"></i></a>
+        ` : ''}<button class="cpri-icon-btn cpri-bell-mobile" id="nav-bell-m" aria-label="Notifications" title="Notifications"><i class="bi bi-bell"></i><span class="dot" id="notifBadgeM" style="display:none"></span></button><a class="cpri-avatar" href="account.html" aria-label="My account" title="My Account">${avatarInner}</a>`;
     } else {
       authHtml = navItems.auth.map(item => {
         const cls = item.primary ? 'btn btn-gradient' : 'btn btn-outline-light';
@@ -127,17 +191,17 @@ const CPRI = (() => {
           <button class="cpri-nav-toggle" aria-label="Toggle navigation" aria-expanded="false"><i class="bi bi-list"></i></button>
           <ul class="cpri-nav-links">${links}</ul>
           <div class="cpri-util">
+            <button class="cpri-icon-btn" id="nav-settings" aria-label="Notification settings" title="Notification settings"><i class="bi bi-gear"></i></button>
+            <button class="cpri-icon-btn" id="nav-bell" aria-label="Notifications" title="Notifications"><i class="bi bi-bell"></i><span class="dot" id="notifBadge" style="display:none"></span></button>
             <button class="cpri-icon-btn" id="nav-search" aria-label="Search"><i class="bi bi-search"></i></button>
             <button class="cpri-icon-btn" id="nav-theme" aria-label="Toggle dark mode" title="Dark mode"><i class="bi bi-moon-stars"></i></button>
             <button class="cpri-icon-btn" id="nav-lang" aria-label="Language"><i class="bi bi-translate"></i><span style="position:absolute;bottom:4px;right:4px;font-size:.5rem;font-weight:700;">EN</span></button>
-            <button class="cpri-icon-btn" aria-label="Notifications"><i class="bi bi-bell"></i><span class="dot"></span></button>
             ${authHtml}
             <button class="cpri-icon-btn" id="nav-a11y" aria-label="Accessibility settings" title="Accessibility"><i class="bi bi-universal-access"></i></button>
             <button class="cpri-icon-btn mobile-nav-toggle" id="nav-offcanvas" aria-label="Menu"><i class="bi bi-list"></i></button>
           </div>
         </div>
       </div>
-      ${breadcrumbHtml(active)}
     </header>`;
   }
 
@@ -196,6 +260,7 @@ const CPRI = (() => {
   const CHROME = `
     <div class="scroll-progress" id="scrollProgress"></div>
     <button class="back-to-top" id="backToTop" aria-label="Back to top"><i class="bi bi-arrow-up"></i></button>
+    <a class="contact-fab" href="contact.html" aria-label="Contact us" title="Contact us"><i class="bi bi-envelope"></i><span>Contact us</span></a>
 
     <div class="search-pop" id="searchPop" role="dialog" aria-label="Search">
       <div class="sp-box">
@@ -204,11 +269,12 @@ const CPRI = (() => {
           <button class="btn btn-soft btn-sm" id="searchVoice" aria-label="Voice search"><i class="bi bi-mic"></i></button>
         </div>
         <div class="sp-body">
-          <div class="sp-suggest">Quick suggestions</div>
-          <a class="sp-item" href="publications.html"><i class="bi bi-journal-richtext"></i><div>Publications &amp; policy briefs<small>Open repository</small></div></a>
-          <a class="sp-item" href="researchers.html"><i class="bi bi-people"></i><div>Researchers directory<small>Find experts</small></div></a>
-          <a class="sp-item" href="events.html"><i class="bi bi-calendar-event"></i><div>Upcoming events<small>Conferences &amp; seminars</small></div></a>
-          <a class="sp-item" href="research-agenda.html"><i class="bi bi-graph-up-arrow"></i><div>Research agenda<small>Priority themes</small></div></a>
+          <div class="sp-suggest" id="searchHint">Quick suggestions</div>
+          <div id="searchResults"></div>
+          <a class="sp-item" href="publications.html" data-quick><i class="bi bi-journal-richtext"></i><div>Publications &amp; policy briefs<small>Open repository</small></div></a>
+          <a class="sp-item" href="researchers.html" data-quick><i class="bi bi-people"></i><div>Researchers directory<small>Find experts</small></div></a>
+          <a class="sp-item" href="events.html" data-quick><i class="bi bi-calendar-event"></i><div>Upcoming events<small>Conferences &amp; seminars</small></div></a>
+          <a class="sp-item" href="research-agenda.html" data-quick><i class="bi bi-graph-up-arrow"></i><div>Research agenda<small>Priority themes</small></div></a>
         </div>
       </div>
     </div>
@@ -226,25 +292,27 @@ const CPRI = (() => {
       <button class="btn btn-outline-dark w-100 mt-3" id="a11yReset">Reset preferences</button>
     </aside>
 
-    <button class="ai-fab" id="aiFab" aria-label="Open AI assistant"><i class="bi bi-robot"></i></button>
-    <div class="ai-chat" id="aiChat" role="dialog" aria-label="AI Research Assistant">
-      <header><span class="av"><i class="bi bi-robot"></i></span><div><b>AIRA</b><small>CPRI AI Research Assistant</small></div>
-        <button class="close" id="aiClose" aria-label="Close"><i class="bi bi-x-lg"></i></button></header>
-      <div class="ai-body" id="aiBody"></div>
-      <div class="ai-chips" id="aiChips">
-        <button>Summarize a paper</button><button>Find researchers</button><button>Suggest topics</button><button>Open access?</button>
-      </div>
-      <div class="ai-input"><input type="text" id="aiInput" placeholder="Ask about our research…"><button id="aiSend"><i class="bi bi-send"></i></button></div>
-    </div>
-
     <nav class="mobile-offcanvas" id="mobileOff" aria-label="Mobile menu"></nav>
+    <div class="more-backdrop" id="moreBackdrop"></div>
+    <nav class="more-sheet" id="moreSheet" aria-label="Explore"></nav>
     <nav class="bottom-nav" id="bottomNav" aria-label="Quick">
-      <a href="index.html" class="active"><i class="bi bi-house"></i>Home</a>
-      <a href="research-agenda.html"><i class="bi bi-graph-up-arrow"></i>Research</a>
-      <a href="publications.html"><i class="bi bi-journal-richtext"></i>Papers</a>
-      <a href="events.html"><i class="bi bi-calendar-event"></i>Events</a>
-      <a href="#" id="bnMenu"><i class="bi bi-grid"></i>More</a>
+      <a href="index.html" data-tab="home"><i class="bi bi-house"></i>Home</a>
+      <a href="research-agenda.html" data-tab="research"><i class="bi bi-graph-up-arrow"></i>Research</a>
+      <a href="#" id="bnMenu" class="bn-fab" aria-label="Open menu"><i class="bi bi-grid-1x2"></i><span>More</span></a>
+      <a href="publications.html" data-tab="papers"><i class="bi bi-journal-richtext"></i>Papers</a>
+      <a href="events.html" data-tab="events"><i class="bi bi-calendar-event"></i>Events</a>
     </nav>
+
+    <div class="notif-panel" id="notifPanel" role="dialog" aria-label="Notifications">
+      <div class="np-head"><b><i class="bi bi-bell"></i> Notifications <span class="np-role" id="npRole"></span></b>
+        <div class="np-actions">
+          <a class="np-mark" id="npMarkAll" href="#" title="Mark all as read"><i class="bi bi-check2-all"></i> Mark all read</a>
+          <a class="np-mark" id="npMessages" href="messages.html" title="Direct messages" style="display:none;"><i class="bi bi-chat-left-text"></i> Messages</a>
+          <a class="np-mark" id="npSettings" href="profile.html#prefs" title="Notification settings"><i class="bi bi-gear"></i> Settings</a>
+        </div>
+      </div>
+      <div class="np-body" id="npBody"></div>
+    </div>
 
     <div class="toast-wrap" id="toastWrap"></div>`;
 
@@ -253,34 +321,184 @@ const CPRI = (() => {
     const headerEl = document.getElementById('site-header');
     const footerEl = document.getElementById('site-footer');
     getNavItems().then(navItems => {
+      // A brand-new Google account must pick a role before using the site.
+      if (navItems.needsSetup && active !== 'complete-profile.html') {
+        window.location.replace('complete-profile.html');
+        return;
+      }
       if (headerEl) headerEl.outerHTML = headerHtml(active, navItems);
       if (footerEl) footerEl.outerHTML = footerHtml();
       document.body.insertAdjacentHTML('beforeend', CHROME);
       buildMobileNav(active, navItems);
       initNav();
       initChrome(active);
+      initAdminSidebar();
+      initSpotlight();
+      initTilt();
+      initMagnetic();
+      initCursorGlow();
+      initHeroParallax();
       initReveal();
       initCounters();
       initFaq();
       initNewsletter();
       initAuthActions();
       applySavedPrefs();
+      initPasswordReveal();
+    });
+  }
+
+  // ---- Hold-to-see password reveal ----
+  // Any password input wrapped in .pwd-field with a .pwd-toggle button shows
+  // the value only while the eye is held down (pointer/mouse/touch), hiding it
+  // again on release or when the pointer leaves. Safe for autofill browsers:
+  // the value is only ever toggled between password and text on the SAME input.
+  function initPasswordReveal() {
+    document.querySelectorAll('.pwd-field').forEach(field => {
+      const input = field.querySelector('input[type="password"]');
+      const btn = field.querySelector('.pwd-toggle');
+      if (!input || !btn) return;
+      let revealed = false;
+      const icon = btn.querySelector('i');
+      const show = () => {
+        if (revealed) return;
+        // Keep the caret position when flipping the type (only meaningful while
+        // the input itself is focused — selectionStart is null otherwise).
+        const focused = input === document.activeElement;
+        const pos = focused ? input.selectionStart : null;
+        input.type = 'text';
+        if (focused && pos !== null) input.setSelectionRange(pos, pos);
+        revealed = true;
+        btn.classList.add('active');
+        btn.setAttribute('aria-pressed', 'true');
+        btn.title = 'Release to hide';
+        if (icon) icon.className = 'bi bi-eye-slash';
+      };
+      const hide = () => {
+        if (!revealed) return;
+        const focused = input === document.activeElement;
+        const pos = focused ? input.selectionStart : null;
+        input.type = 'password';
+        if (focused && pos !== null) input.setSelectionRange(pos, pos);
+        revealed = false;
+        btn.classList.remove('active');
+        btn.setAttribute('aria-pressed', 'false');
+        btn.title = 'Hold to see';
+        if (icon) icon.className = 'bi bi-eye';
+      };
+      btn.addEventListener('pointerdown', (e) => { e.preventDefault(); show(); });
+      btn.addEventListener('pointerup', hide);
+      btn.addEventListener('pointerleave', hide);
+      btn.addEventListener('pointercancel', hide);
+      // Touch fallback: pointercancel/leave can fire before touchend on some
+      // mobile browsers; release on window pointerup as a safety net.
+      window.addEventListener('pointerup', hide);
+      // Keyboard users can also toggle with Space/Enter on the focused button.
+      btn.addEventListener('keydown', (e) => {
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); if (revealed) hide(); else show(); }
+      });
+      btn.addEventListener('blur', hide);
     });
   }
 
   function buildMobileNav(active, navItems) {
     const off = document.getElementById('mobileOff');
     if (!off) return;
-    const links = navItems.nav.map(item => {
+    // desktopOnly items (the desktop Admin Console link) stay out of the mobile
+    // menu — admins reach the console there via the Dashboard auth item instead.
+    const links = navItems.nav.filter(i => !i.desktopOnly).map(item => {
       if (item.group) {
-        const sub = item.group.map(s => `<a href="${s.href}"><i class="${s.icon}"></i>${s.label}</a>`).join('');
+        // Sectioned groups keep their small headings in the offcanvas too;
+        // plain groups render as a flat list of links.
+        const flatLink = s => `<a href="${s.href}"><i class="${s.icon}"></i>${s.label}</a>`;
+        const isSectioned = item.group.some(g => g.items);
+        const sub = isSectioned
+          ? item.group.map(sec => `<span class="mo-section">${sec.section}</span>${sec.items.map(flatLink).join('')}`).join('')
+          : item.group.map(flatLink).join('');
         return `<div class="mo-group"><a href="#" class="mo-toggle"><i class="${item.icon}"></i>${item.label}<i class="bi bi-chevron-down" style="margin-left:auto"></i></a><div class="mo-sub">${sub}</div></div>`;
       }
       return `<a href="${item.href}" class="${item.href===active?'active':''}"><i class="${item.icon}"></i>${item.label}</a>`;
     }).join('');
-    const auth = navItems.auth.map(a => `<a href="${a.href}" class="${a.primary?'':''}"><i class="bi bi-person"></i>${a.label}</a>`).join('');
+    const auth = navItems.auth.map(a => {
+      const actionAttr = a.action ? ` data-action="${a.action}"` : '';
+      if (a.href === 'account.html') {
+        // My Account carries the user's avatar (photo or initials) instead of
+        // the generic person icon — same fallback logic as the desktop navbar.
+        return `<a href="${a.href}" class="mo-account"><span class="mo-avatar">${avatarHtml(navItems.photo, navItems.name)}</span>${a.label}</a>`;
+      }
+      const icon = a.action === 'logout' ? 'bi-box-arrow-right' : 'bi-person';
+      return `<a href="${a.href}"${actionAttr} class="${a.primary?'':''}"><i class="bi ${icon}"></i>${a.label}</a>`;
+    }).join('');
+    // AI Repository-style drawer: for guests, a prominent Login/Create account
+    // block right under the header (no scrolling); then the menu links and the
+    // highlighted CTA. Signed-in users get the ACCOUNT section + auth rows.
+    const loggedIn = navItems.auth.some(a => a.action === 'logout');
+    const guestAuth = loggedIn ? '' : `<div class="mo-guest">
+        <a class="mo-guest-login" href="login.html"><i class="bi bi-person"></i>Login</a>
+        <a class="mo-guest-register" href="register.html">Create account</a>
+      </div>`;
     off.innerHTML = `<div class="mo-head"><span class="cpri-brand" style="color:#fff"><span class="logo">C</span><span>CPRI</span></span>
-      <button class="mo-close" id="moClose" aria-label="Close"><i class="bi bi-x-lg"></i></button></div>${links}${auth}`;
+      <button class="mo-close" id="moClose" aria-label="Close"><i class="bi bi-x-lg"></i></button></div>
+      ${guestAuth}
+      ${links}
+      <a class="mo-submit" href="submit.html"><i class="bi bi-cloud-arrow-up"></i><span>Submission Record<small>Submit new research</small></span></a>
+      ${loggedIn ? '<span class="mo-section">Account</span>' + auth : ''}`;
+
+    // Highlight the bottom-nav tab matching the current page.
+    const page = currentPage();
+    const TAB_MAP = [
+      ['home', /^index\.html$/],
+      ['research', /^(research-agenda|repository|researchers|student-researchers|innovation-extension|submissions|ethics|reports)\.html$/],
+      ['papers', /^publications\.html$/],
+      ['events', /^(events|events-module|announcements)\.html/]
+    ];
+    document.querySelectorAll('#bottomNav a[data-tab]').forEach(a => {
+      const key = a.dataset.tab;
+      if (TAB_MAP.some(([k, re]) => k === key && re.test(page))) a.classList.add('active');
+    });
+
+    // ---- Bottom sheet ("More" button) ----
+    // A quick-launch grid of the site's key destinations plus account actions,
+    // sliding up over the content — the mobile equivalent of a command palette.
+    const sheet = document.getElementById('moreSheet');
+    if (sheet) {
+      const loggedIn = navItems.auth.some(a => a.action === 'logout');
+      const isAdmin = navItems.auth.some(a => a.href === 'admin-dashboard.html');
+      const TILES = [
+        { label: 'Search', icon: 'bi-search', action: 'search' },
+        { label: 'About CPRI', href: 'about.html', icon: 'bi-info-circle' },
+        { label: 'Announcements', href: 'announcements.html', icon: 'bi-megaphone' },
+        { label: 'Events', href: 'events.html', icon: 'bi-calendar-event' },
+        { label: 'Publications', href: 'publications.html', icon: 'bi-journal-richtext' },
+        { label: 'Repository', href: 'repository.html', icon: 'bi-archive' },
+        { label: 'Researchers', href: 'researchers.html', icon: 'bi-people' },
+        { label: 'Ethics Review', href: 'ethics.html', icon: 'bi-shield-check' },
+        { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb' },
+        { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph' },
+        { label: 'Contact', href: 'contact.html', icon: 'bi-envelope' }
+      ];
+      const tiles = TILES.map(t => t.action
+        ? `<button type="button" class="ms-tile" data-action="${t.action}"><i class="bi ${t.icon}"></i><span>${t.label}</span></button>`
+        : `<a class="ms-tile" href="${t.href}"><i class="bi ${t.icon}"></i><span>${t.label}</span></a>`
+      ).join('');
+      const head = loggedIn
+        ? `<span class="ms-avatar">${avatarHtml(navItems.photo, navItems.name)}</span><div class="ms-id"><b>${escapeHtml(navItems.name || 'My Account')}</b><small>Account</small></div>`
+        : `<span class="ms-logo">C</span><div class="ms-id"><b>Explore CPRI</b><small>Quick access</small></div>`;
+      const accountRows = loggedIn
+        ? `${isAdmin ? `<a class="ms-row" href="admin-dashboard.html"><i class="bi bi-speedometer2"></i>Dashboard</a>` : ''}
+           <a class="ms-row" href="messages.html"><i class="bi bi-chat-left-text"></i>Messages</a>
+           <a class="ms-row" href="account.html"><i class="bi bi-person-circle"></i>My Account</a>
+           <a class="ms-row" href="#" data-action="logout"><i class="bi bi-box-arrow-right"></i>Logout</a>`
+        : `<div class="ms-cta">
+             <a class="btn btn-gradient" href="login.html"><i class="bi bi-person"></i>Login</a>
+             <a class="btn btn-outline-dark" href="register.html">Create account</a>
+           </div>`;
+      sheet.innerHTML = `<div class="ms-head">${head}
+          <button type="button" class="ms-close" id="msClose" aria-label="Close menu"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div class="ms-grid">${tiles}</div>
+        ${loggedIn ? '<span class="ms-label">Account</span>' + accountRows : accountRows}`;
+    }
   }
 
   function initNav() {
@@ -292,25 +510,70 @@ const CPRI = (() => {
         toggle.setAttribute('aria-expanded', String(open));
       });
     }
+    // Desktop hover-hold: closing is delayed so the pointer can travel from the
+    // label across the small gap into the submenu (or between its items) without
+    // accidentally dismissing it. Re-entering the menu cancels the pending close.
+    const SUBMENU_HOVER_HOLD_MS = 250;
     document.querySelectorAll('.cpri-group').forEach(group => {
       const label = group.querySelector('.cpri-group-label');
+      const submenu = group.querySelector('.cpri-submenu');
+      let closeTimer = null;
       const open = () => {
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
         document.querySelectorAll('.cpri-group.open').forEach(g => {
           if (g !== group) { g.classList.remove('open'); g.querySelector('.cpri-group-label').setAttribute('aria-expanded','false'); }
         });
         group.classList.add('open'); label.setAttribute('aria-expanded','true');
       };
-      const close = () => { group.classList.remove('open'); label.setAttribute('aria-expanded','false'); };
+      const close = () => {
+        if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
+        group.classList.remove('open'); label.setAttribute('aria-expanded','false');
+      };
+      const scheduleClose = () => {
+        if (closeTimer) clearTimeout(closeTimer);
+        closeTimer = setTimeout(() => { closeTimer = null; close(); }, SUBMENU_HOVER_HOLD_MS);
+      };
+      const cancelClose = () => { if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; } };
       group.addEventListener('mouseenter', open);
-      group.addEventListener('mouseleave', close);
+      group.addEventListener('mouseleave', scheduleClose);
+      if (submenu) {
+        submenu.addEventListener('mouseenter', cancelClose);
+        submenu.addEventListener('mouseleave', scheduleClose);
+      }
       label.addEventListener('click', (e) => { e.preventDefault(); group.classList.contains('open') ? close() : open(); });
     });
+    const closeAllMenus = () => {
+      document.querySelectorAll('.cpri-group.open').forEach(g => {
+        g.classList.remove('open');
+        const l = g.querySelector('.cpri-group-label');
+        if (l) l.setAttribute('aria-expanded', 'false');
+      });
+    };
     document.addEventListener('click', (e) => {
-      if (e.target.closest('.cpri-group')) return;
-      document.querySelectorAll('.cpri-group.open').forEach(g => { g.classList.remove('open'); g.querySelector('.cpri-group-label').setAttribute('aria-expanded','false'); });
+      // Clicks inside the group label are handled by the label's own toggle;
+      // clicking a submenu item closes the panel (navigation proceeds normally),
+      // and clicking anywhere outside closes everything.
+      if (e.target.closest('.cpri-group') && !e.target.closest('.cpri-submenu a')) return;
+      closeAllMenus();
+    });
+    // Escape closes any open dropdown.
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeAllMenus();
     });
     const nav = document.querySelector('.cpri-nav');
-    if (nav) { const onScroll = () => nav.classList.toggle('scrolled', window.scrollY > 24); onScroll(); window.addEventListener('scroll', onScroll, { passive: true }); }
+    if (nav) {
+      const onScroll = () => {
+        nav.classList.toggle('scrolled', window.scrollY > 24);
+        // Dismiss open dropdowns on scroll so a mega menu never keeps covering
+        // the page content while the user scrolls (the header is sticky).
+        document.querySelectorAll('.cpri-group.open').forEach(g => {
+          g.classList.remove('open');
+          g.querySelector('.cpri-group-label').setAttribute('aria-expanded', 'false');
+        });
+      };
+      onScroll();
+      window.addEventListener('scroll', onScroll, { passive: true });
+    }
     // mobile offcanvas groups
     document.querySelectorAll('.mo-toggle').forEach(t => t.addEventListener('click', (e) => { e.preventDefault(); t.parentElement.classList.toggle('open'); }));
   }
@@ -325,18 +588,137 @@ const CPRI = (() => {
         const p = h > 0 ? (window.scrollY / h) * 100 : 0;
         if (prog) prog.style.width = p + '%';
         if (btt) btt.classList.toggle('show', window.scrollY > 400);
+        const hero = document.getElementById('homeHero');
+        if (hero) hero.classList.toggle('scrolled', window.scrollY > 140);
       }, { passive: true });
     }
     if (btt) btt.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 
-    // search popup
+    // ---- Search popup: live results across research, events, publications,
+    // researchers, and the research agenda. Falls back to the static quick
+    // links whenever the query box is empty.
     const sp = document.getElementById('searchPop');
     const searchBtn = document.getElementById('nav-search');
     if (sp && searchBtn) {
-      const open = () => { sp.classList.add('open'); setTimeout(() => document.getElementById('searchInput').focus(), 50); };
+      const input = document.getElementById('searchInput');
+      const resultsEl = document.getElementById('searchResults');
+      const hint = document.getElementById('searchHint');
+      let searchTimer = null;
+      let activeIdx = -1;
+      let resultLinks = [];
+
+      const open = () => { sp.classList.add('open'); setTimeout(() => input.focus(), 50); };
+      const close = () => sp.classList.remove('open');
       searchBtn.addEventListener('click', open);
-      sp.addEventListener('click', (e) => { if (e.target === sp) sp.classList.remove('open'); });
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') sp.classList.remove('open'); if ((e.key === '/' ) && !/input|textarea/i.test(document.activeElement.tagName)) { e.preventDefault(); open(); } });
+      sp.addEventListener('click', (e) => { if (e.target === sp) close(); });
+
+      const showQuickLinks = () => {
+        resultsEl.innerHTML = '';
+        if (hint) hint.style.display = '';
+        document.querySelectorAll('#searchPop .sp-item[data-quick]').forEach(a => a.style.display = '');
+        activeIdx = -1; resultLinks = [];
+      };
+
+      const showMessage = (icon, text) => {
+        resultsEl.innerHTML = `<div class="sp-empty"><i class="bi ${icon}"></i>${text}</div>`;
+      };
+
+      const normalize = s => String(s || '').toLowerCase();
+
+      let datasetsPromise = null;
+      async function getDatasets() {
+        if (datasetsPromise) return datasetsPromise;
+        datasetsPromise = Promise.all([
+          CPRI.fetchJson('/api/research'),
+          CPRI.fetchJson('/api/events'),
+          CPRI.fetchJson('/api/publications'),
+          CPRI.fetchJson('/api/researchers'),
+          CPRI.fetchJson('/api/agenda')
+        ]).then(([research, events, pubs, people, agenda]) => ({
+          research: Array.isArray(research) ? research : [],
+          events: Array.isArray(events) ? events : [],
+          publications: (pubs && Array.isArray(pubs.publications)) ? pubs.publications : [],
+          researchers: (people && Array.isArray(people.researchers)) ? people.researchers : [],
+          agenda: agenda || []  // object shape { institutional, programBased[] }
+        }));
+        return datasetsPromise;
+      }
+
+      function renderResults(results) {
+        activeIdx = -1; resultLinks = [];
+        if (hint) hint.style.display = 'none';
+        document.querySelectorAll('#searchPop .sp-item[data-quick]').forEach(a => a.style.display = 'none');
+        if (!results.length) { showMessage('bi-search', 'No matches found for this query.'); return; }
+        resultsEl.innerHTML = results.map((r, i) => `
+          <a class="sp-item" href="${r.href}" data-idx="${i}">
+            <i class="bi ${r.icon}"></i>
+            <div>${CPRI.escapeHtml(r.title)}<small>${CPRI.escapeHtml(r.sub)}</small></div>
+          </a>`).join('');
+        resultLinks = [...resultsEl.querySelectorAll('.sp-item')];
+        resultLinks.forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); close(); window.location.href = a.href; }));
+      }
+
+      let searchSeq = 0;  // guards against stale renders from out-of-order fetches
+      async function runSearch(query) {
+        const q = query.trim().toLowerCase();
+        const mySeq = ++searchSeq;
+        if (!q) { showQuickLinks(); return; }
+        const data = await getDatasets();
+        if (mySeq !== searchSeq) return;  // a newer keystroke superseded this one
+        const score = t => { const s = normalize(t); let sc = 0; if (s === q) sc = 100; else if (s.startsWith(q)) sc = 80; else if (s.includes(q)) sc = 60; return sc; };
+        const picks = [];
+
+        (data.research || []).forEach(r => {
+          const sc = Math.max(score(r.title), score(r.summary), score(r.author));
+          if (sc) picks.push({ sc, icon: 'bi-journal-richtext', title: r.title, sub: (r.author || 'Research') + ' · Research output', href: 'publications.html' });
+        });
+        (data.events || []).forEach(e => {
+          const sc = Math.max(score(e.title), score(e.type), score(e.location), score(e.description));
+          if (sc) picks.push({ sc, icon: 'bi-calendar-event', title: e.title, sub: (e.type || 'Event') + ' · ' + (e.date || '').slice(0, 10), href: 'event-detail.html?id=' + encodeURIComponent(e.id) });
+        });
+        (data.publications || []).forEach(p => {
+          const sc = Math.max(score(p.title), score(p.authors), score(p.journalOrConference));
+          if (sc) picks.push({ sc, icon: 'bi-file-earmark-text', title: p.title, sub: (p.authors || 'Publication') + ' · Publication', href: 'publication-detail.html?id=' + encodeURIComponent(p.id) });
+        });
+        (data.researchers || []).forEach(p => {
+          const sc = Math.max(score(p.fullName), score(p.department), score(p.program), score(p.researchTitle));
+          if (sc) picks.push({ sc, icon: 'bi-people', title: p.fullName, sub: (p.department || p.program || 'Researcher') + ' · Researcher', href: 'researcher-detail.html?id=' + encodeURIComponent(p.id) });
+        });
+        // Agenda is stored as { institutional, programBased: [{program, focus}] }.
+        const agendaItems = Array.isArray(data.agenda) ? data.agenda
+          : (data.agenda && Array.isArray(data.agenda.programBased)) ? data.agenda.programBased
+          : [];
+        agendaItems.forEach(a => {
+          const sc = Math.max(score(a.program || a.title), score(a.focus || a.description));
+          if (sc) picks.push({ sc, icon: 'bi-graph-up-arrow', title: a.program || a.title, sub: 'Research agenda · ' + (a.focus || 'priority theme').slice(0, 60), href: 'research-agenda.html' });
+        });
+
+        picks.sort((a, b) => b.sc - a.sc);
+        renderResults(picks.slice(0, 8));
+      }
+
+      input.addEventListener('input', () => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => runSearch(input.value), 180);
+      });
+
+      // Keyboard navigation: arrows move the active result, Enter opens it.
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (!resultLinks.length) return;
+          activeIdx = e.key === 'ArrowDown' ? Math.min(activeIdx + 1, resultLinks.length - 1) : Math.max(activeIdx - 1, 0);
+          resultLinks.forEach((a, i) => a.classList.toggle('active', i === activeIdx));
+          resultLinks[activeIdx].scrollIntoView({ block: 'nearest' });
+        } else if (e.key === 'Enter') {
+          if (activeIdx >= 0 && resultLinks[activeIdx]) { e.preventDefault(); resultLinks[activeIdx].click(); }
+        }
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') close();
+        if (e.key === '/' && !/input|textarea/i.test(document.activeElement.tagName)) { e.preventDefault(); open(); }
+      });
     }
 
     // theme toggle
@@ -352,6 +734,9 @@ const CPRI = (() => {
     const a11y = document.getElementById('a11yPanel');
     if (a11yBtn && a11y) a11yBtn.addEventListener('click', () => a11y.classList.toggle('open'));
 
+    // in-app notifications (bell + settings gear)
+    initNotifications();
+
     // mobile offcanvas
     const offBtn = document.getElementById('nav-offcanvas');
     const off = document.getElementById('mobileOff');
@@ -361,24 +746,44 @@ const CPRI = (() => {
       if (moClose) moClose.addEventListener('click', () => off.classList.remove('open'));
       off.addEventListener('click', (e) => { if (e.target === off) off.classList.remove('open'); });
     }
+    // Bottom sheet ("More") — slides up from the bottom with a blurred backdrop.
     const bnMenu = document.getElementById('bnMenu');
-    if (bnMenu && off) bnMenu.addEventListener('click', (e) => { e.preventDefault(); off.classList.add('open'); });
+    const sheet = document.getElementById('moreSheet');
+    const sheetBackdrop = document.getElementById('moreBackdrop');
+    const openSheet = () => {
+      if (!sheet) return;
+      sheet.classList.add('open');
+      if (sheetBackdrop) sheetBackdrop.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    };
+    const closeSheet = () => {
+      if (!sheet) return;
+      sheet.classList.remove('open');
+      if (sheetBackdrop) sheetBackdrop.classList.remove('open');
+      document.body.style.overflow = '';
+    };
+    if (bnMenu && sheet) bnMenu.addEventListener('click', (e) => { e.preventDefault(); openSheet(); });
+    if (sheetBackdrop) sheetBackdrop.addEventListener('click', closeSheet);
+    const msClose = document.getElementById('msClose');
+    if (msClose) msClose.addEventListener('click', closeSheet);
+    if (sheet) {
+      // Search tile opens the existing search popup; logout closes the sheet first.
+      sheet.addEventListener('click', (e) => {
+        const tile = e.target.closest('[data-action]');
+        if (!tile) return;
+        if (tile.dataset.action === 'search') {
+          const btn = document.getElementById('nav-search');
+          if (btn) btn.click();
+          closeSheet();
+        }
+        if (tile.dataset.action === 'logout') closeSheet();
+      });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+    }
 
     // page loader
     window.addEventListener('load', () => { const l = document.getElementById('pageLoader'); if (l) setTimeout(() => l.classList.add('hide'), 500); });
     const l = document.getElementById('pageLoader'); if (l) setTimeout(() => l.classList.add('hide'), 1400);
-
-    // AI chat
-    const fab = document.getElementById('aiFab');
-    const chat = document.getElementById('aiChat');
-    if (fab && chat) {
-      fab.addEventListener('click', () => chat.classList.toggle('open'));
-      document.getElementById('aiClose').addEventListener('click', () => chat.classList.remove('open'));
-      document.getElementById('aiChips').addEventListener('click', (e) => { if (e.target.tagName === 'BUTTON') { document.getElementById('aiInput').value = e.target.textContent; sendAi(); } });
-      document.getElementById('aiSend').addEventListener('click', sendAi);
-      document.getElementById('aiInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendAi(); });
-      aiGreet();
-    }
 
     // AOS
     if (window.AOS) AOS.init({ duration: 700, once: true, offset: 60 });
@@ -386,13 +791,23 @@ const CPRI = (() => {
 
   // ---- Theme & accessibility preferences ----
   function toggleTheme() {
-    const cur = document.documentElement.getAttribute('data-theme');
+    const root = document.documentElement;
+    const cur = root.getAttribute('data-theme');
     const next = cur === 'dark' ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('cpri-theme', next);
-    const btn = document.getElementById('nav-theme');
-    if (btn) btn.querySelector('i').className = next === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
-    const cb = document.getElementById('a11yTheme'); if (cb) cb.checked = next === 'dark';
+    // Crossfade surfaces/colors instead of an instant snap: a temporary class
+    // on <html> enables a global transition, removed once the fade completes.
+    root.classList.add('theme-transition');
+    try {
+      root.setAttribute('data-theme', next);
+      localStorage.setItem('cpri-theme', next);
+      const btn = document.getElementById('nav-theme');
+      if (btn) btn.querySelector('i').className = next === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+      const cb = document.getElementById('a11yTheme'); if (cb) cb.checked = next === 'dark';
+    } finally {
+      // Guaranteed cleanup: even if storage throws, the crossfade class can
+      // never get stuck and flatten every transition for the whole session.
+      setTimeout(() => root.classList.remove('theme-transition'), 420);
+    }
   }
   function applySavedPrefs() {
     const t = localStorage.getItem('cpri-theme');
@@ -525,101 +940,7 @@ const CPRI = (() => {
     // swipers
     if (window.Swiper) {
       if (document.querySelector('.newsSwiper')) new Swiper('.newsSwiper', { slidesPerView: 1.1, spaceBetween: 18, breakpoints: { 640:{slidesPerView:2.1}, 992:{slidesPerView:3.1} }, pagination: { el: '.newsSwiper .swiper-pagination', clickable: true } });
-      if (document.querySelector('.testiSwiper')) new Swiper('.testiSwiper', { slidesPerView: 1.1, spaceBetween: 18, breakpoints: { 768:{slidesPerView:2.1}, 1200:{slidesPerView:3.1} }, pagination: { el: '.testiSwiper .swiper-pagination', clickable: true } });
     }
-    // GSAP parallax on hero art
-    if (window.gsap) {
-      const art = document.querySelector('.hero-art');
-      if (art) window.addEventListener('mousemove', (e) => {
-        const x = (e.clientX / window.innerWidth - .5) * 16;
-        const y = (e.clientY / window.innerHeight - .5) * 16;
-        window.gsap.to(art, { x, y, duration: .6, ease: 'power2.out' });
-      });
-    }
-  }
-
-  async function loadPublicDashboard() {
-    const payload = await fetchJson('/api/admin/public-summary');
-    if (!payload || !payload.summary) return null;
-    const summary = payload.summary;
-
-    const headerSmall = document.querySelector('.gc-head small');
-    if (headerSmall) {
-      const updated = new Date(summary.lastUpdated);
-      const diffMin = Math.max(0, Math.round((Date.now() - updated.getTime()) / 60000));
-      headerSmall.textContent = `Live · updated ${diffMin === 0 ? 'just now' : `${diffMin}m ago`}`;
-    }
-
-    const statEls = document.querySelectorAll('.glass-stat .gs-num');
-    const values = [summary.publications, summary.activeProjects, summary.researchers, summary.innovationProjects];
-    statEls.forEach((el, idx) => {
-      if (values[idx] !== undefined) {
-        el.dataset.count = values[idx];
-        el.textContent = '0';
-      }
-    });
-    initCounters();
-
-    const barEls = document.querySelectorAll('.mini-chart span');
-    if (barEls.length && Array.isArray(summary.monthlyOutput)) {
-      const max = Math.max(...summary.monthlyOutput, 1);
-      barEls.forEach((bar, index) => {
-        const value = summary.monthlyOutput[index] || 0;
-        const pct = value ? Math.max(8, Math.round((value / max) * 100)) : 8;
-        bar.style.setProperty('--h', `${pct}%`);
-        // Re-trigger the CSS grow animation so refreshed values animate smoothly
-        bar.style.animation = 'none';
-        void bar.offsetWidth;
-        bar.style.animation = '';
-      });
-    }
-
-    const progressBars = document.querySelectorAll('.gc-bar > span[data-w]');
-    if (progressBars.length) {
-      if (progressBars[0]) progressBars[0].dataset.w = `${summary.approvalRate}%`;
-      if (progressBars[1]) progressBars[1].dataset.w = `${summary.onTimeDelivery}%`;
-      progressBars.forEach(bar => { bar.style.width = '0'; requestAnimationFrame(() => bar.style.width = bar.dataset.w || '0'); });
-    }
-
-    const ring = document.querySelector('.ring');
-    if (ring) {
-      const pct = summary.goalProgress || 0;
-      ring.dataset.pct = pct;
-      const rv = ring.querySelector('.rv');
-      if (rv) rv.textContent = `${pct}%`;
-      const fg = ring.querySelector('.ring-fg');
-      if (fg) {
-        const r = 32, c = 2 * Math.PI * r;
-        fg.style.strokeDasharray = c;
-        fg.style.strokeDashoffset = c;
-        requestAnimationFrame(() => { fg.style.transition = 'stroke-dashoffset 1.6s ease'; fg.style.strokeDashoffset = c * (1 - pct / 100); });
-      }
-    }
-
-    const ringInfo = document.querySelector('.ring-info');
-    if (ringInfo) {
-      const labelTitle = ringInfo.querySelector('div');
-      const labelSub = ringInfo.querySelectorAll('small');
-      if (labelTitle) labelTitle.textContent = summary.goalLabel || 'On track for 2026';
-      if (labelSub[1]) labelSub[1].textContent = summary.goalSubtext || '+0% citations YoY';
-    }
-
-    startPublicDashboardAutoRefresh();
-    return summary;
-  }
-
-  // Keep the hero dashboard widget live: refresh every 60s and whenever the
-  // tab regains focus. A module-level guard ensures this is only set up once.
-  let dashboardRefreshTimer = null;
-  function startPublicDashboardAutoRefresh() {
-    if (dashboardRefreshTimer) return;
-    dashboardRefreshTimer = setInterval(() => {
-      if (!document.hidden) loadPublicDashboard();
-    }, 60000);
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) loadPublicDashboard();
-    });
-    window.addEventListener('focus', () => loadPublicDashboard());
   }
 
   function initDashChart() {
@@ -637,41 +958,186 @@ const CPRI = (() => {
     });
   }
 
-  // ---- AI assistant ----
-  const AI_REPLIES = {
-    'summarize':'AIRA can auto-summarize any publication into a 3-bullet brief. Open a paper and tap "AI Summary" to generate it.',
-    'researcher':'You can browse the Researchers directory to find experts by theme, or ask me to match a topic to a person.',
-    'suggest':'Trending themes this quarter: AI in Education, Climate Adaptation Finance, and Digital Public Services.',
-    'access':'All CPRI publications are open access by default via the Repository — no paywall, with DOIs.',
-    'default':'I can help you find publications, summarize research, suggest topics, and connect you with researchers. Try a quick action above!'
-  };
-  function aiGreet() {
-    const body = document.getElementById('aiBody'); if (!body) return;
-    body.innerHTML = `<div class="ai-msg bot">Hi, I'm AIRA 👋 — your CPRI research assistant. Ask me to summarize a paper, find researchers, or suggest topics.</div>`;
+  // ---- Cursor-follow spotlight on cards ----
+  // A soft radial glow tracks the pointer inside cards (research/events/people/
+  // feature/stat cards). One delegated listener covers cards added later by the
+  // content builders. Mouse-only — touch and hybrid devices skip it entirely.
+  function initSpotlight() {
+    if (!window.matchMedia('(hover: hover)').matches) return;
+    const CARD_SEL = '.card, .media-card, .event-card, .person-card, .ui-card, .stat-card';
+    document.addEventListener('pointermove', (e) => {
+      const card = e.target.closest(CARD_SEL);
+      if (!card) return;
+      card.classList.add('spotlight');
+      const r = card.getBoundingClientRect();
+      card.style.setProperty('--mx', (e.clientX - r.left).toFixed(1) + 'px');
+      card.style.setProperty('--my', (e.clientY - r.top).toFixed(1) + 'px');
+    });
   }
-  function sendAi() {
-    const input = document.getElementById('aiInput'); const body = document.getElementById('aiBody');
-    if (!input || !body || !input.value.trim()) return;
-    const q = input.value.trim(); input.value = '';
-    body.insertAdjacentHTML('beforeend', `<div class="ai-msg me">${q}</div>`);
-    body.insertAdjacentHTML('beforeend', `<div class="ai-typing" id="aiTyping"><span></span><span></span><span></span></div>`);
-    body.scrollTop = body.scrollHeight;
-    setTimeout(() => {
-      const t = document.getElementById('aiTyping'); if (t) t.remove();
-      const key = Object.keys(AI_REPLIES).find(k => q.toLowerCase().includes(k)) || 'default';
-      body.insertAdjacentHTML('beforeend', `<div class="ai-msg bot">${AI_REPLIES[key]}</div>`);
-      body.scrollTop = body.scrollHeight;
-    }, 900);
+
+  // ---- 3D tilt on cards ----
+  // Cards lean toward the pointer (rotateX/rotateY) while hovered, creating a
+  // depth effect. One delegated pointermove handler covers dynamically built
+  // cards; a one-time pointerleave per card eases it back flat.
+  function initTilt() {
+    if (!window.matchMedia('(hover: hover)').matches) return;
+    const CARD_SEL = '.media-card, .event-card, .person-card, .ui-card, .stat-card';
+    const MAX_DEG = 7;
+    document.addEventListener('pointermove', (e) => {
+      const card = e.target.closest(CARD_SEL);
+      if (!card) return;
+      if (!card._tiltInit) {
+        card._tiltInit = true;
+        card.classList.add('tilt');
+        card.addEventListener('pointerleave', () => { card.style.transform = ''; });
+      }
+      const r = card.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width - .5;
+      const py = (e.clientY - r.top) / r.height - .5;
+      card.style.transform = `perspective(900px) rotateX(${(-py * MAX_DEG).toFixed(2)}deg) rotateY(${(px * MAX_DEG).toFixed(2)}deg) translateY(-4px)`;
+    }, { passive: true });
+  }
+
+  // ---- Admin sidebar toggle (mobile) ----
+  // On narrow screens the sidebar collapses to just the brand row so the
+  // content panel (Users, Content, Logs) starts at the fold. Tapping the
+  // chevron or the brand row expands the navigation. Clicking a link
+  // collapses it again.
+  function initAdminSidebar() {
+    const side = document.querySelector('.admin-side');
+    if (!side) return;
+    const brand = side.querySelector('.as-brand');
+    if (!brand) return;
+    let toggle = brand.querySelector('.as-toggle');
+    if (!toggle) {
+      toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'as-toggle';
+      toggle.setAttribute('aria-expanded', 'false');
+      toggle.setAttribute('aria-label', 'Toggle admin navigation');
+      toggle.innerHTML = '<i class="bi bi-chevron-down"></i>';
+      brand.appendChild(toggle);
+    }
+    toggle.addEventListener('click', () => {
+      const open = side.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', String(open));
+    });
+    // Also toggle when the brand row itself is tapped (helps before the
+    // toggle button renders or as a larger hit target).
+    brand.addEventListener('click', (e) => {
+      if (e.target.closest('.as-toggle')) return;
+      if (window.innerWidth <= 991) {
+        const open = side.classList.toggle('open');
+        toggle.setAttribute('aria-expanded', String(open));
+      }
+    });
+    // Close sidebar when a nav link is tapped on mobile
+    side.querySelectorAll('a').forEach(a => {
+      a.addEventListener('click', () => {
+        if (window.innerWidth <= 991) side.classList.remove('open');
+      });
+    });
+  }
+
+  // ---- Magnetic buttons ----
+  // Hero CTAs and the contact FAB gently pull toward the cursor.
+  function initMagnetic() {
+    if (!window.matchMedia('(hover: hover)').matches) return;
+    document.querySelectorAll('.hero-cta .btn, .contact-fab').forEach(el => {
+      el.classList.add('btn-magnetic');
+      el.addEventListener('pointermove', (e) => {
+        const r = el.getBoundingClientRect();
+        const dx = e.clientX - (r.left + r.width / 2);
+        const dy = e.clientY - (r.top + r.height / 2);
+        el.style.setProperty('--mxx', (dx * .18).toFixed(1) + 'px');
+        el.style.setProperty('--myy', (dy * .18).toFixed(1) + 'px');
+      });
+      el.addEventListener('pointerleave', () => {
+        el.style.setProperty('--mxx', '0px');
+        el.style.setProperty('--myy', '0px');
+      });
+    });
+  }
+
+  // ---- Global cursor glow ----
+  // A soft teal light trails the pointer behind the content (mouse devices
+  // only), giving the whole site a subtle "live system" feel.
+  function initCursorGlow() {
+    if (!window.matchMedia('(hover: hover)').matches) return;
+    const glow = document.createElement('div');
+    glow.className = 'cursor-glow';
+    document.body.appendChild(glow);
+    let x = innerWidth / 2, y = innerHeight / 2, tx = x, ty = y, raf = null;
+    const loop = () => {
+      x += (tx - x) * .12;
+      y += (ty - y) * .12;
+      glow.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -50%)`;
+      raf = (Math.abs(tx - x) > .3 || Math.abs(ty - y) > .3) ? requestAnimationFrame(loop) : null;
+    };
+    document.addEventListener('pointermove', (e) => {
+      tx = e.clientX; ty = e.clientY;
+      if (!raf) raf = requestAnimationFrame(loop);
+    }, { passive: true });
+  }
+
+  // ---- Hero parallax ----
+  // Background drifts opposite the cursor; the headline block lags the page
+  // scroll slightly for a depth effect as the hero exits.
+  function initHeroParallax() {
+    const hero = document.getElementById('homeHero');
+    if (!hero) return;
+    hero.addEventListener('pointermove', (e) => {
+      const r = hero.getBoundingClientRect();
+      hero.style.setProperty('--hx', ((e.clientX - r.left) / r.width - .5).toFixed(3));
+      hero.style.setProperty('--hy', ((e.clientY - r.top) / r.height - .5).toFixed(3));
+    }, { passive: true });
+    hero.addEventListener('pointerleave', () => {
+      hero.style.setProperty('--hx', '0');
+      hero.style.setProperty('--hy', '0');
+    });
+    const onScroll = () => {
+      const r = hero.getBoundingClientRect();
+      hero.style.setProperty('--sp', Math.max(0, Math.min(1, -r.top / (r.height || 1))).toFixed(3));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
   }
 
   // ---- Reveal animations ----
   function initReveal() {
     const els = document.querySelectorAll('.reveal-up, .reveal-left, .reveal-right, .reveal-zoom');
     if (!('IntersectionObserver' in window) || !els.length) { els.forEach(el => el.classList.add('in')); return; }
+    // Anything already inside the viewport is revealed immediately, so content
+    // below the hero is never left invisible at first paint waiting on the
+    // first IntersectionObserver callback (which some browsers delay) — the
+    // desktop fold used to show a blank white band where the next section's
+    // heading should be. Below-the-fold elements still animate in on scroll.
+    els.forEach(el => {
+      const r = el.getBoundingClientRect();
+      if (r.top < window.innerHeight && r.bottom > 0) el.classList.add('in');
+    });
     const io = new IntersectionObserver((entries) => {
       entries.forEach(en => { if (en.isIntersecting) { en.target.classList.add('in'); io.unobserve(en.target); } });
     }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
     els.forEach(el => io.observe(el));
+    // Safety net: IntersectionObserver can miss elements during fast/jumped
+    // scrolls (e.g. dragging the scrollbar or End/PageDown), leaving them stuck
+    // at opacity 0. A cheap scroll check reveals anything in view that never
+    // fired, so content can never be permanently invisible.
+    let ticking = false;
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(() => {
+        ticking = false;
+        els.forEach(el => {
+          if (el.classList.contains('in')) return;
+          const r = el.getBoundingClientRect();
+          if (r.top < window.innerHeight && r.bottom > 0) { el.classList.add('in'); io.unobserve(el); }
+        });
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
   }
 
   function initFaq() {
@@ -702,9 +1168,211 @@ const CPRI = (() => {
     document.querySelectorAll('a[data-action="logout"]').forEach(link => {
       link.addEventListener('click', async (e) => {
         e.preventDefault();
-        try { const res = await fetch('/api/auth/logout', { method: 'POST' }); if (res.ok) window.location.href = 'login.html'; } catch {}
+        // Close the mobile offcanvas/hamburger panel before leaving the page.
+        const off = document.getElementById('mobileOff');
+        if (off) off.classList.remove('open');
+        try {
+          const res = await fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'include'
+          });
+          if (res.ok) {
+            window.location.href = 'login.html';
+          } else {
+            const out = await res.json().catch(() => null);
+            toast('Logout failed', (out && out.error) || 'Could not log out. Please try again.', 'exclamation-triangle');
+          }
+        } catch (err) {
+          toast('Logout failed', 'Network error. Please try again.', 'exclamation-triangle');
+        }
       });
     });
+  }
+
+  // ---- In-app notifications (bell) ----
+  // Role-aware: guests see a public feed of announcements/events; logged-in
+  // users see their personal notifications with an unread count + role pill.
+  let notifUnread = 0;
+  let notifPublic = false;
+  let notifRoleLabel = '';
+  let notifTimer = null;
+
+  function initNotifications() {
+    const bell = document.getElementById('nav-bell');
+    const panel = document.getElementById('notifPanel');
+    if (!panel) return;
+
+    // Open/close the dropdown anchored under the clicked bell button. Clicking
+    // the same bell toggles it shut; clicking a different bell re-anchors it.
+    const openFor = (btn) => {
+      const sameBell = panel._bell === btn;
+      if (sameBell && panel.classList.contains('open')) {
+        panel.classList.remove('open');
+        return;
+      }
+      panel._bell = btn;
+      panel.classList.add('open');
+      const r = btn.getBoundingClientRect();
+      const pw = panel.offsetWidth || 380;
+      const ph = panel.offsetHeight || 420;
+      let right = Math.max(8, window.innerWidth - r.right);
+      if (right + pw > window.innerWidth - 8) right = Math.max(8, window.innerWidth - pw - 8);
+      // Prefer anchoring below the bell; flip above it when there is no room
+      // (e.g. the admin toolbar sits lower on narrow/stacked layouts).
+      let top = r.bottom + 10;
+      if (top + ph > window.innerHeight - 12 && r.top - ph - 10 > 12) {
+        top = r.top - ph - 10;
+      }
+      panel.style.right = right + 'px';
+      panel.style.top = top + 'px';
+      loadNotifications();
+    };
+
+    if (bell) bell.addEventListener('click', (e) => { e.stopPropagation(); openFor(bell); });
+
+    // Mobile bell button (beside avatar) — same panel + badge logic.
+    const bellMobile = document.getElementById('nav-bell-m');
+    if (bellMobile) bellMobile.addEventListener('click', (e) => { e.stopPropagation(); openFor(bellMobile); });
+
+    // Admin dashboard toolbar bell — shares the same panel + badge logic.
+    const dashBell = document.getElementById('dash-bell');
+    if (dashBell) dashBell.addEventListener('click', (e) => { e.stopPropagation(); openFor(dashBell); });
+
+    // Close on outside click / Escape.
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('#notifPanel') || e.target.closest('#nav-bell') || e.target.closest('#nav-bell-m') || e.target.closest('#dash-bell')) return;
+      panel.classList.remove('open');
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') panel.classList.remove('open'); });
+
+    // Settings gear: logged-in → profile prefs; guests → login page. Checks the
+    // session directly instead of the notifPublic flag so a fast click before the
+    // first notifications fetch resolves still lands in the right place.
+    const goSettings = async () => {
+      const me = await fetch('/api/auth/me').then(r => r.ok).catch(() => false);
+      window.location.href = me ? 'profile.html#prefs' : 'login.html';
+    };
+    const gear = document.getElementById('nav-settings');
+    if (gear) gear.addEventListener('click', goSettings);
+    const dashSettings = document.getElementById('dash-settings');
+    if (dashSettings) dashSettings.addEventListener('click', goSettings);
+    const npSettings = document.getElementById('npSettings');
+    if (npSettings) npSettings.addEventListener('click', (e) => { e.preventDefault(); goSettings(); });
+
+    // Mark all read (logged-in only — hidden for guests).
+    const markAll = document.getElementById('npMarkAll');
+    if (markAll) markAll.addEventListener('click', async (e) => {
+      e.preventDefault();
+      if (notifPublic) return;
+      try {
+        await fetch('/api/notifications/read', { method: 'POST', credentials: 'include' });
+      } catch { /* keep optimistic state */ }
+      notifUnread = 0;
+      document.querySelectorAll('#npBody .np-item.unread').forEach(el => { el.classList.remove('unread'); el.classList.add('read'); });
+      updateNotifBadge();
+    });
+
+    loadNotifications();
+    // Keep the badge fresh: refresh on an interval and whenever the tab regains
+    // focus, but never while the panel is open (avoid resetting the scroll).
+    if (notifTimer) return;
+    notifTimer = setInterval(() => { if (!document.hidden && !panel.classList.contains('open')) loadNotifications(); }, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && !panel.classList.contains('open')) loadNotifications(); });
+    window.addEventListener('focus', () => { if (!panel.classList.contains('open')) loadNotifications(); });
+  }
+
+  async function loadNotifications() {
+    try {
+      const res = await fetch('/api/notifications', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      notifPublic = data.public === true;
+      notifRoleLabel = data.roleLabel || '';
+      notifUnread = Number(data.unread) || 0;
+      renderNotifications(Array.isArray(data.notifications) ? data.notifications : []);
+      // Direct messages are for all registered roles — mirror the server DM gate.
+      const npMessages = document.getElementById('npMessages');
+      if (npMessages) npMessages.style.display = (!notifPublic && ['admin','cpri_staff','faculty_researcher','adviser','ethics_reviewer','student_researcher','public_visitor'].includes(data.role)) ? '' : 'none';
+    } catch { /* keep last known state */ }
+  }
+
+  function renderNotifications(list) {
+    const body = document.getElementById('npBody');
+    const pill = document.getElementById('npRole');
+    if (!body) return;
+    if (pill) pill.textContent = notifRoleLabel ? '· ' + notifRoleLabel : '';
+    const markAll = document.getElementById('npMarkAll');
+    if (markAll) markAll.style.display = notifPublic ? 'none' : '';
+
+    if (notifPublic) {
+      // Guests: read-only public feed + sign-in CTA.
+      if (!list.length) {
+        body.innerHTML = '<div class="np-empty"><i class="bi bi-bell-slash"></i><span>No announcements yet.</span></div>';
+      } else {
+        body.innerHTML = list.map(n => `
+          <a class="np-item" href="${escapeHtml(n.link || '#')}">
+            <span class="np-icon"><i class="bi bi-megaphone"></i></span>
+            <span class="np-text"><b>${escapeHtml(n.title)}</b><small>${escapeHtml(n.message)}</small></span>
+          </a>`).join('')
+          + '<a class="np-view-all" href="login.html"><i class="bi bi-box-arrow-in-right"></i> Sign in for personal notifications</a>';
+      }
+      updateNotifBadge();
+      return;
+    }
+
+    if (!list.length) {
+      body.innerHTML = '<div class="np-empty"><i class="bi bi-bell-slash"></i><span>No notifications yet.</span></div>';
+      updateNotifBadge();
+      return;
+    }
+
+    body.innerHTML = list.map(n => `
+      <a class="np-item${n.readAt ? ' read' : ' unread'}" href="${escapeHtml(n.link || '#')}" data-id="${escapeHtml(n.id)}">
+        <span class="np-icon"><i class="bi bi-bell"></i></span>
+        <span class="np-text"><b>${escapeHtml(n.title)}</b><small>${escapeHtml(n.message)}</small><span class="np-time">${fmtAgo(n.createdAt)}</span></span>
+      </a>`).join('');
+
+    // Clicking a row marks it read server-side and keeps it visible (styled as
+    // read), then follows the link. Rows without data-id (the guest feed) never
+    // trigger the authenticated mark-read endpoint.
+    body.querySelectorAll('.np-item[data-id]').forEach(row => {
+      row.addEventListener('click', async (e) => {
+        const alreadyRead = !row.classList.contains('unread');
+        if (!alreadyRead) {
+          // Mark read + persist immediately so a reload doesn't bring it back.
+          row.classList.add('read');
+          row.classList.remove('unread');
+          if (notifUnread > 0) { notifUnread -= 1; updateNotifBadge(); }
+          try {
+            await fetch('/api/notifications/read/' + encodeURIComponent(row.dataset.id), { method: 'POST', credentials: 'include' });
+          } catch { /* keep optimistic state */ }
+        }
+        // Let the default navigation happen (the row is an <a>).
+      });
+    });
+    updateNotifBadge();
+  }
+
+  function updateNotifBadge() {
+    const show = !notifPublic && notifUnread > 0;
+    const count = show ? (notifUnread > 9 ? '9+' : String(notifUnread)) : '';
+    // Navbar bell + admin dashboard toolbar bell stay in sync.
+    ['notifBadge', 'dashNotifBadge', 'notifBadgeM'].forEach(id => {
+      const badge = document.getElementById(id);
+      if (!badge) return;
+      badge.style.display = show ? 'grid' : 'none';
+      badge.textContent = count;
+    });
+  }
+
+  function fmtAgo(d) {
+    const t = new Date(d);
+    if (isNaN(t.getTime())) return '';
+    const s = Math.max(1, Math.round((Date.now() - t.getTime()) / 1000));
+    if (s < 60) return 'just now';
+    if (s < 3600) return Math.round(s / 60) + 'm ago';
+    if (s < 86400) return Math.round(s / 3600) + 'h ago';
+    return Math.round(s / 86400) + 'd ago';
   }
 
   async function fetchJson(url) {
@@ -713,13 +1381,25 @@ const CPRI = (() => {
   }
   function fmtDate(d) { const date = new Date(d); if (isNaN(date)) return d; return date.toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' }); }
 
+  function escapeHtml(text) {
+    return String(text == null ? '' : text)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   // ---- Builders ----
   const RESEARCH_CATS = { ai:'AI Research', policy:'Policy Studies', health:'Healthcare', edu:'Education', climate:'Climate', gov:'Governance' };
   function buildResearch(research, publications) {
     const el = document.getElementById('research-cards'); if (!el) return;
-    const seed = [];
-    let data = seed;
-    if (research && research.length) data = research.slice(0,6).map((r,i) => ({ ...r, cat: Object.keys(RESEARCH_CATS)[i%6], views: 1000+(i*340) }));
+    let data = (research && research.length) ? research.slice(0,6).map((r,i) => ({ ...r, cat: Object.keys(RESEARCH_CATS)[i%6], views: 1000+(i*340) })) : [];
+    // No curated publications yet: hide the search/filter toolbar and show a
+    // tidy empty state instead of a blank section.
+    if (!data.length) {
+      const toolbar = document.getElementById('researchToolbar');
+      if (toolbar) toolbar.style.display = 'none';
+      el.innerHTML = '<div class="empty-state"><i class="bi bi-journal-richtext" style="font-size:1.6rem;display:block;margin-bottom:8px;color:var(--cpri-accent);"></i>No featured research yet — publications will appear here as they are curated.</div>';
+      return;
+    }
     const icons = { ai:'bi-cpu', policy:'bi-bank2', health:'bi-heart-pulse', edu:'bi-book', climate:'bi-globe2', gov:'bi-building' };
     el.innerHTML = data.map(r => `
       <div class="col-lg-4 col-md-6 reveal-up" data-cat="${r.cat}">
@@ -728,9 +1408,9 @@ const CPRI = (() => {
             <span class="date-badge">${fmtDate(r.date)}</span></div>
           <div class="m-body">
             <span class="tag">${RESEARCH_CATS[r.cat]||'Research'}</span>
-            <h3>${r.title}</h3>
-            <p>${r.summary||r.excerpt||''}</p>
-            <div class="meta"><span><i class="bi bi-person"></i>${r.author||'CPRI'}</span><span><i class="bi bi-clock"></i>${r.read||8} min</span><span><i class="bi bi-eye"></i>${(r.views||1200).toLocaleString()}</span></div>
+            <h3>${escapeHtml(r.title)}</h3>
+            <p>${escapeHtml(r.summary||r.excerpt||'')}</p>
+            <div class="meta"><span><i class="bi bi-person"></i>${escapeHtml(r.author||'CPRI')}</span><span><i class="bi bi-clock"></i>${Number(r.read)||8} min</span><span><i class="bi bi-eye"></i>${(Number(r.views)||1200).toLocaleString()}</span></div>
             <div class="m-foot">
               <a class="btn btn-soft btn-sm" href="publications.html">Read <i class="bi bi-arrow-right"></i></a>
               <div class="m-actions">
@@ -831,47 +1511,165 @@ const CPRI = (() => {
     } else { el.querySelectorAll('[data-count]').forEach(animateCount); }
   }
 
-  function buildPartners() {
-    const el = document.getElementById('partnerTrack'); if (!el) return;
-    const names = [];
-    const html = names.map(n => `<div class="p-logo"><i class="bi bi-buildings"></i>${n}</div>`).join('');
-    el.innerHTML = html + html; // duplicate for seamless loop
+  // ---- Public Research Impact Dashboard (live data) ----
+  // Fetches the same MySQL-backed summary the Admin Dashboard Operations
+  // Overview uses (/api/admin/public-summary), renders every field from real
+  // records, and shows a single consistent empty state when the dataset is empty.
+  async function loadPublicDashboard() {
+    const el = document.getElementById('impact-dashboard');
+    if (!el) return;
+    let summary = null;
+    try {
+      const res = await fetch('/api/admin/public-summary');
+      if (res.ok) { const data = await res.json(); summary = data.summary || null; }
+    } catch { summary = null; }
+
+    const isEmpty = !summary || (
+      summary.totalSubmissions === 0 &&
+      summary.publications === 0 &&
+      summary.activeProjects === 0 &&
+      summary.rejectedResearches === 0 &&
+      summary.researchers === 0 &&
+      summary.innovationProjects === 0
+    );
+
+    if (isEmpty) {
+      el.innerHTML = `
+        <div class="impact-empty">
+          <div class="impact-empty-icon"><i class="bi bi-graph-up-arrow"></i></div>
+          <h3>Dashboard activating</h3>
+          <p>Figures will appear as research is submitted, published, and documented.</p>
+          <small>All metrics come live from the same source as the Admin Dashboard Operations Overview. There is no data yet — check back after the first submissions are logged.</small>
+        </div>`;
+      return;
+    }
+
+    const months = Array.isArray(summary.monthlyOutput) ? summary.monthlyOutput : [];
+    const labels = [];
+    const now = new Date();
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      labels.push(d.toLocaleString('en-US', { month: 'short' }));
+    }
+    const maxMonth = Math.max(1, ...months);
+    const bars = months.map((m, i) => `
+      <div class="impact-bar-col" title="${labels[i] || ''} · ${m}">
+        <div class="impact-bar" style="height:${Math.max(4, Math.round((m / maxMonth) * 100))}%"></div>
+        <small>${labels[i] || ''}</small>
+      </div>`).join('');
+
+    el.innerHTML = `
+      <div class="impact-panel reveal-up in">
+        <div class="impact-head">
+          <span class="impact-head-icon"><i class="bi bi-speedometer2"></i></span>
+          <div><b>Live Research Impact</b><small>Updated ${new Date(summary.lastUpdated).toLocaleString()}</small></div>
+        </div>
+        <div class="impact-stats">
+          <div class="impact-stat"><div class="is-num" data-count>${summary.publications || 0}</div><div class="is-lbl">Publications</div><small>status &ldquo;Published&rdquo;</small></div>
+          <div class="impact-stat"><div class="is-num">${summary.activeProjects || 0}</div><div class="is-lbl">Active Projects</div><small>non-archived / non-rejected</small></div>
+          <div class="impact-stat"><div class="is-num">${summary.rejectedResearches || 0}</div><div class="is-lbl">Rejected Researches</div><small>status &ldquo;Rejected&rdquo;</small></div>
+          <div class="impact-stat"><div class="is-num">${summary.researchers || 0}</div><div class="is-lbl">Researchers</div><small>distinct users w/ submissions</small></div>
+          <div class="impact-stat"><div class="is-num">${summary.innovationProjects || 0}</div><div class="is-lbl">Innovation Programs</div><small>Innovation &amp; Extension records</small></div>
+        </div>
+        <div class="impact-grid">
+          <div class="impact-chart">
+            <div class="impact-subhead"><i class="bi bi-bar-chart-line"></i> Monthly output · trailing 7 months</div>
+            <div class="impact-bars">${bars || '<p class="form-note">No monthly data yet.</p>'}</div>
+          </div>
+          <div class="impact-progress">
+            <div class="impact-subhead"><i class="bi bi-check2-circle"></i> Quality &amp; delivery</div>
+            <div class="ip-row"><span>Approval rate</span><b>${summary.approvalRate || 0}%</b></div>
+            <div class="ip-bar"><span style="width:${Math.min(100, summary.approvalRate || 0)}%"></span></div>
+            <div class="ip-row"><span>On-time delivery</span><b>${summary.onTimeDelivery || 0}%</b></div>
+            <div class="ip-bar"><span style="width:${Math.min(100, summary.onTimeDelivery || 0)}%"></span></div>
+            <div class="ip-note"><i class="bi bi-info-circle"></i> Approval = (approved &divide; total submitted) &times; 100. On-time = approved within the 14-day review window.</div>
+          </div>
+          <div class="impact-goal">
+            <div class="impact-subhead"><i class="bi bi-bullseye"></i> Research goals</div>
+            <div class="impact-ring-wrap">
+              <div class="impact-ring" style="--pct:${Math.min(100, summary.goalProgress || 0)}">
+                <span class="ir-num">${summary.goalProgress || 0}%</span>
+              </div>
+              <div class="impact-ring-info">
+                <b>${summary.goalLabel || 'On track for 2026'}</b>
+                <small>${summary.goalSubtext || '+0% citations YoY'}</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
   }
 
-  function buildTestimonials() {
-    const el = document.getElementById('testimonials'); if (!el) return;
-    const list = [];
-    el.innerHTML = list.map(q => `
-      <div class="swiper-slide"><article class="quote-card">
-        <span class="testi-tag">${q.who}</span>
-        <div class="stars"><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i><i class="bi bi-star-fill"></i></div>
-        <p class="q-text">“${q.text}”</p>
-        <div class="q-who"><span class="av">${q.av}</span><div><b>${q.name}</b><small>${q.role}</small></div></div>
-      </article></div>`).join('');
+  // ---- Hero stat chips (Publications & briefs / Review approval rate) ----
+  // Same source as the Research Analytics dashboard: the chips update in place
+  // with the live publication count and submission approval rate, keeping the
+  // static markup values as an offline fallback.
+  async function loadHeroStats() {
+    const pubEl = document.getElementById('heroStatPub');
+    const rateEl = document.getElementById('heroStatRate');
+    if (!pubEl && !rateEl) return;
+    try {
+      const res = await fetch('/api/admin/hero-stats');
+      if (!res.ok) return;
+      const data = await res.json();
+      const stats = data && data.stats;
+      if (!stats) return;
+      if (pubEl && typeof stats.publicationsAndBriefs === 'number') {
+        pubEl.textContent = stats.publicationsAndBriefs.toLocaleString() + '+';
+      }
+      if (rateEl && typeof stats.reviewApprovalRate === 'number') {
+        rateEl.textContent = stats.reviewApprovalRate + '%';
+      }
+    } catch { /* keep the static fallback values */ }
   }
 
   function buildEvents(events) {
     const el = document.getElementById('events'); if (!el) return;
-    const list = (events && events.filter(e => new Date(e.date) >= new Date()).length ? events.filter(e => new Date(e.date) >= new Date()) : []).slice(0,3);
+    // Shared date logic with calendar.html: module events carry `dateTime`,
+    // content events carry `date`, and records with an unparseable date are
+    // still shown as upcoming (calendar treats those the same way).
+    const parseDate = e => new Date(e.dateTime || e.date || 0);
+    const evDate = e => {
+      const t = parseDate(e).getTime();
+      return isNaN(t) ? Infinity : t;
+    };
+    const now = Date.now();
+    const upcoming = (events && Array.isArray(events))
+      ? events.filter(e => evDate(e) >= now).sort((a, b) => evDate(a) - evDate(b))
+      : [];
+    const list = upcoming.slice(0,3);
+    // No upcoming events yet: show a tidy empty state instead of a blank grid.
+    if (!list.length) {
+      el.innerHTML = '<div class="empty-state"><i class="bi bi-calendar-event" style="font-size:1.6rem;display:block;margin-bottom:8px;color:var(--cpri-accent);"></i>No upcoming events scheduled — check back soon for seminars, symposia, and conferences.</div>';
+      return;
+    }
     el.innerHTML = list.map(e => {
-      const d = new Date(e.date);
+      const raw = parseDate(e);
+      const hasDate = !isNaN(raw.getTime());
+      const d = hasDate ? raw : new Date(now);
+      // Module events (Events & Conferences) have real detail/registration pages;
+      // content events (Admin Console) link back to the events listing instead.
+      const isModule = e.source !== 'content';
+      const detailHref = isModule ? 'event-detail.html?id=' + e.id : 'events.html';
+      const regHref = isModule ? 'event-registration.html?id=' + e.id : 'events.html';
+      const regLabel = isModule ? 'Register' : 'View';
       return `<div class="col-lg-4 col-md-6 reveal-up">
         <article class="event-card">
-          <div class="e-media"><i class="bi bi-calendar-event"></i>
+          <a class="e-media" href="${detailHref}" style="display:block;">${e.photo ? `<img src="${escapeHtml(e.photo)}" alt="${escapeHtml(e.title)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">` : '<i class="bi bi-calendar-event"></i>'}
             <div class="e-date"><b>${d.getDate()}</b>${d.toLocaleString('en-US',{month:'short'})}</div>
-          </div>
+          </a>
           <div class="e-body">
-            <span class="tag">${e.type}</span>
-            <h3>${e.title}</h3>
-            <div class="e-meta"><span><i class="bi bi-geo-alt"></i>${e.location}</span><span><i class="bi bi-clock"></i>${fmtDate(e.date)}</span></div>
-            <div class="countdown" data-to="${d.getTime()}">
+            <span class="tag">${escapeHtml(e.type || 'Event')}</span>
+            <h3><a href="${detailHref}">${escapeHtml(e.title)}</a></h3>
+            <div class="e-meta"><span><i class="bi bi-geo-alt"></i>${escapeHtml(e.location || e.venue || '')}</span><span><i class="bi bi-clock"></i>${fmtDate(e.dateTime || e.date)}</span></div>
+            ${hasDate ? `<div class="countdown" data-to="${d.getTime()}">
               <div class="cd"><b class="cd-d">--</b><small>Days</small></div>
               <div class="cd"><b class="cd-h">--</b><small>Hrs</small></div>
               <div class="cd"><b class="cd-m">--</b><small>Min</small></div>
               <div class="cd"><b class="cd-s">--</b><small>Sec</small></div>
-            </div>
+            </div>` : ''}
             <div class="e-foot">
-              <a class="btn btn-gradient btn-sm" href="event-registration.html">Register</a>
+              <a class="btn btn-gradient btn-sm" href="${regHref}">${regLabel}</a>
               <a class="btn btn-outline-dark btn-sm" href="https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(e.title)}" target="_blank" rel="noopener"><i class="bi bi-google"></i> Calendar</a>
             </div>
           </div>
@@ -897,24 +1695,6 @@ const CPRI = (() => {
     tick(); setInterval(tick, 1000);
   }
 
-  function buildAiFeatures() {
-    const el = document.getElementById('ai-features'); if (!el) return;
-    const items = [
-      { i:'bi-robot', t:'AI Research Assistant', d:'Chat with AIRA to find, summarize, and navigate research instantly.' },
-      { i:'bi-search', t:'AI Semantic Search', d:'Natural-language search across publications, people, and projects.' },
-      { i:'bi-lightbulb', t:'Smart Recommendations', d:'Personalized reading suggestions based on your interests.' },
-      { i:'bi-file-earmark-text', t:'Auto Summaries', d:'One-click 3-bullet abstracts for any publication.' },
-      { i:'bi-mic', t:'Voice Search', d:'Ask hands-free — speech-to-query research discovery.' },
-      { i:'bi-tags', t:'Keyword Suggestions', d:'AI-suggested tags and topics to improve discoverability.' }
-    ];
-    el.innerHTML = items.map(it => `
-      <div class="col-lg-4 col-md-6 reveal-up">
-        <article class="ui-card"><span class="c-icon"><i class="bi ${it.i}"></i></span>
-          <h3>${it.t}</h3><p>${it.d}</p>
-          <div class="card-foot"><button class="btn btn-soft btn-sm" onclick="CPRI.toast('AI','${it.t} is ready to use.','robot')">Try it <i class="bi bi-arrow-right"></i></button></div>
-        </article></div>`).join('');
-  }
-
   function buildFaqs() {
     const fq = document.getElementById('faqs'); if (!fq) return;
     const list = [
@@ -930,13 +1710,259 @@ const CPRI = (() => {
       </div>`).join('');
   }
 
-  document.addEventListener('DOMContentLoaded', () => { injectLayout(); });
+  // ---- Shared in-page confirm dialog ----
+  // Native confirm() is silently blocked in sandboxed iframes (e.g. the
+  // Freebuff preview), so destructive actions confirm via an in-page overlay.
+  // Exposed globally as window.confirmDialog(message, okLabel) -> Promise<boolean>.
+  let cpriConfirmResolve = null;
+  function confirmDialog(message, okLabel) {
+    if (cpriConfirmResolve) { cpriConfirmResolve(false); cpriConfirmResolve = null; }
+    const overlay = document.getElementById('cpriConfirmOverlay');
+    if (!overlay) return Promise.resolve(false);
+    overlay.querySelector('#cpriConfirmMsg').textContent = message;
+    overlay.querySelector('#cpriConfirmOk').textContent = okLabel || 'Confirm';
+    overlay.hidden = false;
+    overlay.querySelector('#cpriConfirmOk').focus();
+    return new Promise(resolve => { cpriConfirmResolve = resolve; });
+  }
+  function injectConfirmDialog() {
+    if (document.getElementById('cpriConfirmOverlay')) return;
+    const el = document.createElement('div');
+    el.className = 'confirm-overlay';
+    el.id = 'cpriConfirmOverlay';
+    el.hidden = true;
+    el.innerHTML = `
+      <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="cpriConfirmTitle">
+        <div class="confirm-icon"><i class="bi bi-exclamation-triangle"></i></div>
+        <h3 id="cpriConfirmTitle">Are you sure?</h3>
+        <p id="cpriConfirmMsg"></p>
+        <div class="confirm-actions">
+          <button type="button" class="btn btn-navy" id="cpriConfirmCancel">Cancel</button>
+          <button type="button" class="btn btn-danger" id="cpriConfirmOk">Confirm</button>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    const close = (result) => {
+      el.hidden = true;
+      if (cpriConfirmResolve) { cpriConfirmResolve(result); cpriConfirmResolve = null; }
+    };
+    el.querySelector('#cpriConfirmOk').addEventListener('click', () => close(true));
+    el.querySelector('#cpriConfirmCancel').addEventListener('click', () => close(false));
+    el.addEventListener('click', (e) => { if (e.target === el) close(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !el.hidden) close(false); });
+    window.confirmDialog = confirmDialog;
+  }
+
+  // ---- Google sign-in (system-browser bridge) ----
+  // Google blocks its OAuth consent screen inside embedded browsers (Electron /
+  // WebView user agents) with "This browser or app may not be secure". The
+  // "Complete sign-in in your browser" link hands the flow to a real browser via
+  // ?external=1 and adopts the resulting session with a one-time code.
+  function openGoogleBridge(authUrl) {
+    let overlay = document.getElementById('googleBridge');
+    if (overlay) { overlay.classList.add('open'); return; }
+    overlay = document.createElement('div');
+    overlay.id = 'googleBridge';
+    overlay.className = 'gbridge-overlay';
+    overlay.innerHTML = `
+      <div class="gbridge-card" role="dialog" aria-modal="true" aria-label="Google sign-in">
+        <button type="button" class="gbridge-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+        <div class="gbridge-icon"><i class="bi bi-google"></i></div>
+        <h3>Complete sign-in in your browser</h3>
+        <p>Google blocks sign-in inside this app's built-in browser. Pick a browser below (or copy the link), sign in with Google, then enter the code it shows you.</p>
+        <a class="btn btn-gradient gbridge-open" href="${authUrl}" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right"></i> Open default browser</a>
+        <div class="gbridge-or">or choose a browser</div>
+        <div class="gbridge-browsers" aria-label="Choose a browser"></div>
+        <div class="gbridge-or">or copy this link</div>
+        <input class="gbridge-url" readonly aria-label="Google sign-in link" value="${authUrl}" spellcheck="false">
+        <div class="gbridge-code-row">
+          <input class="gbridge-code" maxlength="6" placeholder="Enter code" autocomplete="one-time-code" aria-label="One-time code" spellcheck="false">
+          <button type="button" class="btn btn-gradient gbridge-verify">Verify</button>
+        </div>
+        <div class="gbridge-msg" role="status"></div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    const close = () => overlay.classList.remove('open');
+    overlay.querySelector('.gbridge-close').addEventListener('click', close);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('open')) close(); });
+    overlay.querySelector('.gbridge-url').addEventListener('click', (e) => {
+      e.target.select();
+      if (navigator.clipboard) navigator.clipboard.writeText(authUrl).catch(() => {});
+    });
+    const msg = overlay.querySelector('.gbridge-msg');
+    const codeInput = overlay.querySelector('.gbridge-code');
+    const verify = async () => {
+      const code = codeInput.value.trim().toUpperCase();
+      if (!code) { msg.className = 'gbridge-msg error'; msg.textContent = 'Enter the code from your browser.'; return; }
+      const btn = overlay.querySelector('.gbridge-verify');
+      btn.disabled = true; msg.className = 'gbridge-msg'; msg.textContent = 'Verifying…';
+      try {
+        const res = await fetch('/api/auth/google/bridge', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ code })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error((out && out.error) || 'Invalid code.');
+        // Session adopted — route like the normal Google callback would.
+        const me = await fetchMe();
+        const user = me && me.user;
+        window.location.href = user
+          ? (user.needsSetup ? 'complete-profile.html' : user.role === 'admin' ? 'admin-dashboard.html' : 'account.html')
+          : 'login.html';
+      } catch (err) {
+        msg.className = 'gbridge-msg error';
+        msg.textContent = (err && err.message) || 'Verification failed. Please try again.';
+        btn.disabled = false;
+      }
+    };
+    overlay.querySelector('.gbridge-verify').addEventListener('click', verify);
+    codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') verify(); });
+
+    // Populate the installed-browser chooser from the server (a web page can't
+    // enumerate the machine's browsers by itself).
+    const browserRow = overlay.querySelector('.gbridge-browsers');
+    fetch('/api/auth/browsers')
+      .then((r) => r.json())
+      .then((list) => {
+        if (!Array.isArray(list) || !list.length) return;
+        browserRow.innerHTML = list.map((b) =>
+          `<button type="button" class="gbrowser" data-browser="${b.id}"><span class="gbrowser-dot"></span>${b.name}</button>`
+        ).join('');
+        browserRow.querySelectorAll('.gbrowser').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+              const res = await fetch('/api/auth/browser-open', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ browser: btn.dataset.browser, url: authUrl })
+              });
+              const out = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error((out && out.error) || 'Could not open that browser.');
+              msg.className = 'gbridge-msg';
+              msg.textContent = `Opened ${btn.textContent.trim()} — sign in there, then enter the code here.`;
+            } catch (err) {
+              msg.className = 'gbridge-msg error';
+              msg.textContent = (err && err.message) || 'Could not open that browser.';
+            }
+            btn.disabled = false;
+          });
+        });
+      })
+      .catch(() => { /* chooser is progressive enhancement; the copy link stays */ });
+
+    requestAnimationFrame(() => overlay.classList.add('open'));
+  }
+
+  // Shared entry point for the login/register "Continue with Google" buttons.
+  // Always navigates directly to Google's consent screen — the code-based
+  // bridge dialog is only for the explicit "Complete sign-in in your browser"
+  // link below the button. Resolves false when Google sign-in is not configured
+  // server-side (the page shows its own message).
+  async function startGoogleLogin(btn) {
+    const res = await fetch('/api/auth/google/status', { credentials: 'include' });
+    const out = await res.json().catch(() => ({}));
+    if (!(out && out.enabled)) return false;
+    // Tell the server which page started the flow so error bounces (cancel,
+    // disabled, pending, failure) come back to that same page.
+    const fromParam = currentPage() === 'register.html' ? 'from=register' : '';
+    if (btn && !btn.disabled) {
+      // Loading state: remember the original label so a canceled attempt that
+      // returns here (browser Back / bfcache) can restore the button.
+      if (!btn.dataset.googleOrig) btn.dataset.googleOrig = btn.innerHTML;
+      btn.classList.add('is-loading');
+      btn.disabled = true;
+    }
+    // Remember this attempt: if the visitor comes back here without being
+    // signed in (e.g. Google blocked the embedded browser and they pressed
+    // Back), we offer the code-based flow instead of leaving them stuck.
+    sessionStorage.setItem('cpriGoogleAttempt', '1');
+    window.location.href = '/api/auth/google' + (fromParam ? '?' + fromParam : '');
+    return true;
+  }
+
+  // Entry point for the "Complete sign-in in your browser" option under the
+  // Google button. Always shows the bridge dialog — in any browser — so users
+  // who prefer (or need) to finish Google sign-in in their default browser
+  // with a one-time code have a direct path to it.
+  async function startBrowserSignIn() {
+    const res = await fetch('/api/auth/google/status', { credentials: 'include' });
+    const out = await res.json().catch(() => ({}));
+    if (!(out && out.enabled)) return false;
+    const fromParam = currentPage() === 'register.html' ? 'from=register' : '';
+    const authUrl = location.origin + '/api/auth/google?external=1' + (fromParam ? '&' + fromParam : '');
+    openGoogleBridge(authUrl);
+    return true;
+  }
+
+  // One-click rescue after a blocked Google attempt: a banner that appears on
+  // login/register when the visitor returns from the Google hop without being
+  // signed in (typical in the embedded preview, where Google refuses consent)
+  // and routes them straight into the code-based flow.
+  function showGoogleBlockedBanner() {
+    if (document.getElementById('googleBlockFlag')) return;
+    const flag = document.createElement('div');
+    flag.id = 'googleBlockFlag';
+    flag.className = 'gbridge-flag';
+    flag.innerHTML = `
+      <span class="gf-icon"><i class="bi bi-exclamation-triangle"></i></span>
+      <div class="gf-msg"><b>Google sign-in didn't complete.</b> If Google blocked this app's built-in browser, finish it in your own browser with a one-time code.</div>
+      <button type="button" class="btn btn-gradient btn-sm gf-btn">Switch to code flow</button>
+      <button type="button" class="gf-close" aria-label="Dismiss"><i class="bi bi-x-lg"></i></button>`;
+    document.body.appendChild(flag);
+    flag.querySelector('.gf-btn').addEventListener('click', () => {
+      startBrowserSignIn();
+    });
+    flag.querySelector('.gf-close').addEventListener('click', () => flag.remove());
+  }
+
+  // A canceled Google attempt can return the visitor to the auth page via the
+  // browser's Back button, which restores the page from bfcache — including the
+  // Google button's disabled "loading" state. Re-enable it whenever we land on
+  // an auth page so it is never left stuck.
+  function restoreGoogleButton() {
+    const page = currentPage();
+    if (page !== 'login.html' && page !== 'register.html') return;
+    const btn = document.getElementById('google-btn');
+    if (!btn) return;
+    if (btn.dataset.googleOrig) {
+      btn.innerHTML = btn.dataset.googleOrig;
+      delete btn.dataset.googleOrig;
+    }
+    btn.classList.remove('is-loading');
+    btn.disabled = false;
+  }
+
+  // Track Google attempts: pageshow fires on every load and on bfcache
+  // restore, so coming Back from a blocked Google page is caught either way.
+  window.addEventListener('pageshow', () => {
+    const page = currentPage();
+    if (page === 'login.html' || page === 'register.html') restoreGoogleButton();
+    if (!sessionStorage.getItem('cpriGoogleAttempt')) return;
+    if (page === 'login.html' || page === 'register.html') {
+      sessionStorage.removeItem('cpriGoogleAttempt');
+      fetchMe().then((me) => {
+        if (me && me.user) return; // signed in — the attempt succeeded
+        showGoogleBlockedBanner();
+      });
+    } else {
+      // Landed elsewhere (account/admin/complete-profile) — attempt resolved.
+      sessionStorage.removeItem('cpriGoogleAttempt');
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', () => { injectLayout(); injectConfirmDialog(); });
 
   return {
-    fetchJson, fmtDate, reveal: initReveal, toast, SITE,
+    fetchJson, fmtDate, escapeHtml, reveal: initReveal, toast, SITE,
     buildResearch, buildNews, buildResearchers, buildStats,
-    buildPartners, buildTestimonials, buildEvents, buildAiFeatures,
-    buildFaqs, initHeroExtras, loadPublicDashboard
+    buildEvents,
+    buildFaqs, initHeroExtras, loadPublicDashboard, loadHeroStats,
+    startGoogleLogin, startBrowserSignIn
   };
 })();
 

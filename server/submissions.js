@@ -7,6 +7,7 @@ import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { addLog } from './audit.js';
+import { notify } from './notifications.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -48,10 +49,13 @@ const FILE_FIELDS = [
 ];
 const REQUIRED_KEYS = FILE_FIELDS.filter(f => f.required).map(f => f.key);
 
-// Roles allowed to create submissions
-const SUBMIT_ROLES = ['faculty_researcher', 'student_researcher', 'adviser', 'cpri_staff'];
+// Roles allowed to create submissions (admin included per RBAC submit_research)
+const SUBMIT_ROLES = ['admin', 'faculty_researcher', 'student_researcher', 'adviser', 'cpri_staff'];
 // Roles allowed to review / change status
 const REVIEW_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer'];
+// Roles that see the full submission list + stats (advisers supervise student
+// work, so they see all; they still cannot change statuses — that's REVIEW_ROLES).
+const VIEW_ALL_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer', 'adviser'];
 
 async function caller(req) {
   const users = await readUsers();
@@ -64,9 +68,10 @@ function canAccess(me, sub) {
 
 // ---------- File upload config ----------
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: async (req, file, cb) => {
     const dir = join(SUB_UPLOAD_DIR, req._subId);
-    fs.mkdir(dir, { recursive: true }, () => cb(null, dir));
+    try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
+    catch (err) { cb(err); }
   },
   filename: (req, file, cb) => {
     const safe = file.fieldname.replace(/[^a-z0-9]/gi, '_');
@@ -149,11 +154,12 @@ router.post('/', requireAuth, (req, res, next) => {
 // ---------- List submissions (role-aware) ----------
 router.get('/', requireAuth, async (req, res) => {
   const me = await caller(req);
-  const subs = REVIEW_ROLES.includes(me.role)
+  const seesAll = VIEW_ALL_ROLES.includes(me.role);
+  const subs = seesAll
     ? await all('SELECT * FROM submissions ORDER BY createdAt DESC')
     : await all('SELECT * FROM submissions WHERE submitterId = ? ORDER BY createdAt DESC', [me.id]);
 
-  res.json({
+  const payload = {
     submissions: subs.map(s => ({
       id: s.id,
       title: s.title,
@@ -165,7 +171,56 @@ router.get('/', requireAuth, async (req, res) => {
       createdAt: s.createdAt,
       isOwner: s.submitterId === me.id
     }))
-  });
+  };
+
+  // ?stats=1 -> role-scoped stats computed over the same filtered set the
+  // caller can actually see (own submissions for researchers, all for
+  // reviewers). Used by the Student Researcher Portal so students see their
+  // own counts instead of system-wide numbers.
+  if (req.query.stats) {
+    const window = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(1);
+      d.setMonth(d.getMonth() - 6 + i);
+      return { key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, count: 0 };
+    });
+    const approvedStatuses = new Set(['approved', 'published']);
+    let approvedCount = 0;
+    let onTime = 0;
+    let onTimeEligible = 0;
+
+    subs.forEach(s => {
+      if (approvedStatuses.has(s.status)) approvedCount += 1;
+      const created = new Date(s.createdAt);
+      if (!isNaN(created)) {
+        const bucket = window.find(m => m.key === `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}`);
+        if (bucket) bucket.count += 1;
+      }
+      // On-time delivery: first approved/published entry within 14 days of creation.
+      if (Array.isArray(s.statusHistory)) {
+        const approval = s.statusHistory.find(h => approvedStatuses.has(h.status) && h.at);
+        if (approval) {
+          const approvedAt = new Date(approval.at);
+          onTimeEligible += 1;
+          if (!isNaN(created) && !isNaN(approvedAt) && (approvedAt.getTime() - created.getTime()) <= 14 * 24 * 60 * 60 * 1000) {
+            onTime += 1;
+          }
+        }
+      }
+    });
+
+    payload.stats = {
+      scope: seesAll ? 'all' : 'own',
+      total: subs.length,
+      approved: approvedCount,
+      rejected: subs.filter(s => s.status === 'rejected').length,
+      approvalRate: subs.length ? Math.round((approvedCount / subs.length) * 100) : 0,
+      onTimeDelivery: onTimeEligible ? Math.round((onTime / onTimeEligible) * 100) : 0,
+      monthlyOutput: window.map(m => m.count)
+    };
+  }
+
+  res.json(payload);
 });
 
 // ---------- Submission detail ----------
@@ -198,18 +253,67 @@ router.patch('/:id/status', requireRole(...REVIEW_ROLES), async (req, res) => {
   const now = new Date().toISOString();
   await update('submissions', sub.id, { status, statusHistory: JSON.stringify(statusHistory), updatedAt: now });
 
-  if (status === 'published' || status === 'approved') {
-    await syncRepository(sub, status);
-  }
+  // Keep repository + publications in sync on EVERY status change: published
+  // submissions surface on the Publications page, and any other status hides
+  // the auto-added publication again.
+  await syncRepository(sub, status, { role: me.role, at: now });
 
   await addLog(`submission_${status}`, `${STATUS_LABELS[status] || status} submission "${sub.title}"`, req);
+
+  // In-app notification to the submitter on terminal/review decisions.
+  const labels = {
+    approved: 'approved', published: 'published', rejected: 'rejected',
+    for_revision: 'sent back for revision'
+  };
+  await notify(sub.submitterId, `submission_${status}`,
+    `Submission ${labels[status] || status}`, `Your submission "${sub.title}" was ${labels[status] || status}.`,
+    `submission.html?id=${sub.id}`);
 
   const updated = await get('SELECT * FROM submissions WHERE id = ?', [sub.id]);
   res.json({ message: 'Status updated.', submission: updated });
 });
 
+// A submission marked "published" automatically appears on the Publications
+// page as a publication record, linked back via sourceSubmissionId so staff
+// can remove it from Publications without affecting the submission or its
+// repository entry. Upserts so re-publishing never creates duplicates.
+export async function syncPublication(sub, role, publishedAt) {
+  const year = (sub.schoolYear && sub.schoolYear.match(/\d{4}/g))
+    ? sub.schoolYear.match(/\d{4}/g).pop()
+    : new Date(sub.createdAt).getFullYear();
+
+  const authorType = (role === 'admin' || role === 'cpri_staff' || role === 'faculty_researcher')
+    ? 'faculty'
+    : (role === 'student_researcher' ? 'student' : 'other');
+
+  const at = publishedAt || new Date().toISOString();
+  const base = {
+    title: sub.title,
+    authors: sub.authors,
+    journalOrConference: sub.program || 'CPRI',
+    publicationDate: at.slice(0, 10),
+    pubType: 'institutional_journal',
+    status: 'published',
+    authorType,
+    department: sub.program || '',
+    schoolYear: sub.schoolYear || '',
+    proofDocuments: JSON.stringify([]),
+    submitterId: sub.submitterId,
+    submitterName: sub.submitterName,
+    sourceSubmissionId: sub.id,
+    updatedAt: at
+  };
+
+  const existing = await get('SELECT * FROM publications WHERE sourceSubmissionId = ?', [sub.id]);
+  if (existing) {
+    await update('publications', existing.id, base);
+  } else {
+    await insert('publications', { id: randomUUID(), ...base, createdAt: at });
+  }
+}
+
 // Keep the institutional repository in sync with approved/published submissions
-async function syncRepository(sub, newStatus) {
+async function syncRepository(sub, newStatus, ctx = {}) {
   const year = (sub.schoolYear && sub.schoolYear.match(/\d{4}/g))
     ? sub.schoolYear.match(/\d{4}/g).pop()
     : new Date(sub.createdAt).getFullYear();
@@ -236,7 +340,7 @@ async function syncRepository(sub, newStatus) {
       citation: JSON.stringify(citation),
       updatedAt: new Date().toISOString()
     });
-  } else {
+  } else if (newStatus === 'approved' || newStatus === 'published') {
     const recData = {
       id: randomUUID(),
       sourceSubmissionId: sub.id,
@@ -247,6 +351,15 @@ async function syncRepository(sub, newStatus) {
       updatedAt: new Date().toISOString()
     };
     await insert('repository', recData);
+  }
+
+  // Published submissions surface on the Publications page automatically;
+  // moving to any other status hides it again — the auto-added publication is
+  // removed while the submission and its repository record stay untouched.
+  if (newStatus === 'published') {
+    await syncPublication(sub, ctx.role, ctx.at);
+  } else {
+    await run('DELETE FROM publications WHERE sourceSubmissionId = ?', [sub.id]);
   }
 }
 
@@ -333,9 +446,10 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
 // ---------- Revision upload (researcher only) ----------
 const uploadRevision = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => {
+    destination: async (req, file, cb) => {
       const dir = join(SUB_UPLOAD_DIR, req._subId, 'v' + req._version);
-      fs.mkdir(dir, { recursive: true }, () => cb(null, dir));
+      try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
+      catch (err) { cb(err); }
     },
     filename: (req, file, cb) => {
       const safe = file.fieldname.replace(/[^a-z0-9]/gi, '_');
@@ -402,6 +516,12 @@ router.post('/:id/revisions', requireAuth, async (req, res, next) => {
     statusHistory: JSON.stringify(statusHistory),
     updatedAt: now
   });
+
+  await addLog(
+    'submission_revision',
+    `Revision v${req._version} uploaded for submission "${sub.title}"`,
+    req
+  );
 
   const updated = await get('SELECT * FROM submissions WHERE id = ?', [sub.id]);
   res.status(201).json({ message: 'Revision uploaded.', version, submission: updated });

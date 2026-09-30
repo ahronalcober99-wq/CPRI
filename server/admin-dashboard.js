@@ -3,21 +3,30 @@ import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { promises as fs } from 'fs';
-import { requireAuth, requireAdmin, readUsers } from './auth.js';
+import multer from 'multer';
+import bcrypt from 'bcryptjs';
+import { requireAuth, requireAdmin, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { addLog } from './audit.js';
+import { notify } from './notifications.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, 'data');
+const EVENT_UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'events');
 
 const router = Router();
+
+// Roles allowed to post/update/delete announcements. Students and public
+// visitors are consumers only — they receive announcements as notifications.
+const ANNOUNCEMENT_SENDER_ROLES = ['admin', 'cpri_staff', 'faculty_researcher', 'adviser', 'ethics_reviewer'];
 
 const CONTENT_FILES = {
   profile: 'profile.json',
   announcements: 'announcements.json',
   events: 'events.json',
-  agenda: 'agenda.json'
+  agenda: 'agenda.json',
+  research: 'research.json'
 };
 
 // Number of days a submission has to move from created to approved/published
@@ -48,6 +57,7 @@ async function calculateDashboardSummary() {
   const summary = {
     researchPapers: 0,
     approvedResearches: 0,
+    rejectedResearches: 0,
     archivedResearches: 0,
     publishedPapers: 0,
     ethicsApplications: 0,
@@ -75,7 +85,7 @@ async function calculateDashboardSummary() {
       eventsList, usersList, researchersList
     ] = await Promise.all([
       all('SELECT id, submitterId, status, statusHistory, createdAt FROM submissions'),
-      all('SELECT id, status, createdAt FROM repository'),
+      all('SELECT id, status, sourceSubmissionId, createdAt FROM repository'),
       all("SELECT id, status, publicationDate FROM publications WHERE status = 'published'"),
       all('SELECT id FROM ethics'),
       all('SELECT id FROM innovation_extension'),
@@ -101,8 +111,16 @@ async function calculateDashboardSummary() {
     const researchUsers = usersList.filter(u => u.status === 'active' && researcherRoles.has(u.role) && submitterIds.has(u.id));
     summary.researchers = researchUsers.length || researchersList.length;
     summary.researchPapers = subsList.length + repoList.length;
-    summary.approvedResearches = subsList.filter(s => ['approved', 'published'].includes(s.status)).length + repoList.filter(r => r.status === 'approved').length;
-    summary.archivedResearches = subsList.filter(s => s.status === 'archived').length + repoList.filter(r => r.status === 'archived').length;
+    // Count each research once. Submissions are authoritative; repository
+    // records that mirror a submission (sourceSubmissionId set) are copies of it
+    // and never add a second count, so a rejected submission can never inflate
+    // the approved total. Standalone repository records count by their own status.
+    const approvedSubIds = new Set(subsList.filter(s => ['approved', 'published'].includes(s.status)).map(s => s.id));
+    summary.approvedResearches = approvedSubIds.size + repoList.filter(r => r.status === 'approved' && !r.sourceSubmissionId).length;
+    const rejectedSubIds = new Set(subsList.filter(s => s.status === 'rejected').map(s => s.id));
+    summary.rejectedResearches = rejectedSubIds.size + repoList.filter(r => r.status === 'rejected' && !r.sourceSubmissionId).length;
+    const archivedSubIds = new Set(subsList.filter(s => s.status === 'archived').map(s => s.id));
+    summary.archivedResearches = archivedSubIds.size + repoList.filter(r => r.status === 'archived' && !r.sourceSubmissionId).length;
     summary.publishedPapers = pubList.length;
 
     const activeStatuses = new Set(['submitted', 'under_initial_checking', 'for_revision', 'under_ethics_review', 'approved', 'published']);
@@ -176,6 +194,33 @@ router.get('/summary', requireAdmin, async (req, res) => {
 router.get('/public-summary', async (req, res) => {
   const summary = await calculateDashboardSummary();
   res.json({ summary, public: true });
+});
+
+// ---------- Hero stat chips (public) ----------
+// Feeds the "Publications & briefs" and "Review approval rate" chips on the
+// homepage hero. Uses the same numbers the Research Analytics dashboard shows:
+// total publication records (all statuses) and the submission approval rate
+// (approved or published / total submitted).
+router.get('/hero-stats', async (req, res) => {
+  try {
+    const [pubs, subs] = await Promise.all([
+      all('SELECT COUNT(*) AS c FROM publications'),
+      all('SELECT status FROM submissions')
+    ]);
+    const publicationsAndBriefs = pubs[0] ? Number(pubs[0].c) : 0;
+    const approved = subs.filter(s => ['approved', 'published'].includes(s.status)).length;
+    const reviewApprovalRate = subs.length ? Math.round((approved / subs.length) * 100) : 0;
+    res.json({
+      stats: {
+        publicationsAndBriefs,
+        reviewApprovalRate,
+        lastUpdated: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    console.error('[hero-stats] error:', err);
+    res.status(500).json({ error: 'Failed to load hero stats.' });
+  }
 });
 
 // ---------- Reports (MySQL) ----------
@@ -321,6 +366,10 @@ router.get('/reports/research-output', requireAdmin, async (req, res) => {
 });
 
 // ---------- Content management (remains JSON - no MySQL tables) ----------
+// Announcements may be published by admins, CPRI staff, faculty researchers,
+// advisers, and ethics reviewers. On publish, every active student researcher
+// gets an in-app notification (their bell); public visitors see the new
+// announcement automatically through the bell's public feed (notifications.js).
 router.post('/content/homepage', requireAdmin, async (req, res) => {
   await addLog('content_update', 'Updated homepage content', req);
   const b = req.body || {};
@@ -331,29 +380,51 @@ router.post('/content/homepage', requireAdmin, async (req, res) => {
   res.json({ message: 'Homepage content updated.', profile });
 });
 
-router.post('/content/announcement', requireAdmin, async (req, res) => {
+router.post('/content/announcement', requireRole(...ANNOUNCEMENT_SENDER_ROLES), async (req, res) => {
   await addLog('content_create', 'Created announcement', req);
   const b = req.body || {};
   if (!b.title || !b.content) return res.status(400).json({ error: 'Title and content are required.' });
   const announcements = await readContent('announcements');
-  announcements.push({
+  const sender = await get('SELECT fullName, username FROM users WHERE id = ?', [req.session.userId]).catch(() => null);
+  const announcement = {
     id: randomUUID(),
     title: String(b.title).trim(),
     content: String(b.content).trim(),
     category: b.category ? String(b.category).trim() : 'General',
     date: b.date ? String(b.date).trim() : new Date().toISOString().split('T')[0],
-    excerpt: b.excerpt ? String(b.excerpt).trim() : '',
+    // Auto-derive a snippet so the public bell feed / homepage cards always
+    // show a message even when the sender doesn't fill in an excerpt.
+    excerpt: b.excerpt ? String(b.excerpt).trim() : String(b.content).trim().slice(0, 140),
+    author: (sender && (sender.fullName || sender.username)) || '',
     createdAt: new Date().toISOString()
-  });
+  };
+  announcements.push(announcement);
   await writeContent('announcements', announcements);
-  res.status(201).json({ message: 'Announcement created.', announcement: announcements[announcements.length - 1] });
+
+  // Notify every active student researcher in-app so the announcement lands
+  // in their bell. Public visitors pick it up via the public bell feed.
+  try {
+    const students = await all("SELECT id FROM users WHERE role = 'student_researcher' AND status = 'active'");
+    const excerpt = (announcement.excerpt || announcement.content || '').slice(0, 140);
+    await Promise.all(students.map(s => notify(
+      s.id, 'announcement', 'New announcement: ' + announcement.title,
+      excerpt || 'An announcement was just posted.', 'announcements.html'
+    )));
+    if (students.length) console.log(`[announcements] notified ${students.length} student(s)`);
+  } catch (err) {
+    console.error('[announcements] student notify failed:', err.message);
+  }
+
+  res.status(201).json({ message: 'Announcement created.', announcement });
 });
 
-router.patch('/content/announcement/:id', requireAdmin, async (req, res) => {
+router.patch('/content/announcement/:id', requireRole(...ANNOUNCEMENT_SENDER_ROLES), async (req, res) => {
   await addLog('content_update', 'Updated announcement ' + req.params.id, req);
   const b = req.body || {};
   const announcements = await readContent('announcements');
-  const idx = announcements.findIndex(a => a.id === req.params.id);
+  // Legacy seed rows may have numeric ids (1, 2, …); req.params.id is always a
+  // string, so compare stringified values to match both UUID and numeric ids.
+  const idx = announcements.findIndex(a => String(a.id) === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Announcement not found.' });
   for (const f of ['title', 'content', 'category', 'date', 'excerpt']) {
     if (b[f] !== undefined) announcements[idx][f] = String(b[f]).trim();
@@ -362,32 +433,155 @@ router.patch('/content/announcement/:id', requireAdmin, async (req, res) => {
   res.json({ message: 'Announcement updated.', announcement: announcements[idx] });
 });
 
-router.delete('/content/announcement/:id', requireAdmin, async (req, res) => {
+router.delete('/content/announcement/:id', requireRole(...ANNOUNCEMENT_SENDER_ROLES), async (req, res) => {
   await addLog('content_delete', 'Deleted announcement ' + req.params.id, req);
   const announcements = await readContent('announcements');
-  const filtered = announcements.filter(a => a.id !== req.params.id);
+  const filtered = announcements.filter(a => String(a.id) !== req.params.id);
   if (filtered.length === announcements.length) return res.status(404).json({ error: 'Announcement not found.' });
   await writeContent('announcements', filtered);
   res.json({ message: 'Announcement deleted.' });
 });
 
+// Events are stored in the same schema the public site reads (/api/events),
+// so an event published here appears immediately on the homepage, events
+// listing, and calendar. Legacy field names (theme/dateTime/venue) are
+// accepted as aliases for type/date/location.
+// Event photo upload — stores images under public/assets/uploads/events and
+// returns the public URL to save into the event's `photo` field.
+const eventPhotoStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    fs.mkdir(EVENT_UPLOAD_DIR, { recursive: true })
+      .then(() => cb(null, EVENT_UPLOAD_DIR))
+      .catch(err => cb(err));
+  },
+  filename: (req, file, cb) => {
+    const safe = file.originalname.replace(/[^a-z0-9.]+/gi, '_').slice(0, 40);
+    cb(null, `event-${Date.now()}-${safe}`);
+  }
+});
+const eventPhotoUpload = multer({
+  storage: eventPhotoStorage,
+  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB
+  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith('image/'))
+});
+
+router.post('/content/event/photo', requireAdmin, (req, res) => {
+  eventPhotoUpload.single('photo')(req, res, async (err) => {
+    if (err) {
+      // Multer failures (oversize, bad multipart, unexpected field) → clean JSON.
+      const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Photo is too large (max 4 MB).' : (err.message || 'Photo upload failed.');
+      return res.status(400).json({ error: msg });
+    }
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded (images only, max 4 MB).' });
+    await addLog('content_update', 'Uploaded event photo', req);
+    const photo = `/assets/uploads/events/${req.file.filename}`;
+    res.status(201).json({ message: 'Photo uploaded.', photo });
+  });
+});
+
 router.post('/content/event', requireAdmin, async (req, res) => {
   await addLog('content_create', 'Created event', req);
   const b = req.body || {};
-  if (!b.title || !b.theme || !b.dateTime || !b.venue) return res.status(400).json({ error: 'Required fields missing.' });
+  const title = (b.title || '').trim();
+  const date = (b.date || b.dateTime || '').trim();
+  const location = (b.location || b.venue || '').trim();
+  if (!title || !date || !location) return res.status(400).json({ error: 'Title, date, and location are required.' });
   const contentEvents = await readContent('events');
-  contentEvents.push({
+  const event = {
     id: randomUUID(),
-    title: String(b.title).trim(),
-    theme: String(b.theme).trim(),
-    dateTime: String(b.dateTime).trim(),
-    venue: String(b.venue).trim(),
+    title,
+    type: (b.type || b.theme || '').trim() || 'Event',
+    date,
+    location,
     description: b.description ? String(b.description).trim() : '',
-    location: b.location ? String(b.location).trim() : '',
+    photo: b.photo ? String(b.photo).trim() : '',
     createdAt: new Date().toISOString()
-  });
+  };
+  contentEvents.push(event);
   await writeContent('events', contentEvents);
-  res.status(201).json({ message: 'Event created.', event: contentEvents[contentEvents.length - 1] });
+  res.status(201).json({ message: 'Event created.', event });
+});
+
+router.patch('/content/event/:id', requireAdmin, async (req, res) => {
+  await addLog('content_update', 'Updated event ' + req.params.id, req);
+  const b = req.body || {};
+  const contentEvents = await readContent('events');
+  const ev = contentEvents.find(e => e.id === req.params.id);
+  if (!ev) return res.status(404).json({ error: 'Event not found.' });
+  const REQUIRED_EVENT = ['title', 'date', 'location'];
+  for (const f of ['title', 'type', 'date', 'location', 'description', 'photo']) {
+    if (b[f] !== undefined) {
+      const v = String(b[f]).trim();
+      if (REQUIRED_EVENT.includes(f) && !v) return res.status(400).json({ error: 'Title, date, and location cannot be empty.' });
+      ev[f] = v;
+    }
+  }
+  await writeContent('events', contentEvents);
+  res.json({ message: 'Event updated.', event: ev });
+});
+
+router.delete('/content/event/:id', requireAdmin, async (req, res) => {
+  await addLog('content_delete', 'Deleted event ' + req.params.id, req);
+  const contentEvents = await readContent('events');
+  const filtered = contentEvents.filter(e => e.id !== req.params.id);
+  if (filtered.length === contentEvents.length) return res.status(404).json({ error: 'Event not found.' });
+  await writeContent('events', filtered);
+  res.json({ message: 'Event deleted.' });
+});
+
+// Featured research shown in the homepage "Explore our research" section
+// (same schema the public /api/research endpoint serves).
+router.post('/content/research', requireAdmin, async (req, res) => {
+  await addLog('content_create', 'Created featured research', req);
+  const b = req.body || {};
+  const title = (b.title || '').trim();
+  const summary = (b.summary || '').trim();
+  if (!title || !summary) return res.status(400).json({ error: 'Title and summary are required.' });
+  const items = await readContent('research');
+  const item = {
+    id: randomUUID(),
+    title,
+    summary,
+    author: b.author ? String(b.author).trim() : '',
+    date: b.date ? String(b.date).trim() : new Date().toISOString().split('T')[0],
+    read: b.read ? Math.max(1, Number(b.read) || 8) : 8,
+    year: b.year ? Number(b.year) : new Date().getFullYear(),
+    createdAt: new Date().toISOString()
+  };
+  items.push(item);
+  await writeContent('research', items);
+  res.status(201).json({ message: 'Research featured.', research: item });
+});
+
+router.patch('/content/research/:id', requireAdmin, async (req, res) => {
+  await addLog('content_update', 'Updated featured research ' + req.params.id, req);
+  const b = req.body || {};
+  const items = await readContent('research');
+  const item = items.find(r => r.id === req.params.id);
+  if (!item) return res.status(404).json({ error: 'Research not found.' });
+  for (const f of ['title', 'summary', 'author', 'date', 'read', 'year']) {
+    if (b[f] !== undefined) {
+      if (f === 'read' || f === 'year') {
+        const n = Number(b[f]);
+        item[f] = Number.isFinite(n) ? Math.max(1, n) : item[f];
+      } else {
+        const v = String(b[f]).trim();
+        if ((f === 'title' || f === 'summary') && !v) return res.status(400).json({ error: 'Title and summary cannot be empty.' });
+        item[f] = v;
+      }
+    }
+  }
+  await writeContent('research', items);
+  res.json({ message: 'Research updated.', research: item });
+});
+
+router.delete('/content/research/:id', requireAdmin, async (req, res) => {
+  await addLog('content_delete', 'Deleted featured research ' + req.params.id, req);
+  const items = await readContent('research');
+  const filtered = items.filter(r => r.id !== req.params.id);
+  if (filtered.length === items.length) return res.status(404).json({ error: 'Research not found.' });
+  await writeContent('research', filtered);
+  res.json({ message: 'Research deleted.' });
 });
 
 router.post('/content/agenda', requireAdmin, async (req, res) => {
@@ -465,11 +659,16 @@ router.post('/users/:id/reset-password', requireAdmin, async (req, res) => {
   const b = req.body || {};
   const newPassword = b.newPassword;
   if (!newPassword || String(newPassword).length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters.' });
-  const bcrypt = await import('bcryptjs');
   const user = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found.' });
   const hash = await bcrypt.hash(String(newPassword), 10);
   await update('users', req.params.id, { passwordHash: hash });
+
+  // In-app notification so the user sees the change in their bell on next login.
+  await notify(user.id, 'password_reset', 'Password changed by administrator',
+    `An administrator reset the password for your account (${user.username}). If this was not you, contact the administrator immediately.`,
+    'account.html');
+
   res.json({ message: 'Password reset successfully.' });
 });
 

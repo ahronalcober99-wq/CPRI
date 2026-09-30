@@ -6,6 +6,7 @@
   <title>File Manager | CPRI Admin</title>
   <meta name="theme-color" content="#0F172A">
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -179,7 +180,7 @@
                   <td style="white-space:nowrap;">${formatDate(f.uploadedAt || f.mtime || Date.now())}</td>
                   <td>
                     <a class="btn btn-soft btn-sm" href="${escapeHtml(f.path)}" target="_blank" download="${escapeHtml(f.name)}"><i class="bi bi-download"></i> Download</a>
-                    <button class="btn btn-outline btn-sm delete-file" data-path="${escapeHtml(f.path || f.name)}" style="border-color:#b23b32;color:#b23b32;margin-left:4px;"><i class="bi bi-trash"></i></button>
+                    <button class="btn btn-outline btn-sm delete-file" data-path="${escapeHtml(f.path || f.name)}" data-name="${escapeHtml(f.name)}" aria-label="Delete ${escapeHtml(f.name)}" title="Delete ${escapeHtml(f.name)}" style="border-color:#b23b32;color:#b23b32;margin-left:4px;"><i class="bi bi-trash"></i></button>
                   </td>
                 </tr>
               `).join('')}
@@ -189,7 +190,13 @@
 
       el.querySelectorAll('.delete-file').forEach(btn => {
         btn.addEventListener('click', async () => {
-          if (!confirm('Delete this file?')) return;
+          const fileName = btn.dataset.name || btn.dataset.path.split('/').pop() || 'this file';
+          // Native confirm() is silently blocked in sandboxed iframes (e.g.
+          // the Freebuff preview), so confirm via the shared in-page dialog
+          // that main.js injects site-wide (fallback to native if absent).
+          const ask = window.confirmDialog || ((msg) => Promise.resolve(window.confirm(msg)));
+          const ok = await ask(`Delete "${fileName}"? This cannot be undone.`, 'Delete');
+          if (!ok) return;
           const filePath = btn.dataset.path;
           const res = await fetch('/api/admin/files/delete', {
             method: 'POST',

@@ -6,6 +6,7 @@
   <title>Audit Logs | CPRI Admin</title>
   <meta name="theme-color" content="#0F172A">
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -65,14 +66,44 @@
                   <label>Action type</label>
                   <select id="log-action">
                     <option value="">All</option>
-                    <option value="login">Login</option>
-                    <option value="logout">Logout</option>
-                    <option value="content_update">Content Update</option>
-                    <option value="content_create">Content Create</option>
-                    <option value="content_delete">Content Delete</option>
-                    <option value="user_update">User Update</option>
-                    <option value="user_delete">User Delete</option>
-                    <option value="password_reset">Password Reset</option>
+                    <optgroup label="Auth">
+                      <option value="login">Login</option>
+                      <option value="logout">Logout</option>
+                      <option value="password_reset">Password Reset</option>
+                    </optgroup>
+                    <optgroup label="Content">
+                      <option value="content_create">Content Create</option>
+                      <option value="content_update">Content Update</option>
+                      <option value="content_delete">Content Delete</option>
+                    </optgroup>
+                    <optgroup label="Users">
+                      <option value="user_update">User Update</option>
+                      <option value="user_delete">User Delete</option>
+                    </optgroup>
+                    <optgroup label="Submissions">
+                      <option value="submission_submitted">Submitted</option>
+                      <option value="submission_under_initial_checking">Under Initial Checking</option>
+                      <option value="submission_for_revision">For Revision</option>
+                      <option value="submission_under_ethics_review">Under Ethics Review</option>
+                      <option value="submission_approved">Approved</option>
+                      <option value="submission_published">Published</option>
+                      <option value="submission_rejected">Rejected</option>
+                      <option value="submission_archived">Archived</option>
+                      <option value="submission_revision">Revision Uploaded</option>
+                    </optgroup>
+                    <optgroup label="Ethics">
+                      <option value="ethics_approved">Ethics Approved</option>
+                      <option value="ethics_rejected">Ethics Rejected</option>
+                      <option value="ethics_pending">Ethics Pending</option>
+                    </optgroup>
+                    <optgroup label="Files">
+                      <option value="file_upload">File Upload</option>
+                      <option value="file_delete">File Delete</option>
+                    </optgroup>
+                    <optgroup label="Other">
+                      <option value="message_send">Message Sent</option>
+                      <option value="notif_prefs_update">Notif Prefs Update</option>
+                    </optgroup>
                   </select>
                 </div>
                 <div class="form-group" style="margin:0;min-width:150px;">
@@ -103,6 +134,8 @@
   <script src="assets/js/main.js"></script>
   <script>
     const message = document.getElementById('message');
+    const loadBtn = document.getElementById('load-logs');
+    const clearBtn = document.getElementById('clear-filters');
 
     function showMsg(type, text) {
       message.className = 'form-message ' + type;
@@ -116,6 +149,18 @@
       return div.innerHTML;
     }
 
+    function setLoading(loading) {
+      if (loading) {
+        loadBtn.disabled = true;
+        loadBtn.innerHTML = '<i class="bi bi-arrow-clockwise" style="animation:spin .8s linear infinite"></i> Loading…';
+        clearBtn.disabled = true;
+      } else {
+        loadBtn.disabled = false;
+        loadBtn.innerHTML = '<i class="bi bi-arrow-clockwise"></i> Load Logs';
+        clearBtn.disabled = false;
+      }
+    }
+
     async function loadLogs() {
       const params = new URLSearchParams();
       const action = document.getElementById('log-action').value;
@@ -125,44 +170,69 @@
       if (from) params.set('from', from);
       if (to) params.set('to', to);
 
-      const res = await fetch('/api/admin/logs' + (params.toString() ? '?' + params.toString() : ''));
-      if (!res.ok) {
-        document.getElementById('logs-table').innerHTML = '<p class="form-note">Failed to load logs.</p>';
-        return;
-      }
-      const data = await res.json();
-      const el = document.getElementById('logs-table');
-      const countEl = document.getElementById('log-count');
+      setLoading(true);
+      showMsg('', '');
+      try {
+        const res = await fetch('/api/admin/logs' + (params.toString() ? '?' + params.toString() : ''));
+        if (!res.ok) {
+          let errMsg = 'Failed to load logs.';
+          try { const body = await res.json(); if (body.error) errMsg = body.error; } catch {}
+          if (res.status === 401) errMsg = 'Session expired. Please log in again.';
+          else if (res.status === 403) errMsg = 'Admin access required.';
+          document.getElementById('logs-table').innerHTML = '<p class="form-note" style="color:var(--cpri-danger,#dc3545);">' + escapeHtml(errMsg) + '</p>';
+          document.getElementById('log-count').textContent = '';
+          return;
+        }
+        const data = await res.json();
+        const el = document.getElementById('logs-table');
+        const countEl = document.getElementById('log-count');
 
-      if (!data.logs || !data.logs.length) {
-        el.innerHTML = '<p class="form-note">No logs found matching your criteria.</p>';
-        countEl.textContent = '0 entries';
-        return;
-      }
+        if (!data.logs || !data.logs.length) {
+          el.innerHTML = '<p class="form-note">No logs found matching your criteria.</p>';
+          countEl.textContent = '0 entries';
+          return;
+        }
 
-      const statusBadge = (action) => {
-        const colors = {
-          login: 'status-pill active',
-          logout: 'status-pill disabled',
-          content_create: 'status-pill active',
-          content_update: 'status-pill pending',
-          content_delete: 'status-pill disabled',
-          user_update: 'status-pill pending',
-          user_delete: 'status-pill disabled',
-          password_reset: 'status-pill pending'
+        const statusBadge = (a) => {
+          const colors = {
+            login: 'status-pill active',
+            logout: 'status-pill disabled',
+            content_create: 'status-pill active',
+            content_update: 'status-pill pending',
+            content_delete: 'status-pill disabled',
+            user_update: 'status-pill pending',
+            user_delete: 'status-pill disabled',
+            password_reset: 'status-pill pending',
+            submission_submitted: 'status-pill active',
+            submission_under_initial_checking: 'status-pill pending',
+            submission_for_revision: 'status-pill pending',
+            submission_under_ethics_review: 'status-pill pending',
+            submission_approved: 'status-pill active',
+            submission_published: 'status-pill active',
+            submission_rejected: 'status-pill disabled',
+            submission_archived: 'status-pill disabled',
+            submission_revision: 'status-pill pending',
+            ethics_approved: 'status-pill active',
+            ethics_rejected: 'status-pill disabled',
+            ethics_pending: 'status-pill pending',
+            file_upload: 'status-pill active',
+            file_delete: 'status-pill disabled',
+            message_send: 'status-pill pending',
+            notif_prefs_update: 'status-pill pending'
+          };
+          const label = a.replace(/_/g, ' ');
+          return `<span class="${colors[a] || 'status-pill'}">${escapeHtml(label)}</span>`;
         };
-        return `<span class="${colors[action] || 'status-pill'}">${escapeHtml(action.replace(/_/g, ' '))}</span>`;
-      };
 
-      el.innerHTML = `
+        el.innerHTML = `
         <div style="overflow-x:auto;">
           <table>
             <thead>
               <tr>
                 <th>Timestamp</th>
                 <th>Action</th>
+                <th>User</th>
                 <th>Details</th>
-                <th>User ID</th>
                 <th>IP Address</th>
               </tr>
             </thead>
@@ -171,35 +241,54 @@
                 <tr>
                   <td style="white-space:nowrap;">${new Date(l.timestamp).toLocaleString()}</td>
                   <td>${statusBadge(l.action)}</td>
+                  <td>${escapeHtml(l.actorName || l.actorUsername || (l.userId ? l.userId.slice(0, 8) + '…' : '—'))}</td>
                   <td>${escapeHtml(l.details)}</td>
-                  <td style="font-family:monospace;font-size:.85rem;">${l.userId ? l.userId.slice(0, 8) + '…' : '—'}</td>
                   <td style="font-family:monospace;font-size:.85rem;">${l.ip || '—'}</td>
                 </tr>
               `).join('')}
             </tbody>
           </table>
         </div>`;
-      countEl.textContent = `Showing ${Math.min(data.logs.length, 200)} of ${data.logs.length} entries`;
+        countEl.textContent = `Showing ${Math.min(data.logs.length, 200)} of ${data.logs.length} entries`;
+      } catch (err) {
+        document.getElementById('logs-table').innerHTML = '<p class="form-note" style="color:var(--cpri-danger,#dc3545);">Network error — could not reach the server.</p>';
+        document.getElementById('log-count').textContent = '';
+      } finally {
+        setLoading(false);
+      }
     }
 
-    document.getElementById('load-logs').addEventListener('click', loadLogs);
-    document.getElementById('clear-filters').addEventListener('click', () => {
+    loadBtn.addEventListener('click', loadLogs);
+    clearBtn.addEventListener('click', () => {
       document.getElementById('log-action').value = '';
       document.getElementById('log-from').value = '';
       document.getElementById('log-to').value = '';
-      loadLogs();
+      document.getElementById('logs-table').innerHTML = '<p class="form-note">Click "Load Logs" to fetch system logs.</p>';
+      document.getElementById('log-count').textContent = '';
+      showMsg('', '');
     });
 
     (async () => {
-      const meRes = await fetch('/api/auth/me');
-      if (!meRes.ok) { document.getElementById('access-denied').style.display = 'block'; return; }
-      const { user } = await meRes.json();
-      if (!['admin', 'cpri_staff'].includes(user.role)) {
+      try {
+        const meRes = await fetch('/api/auth/me');
+        if (!meRes.ok) { document.getElementById('access-denied').style.display = 'block'; return; }
+        const { user } = await meRes.json();
+        if (!['admin', 'cpri_staff'].includes(user.role)) {
+          document.getElementById('access-denied').style.display = 'block';
+          return;
+        }
+        loadLogs();
+      } catch {
         document.getElementById('access-denied').style.display = 'block';
-        return;
       }
-      loadLogs();
     })();
+
+    if (!document.getElementById('audit-spin')) {
+      const style = document.createElement('style');
+      style.id = 'audit-spin';
+      style.textContent = '@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}';
+      document.head.appendChild(style);
+    }
   </script>
 </body>
 </html>

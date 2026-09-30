@@ -6,6 +6,7 @@
   <title>Announcements | CPRI</title>
   <meta name="description" content="Research-related announcements, calls for papers, training schedules, defense schedules, and publication opportunities.">
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -19,6 +20,41 @@
       </div>
     </section>
 
+    <!-- Sender panel — shown only to roles that may publish announcements -->
+    <section class="section" id="announcement-sender-wrap" style="display:none;">
+      <div class="container">
+        <div class="card" style="max-width:760px;margin:0 auto;">
+          <h3 style="font-family:var(--font-head);margin-bottom:4px;">Send an Announcement</h3>
+          <p class="form-note" style="margin-bottom:16px;">Published instantly — students get an in-app notification and public visitors see it on this page and in the site bell.</p>
+          <form id="announcement-form">
+            <input type="hidden" id="a-id">
+            <div class="form-group">
+              <label for="a-title">Title *</label>
+              <input type="text" id="a-title" required placeholder="e.g. Research Colloquium 2026 — Call for Papers">
+            </div>
+            <div class="form-group">
+              <label for="a-category">Category</label>
+              <select id="a-category">
+                <option>General</option>
+                <option>Call for Papers</option>
+                <option>Training</option>
+                <option>Defense Schedule</option>
+                <option>Publication</option>
+                <option>Event</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="a-content">Content *</label>
+              <textarea id="a-content" rows="4" required placeholder="Write the full announcement message..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary" id="a-submit">Post Announcement</button>
+            <button type="button" class="btn btn-outline" id="a-cancel" style="display:none;margin-left:8px;">Cancel Edit</button>
+          </form>
+          <div id="a-msg" class="form-message" style="display:none;margin-top:14px;"></div>
+        </div>
+      </div>
+    </section>
+
     <section class="section">
       <div class="container">
         <div class="grid grid-3" id="announcements"></div>
@@ -29,8 +65,27 @@
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script>
-    (async () => {
-      const items = await CPRI.fetchJson('/api/announcements');
+    // Roles allowed to publish announcements (mirrors server ANNOUNCEMENT_SENDER_ROLES)
+    const SENDER_ROLES = ['admin', 'cpri_staff', 'faculty_researcher', 'adviser', 'ethics_reviewer'];
+
+    function annMsg(kind, text) {
+      const el = document.getElementById('a-msg');
+      if (!el) return;
+      el.style.display = 'block';
+      el.className = 'form-message ' + (kind === 'success' ? 'success' : 'error');
+      el.textContent = text;
+    }
+
+    function resetAnnForm() {
+      document.getElementById('announcement-form').reset();
+      document.getElementById('a-id').value = '';
+      document.getElementById('a-submit').textContent = 'Post Announcement';
+      document.getElementById('a-cancel').style.display = 'none';
+      const msg = document.getElementById('a-msg');
+      if (msg) msg.style.display = 'none';
+    }
+
+    function renderAnnouncements(items, canSend) {
       const el = document.getElementById('announcements');
       if (!items) {
         el.innerHTML = '<p class="empty-state">Unable to load announcements at this time.</p>';
@@ -42,12 +97,79 @@
       }
       el.innerHTML = items.map(a => `
         <div class="card">
-          <span class="badge">${a.category}</span>
-          <h3>${a.title}</h3>
-          <div class="meta">${CPRI.fmtDate(a.date)}</div>
-          <p>${a.excerpt}</p>
-          <p style="color:var(--cpri-gray);font-size:.95rem;">${a.body || ''}</p>
+          <span class="badge">${CPRI.escapeHtml(a.category || 'General')}</span>
+          <h3>${CPRI.escapeHtml(a.title)}</h3>
+          <div class="meta">${CPRI.fmtDate(a.date)}${a.author ? ' &middot; by ' + CPRI.escapeHtml(a.author) : ''}</div>
+          <p>${CPRI.escapeHtml(a.excerpt || '')}</p>
+          <p style="color:var(--cpri-gray);font-size:.95rem;">${CPRI.escapeHtml(a.content || a.body || '')}</p>
+          ${canSend ? `
+            <div style="margin-top:12px;display:flex;gap:8px;">
+              <button class="btn btn-navy ed-announcement" data-id="${a.id}" style="padding:5px 12px;font-size:.82rem;">Edit</button>
+              <button class="btn btn-outline del-announcement" data-id="${a.id}" style="padding:5px 12px;font-size:.82rem;border-color:#b23b32;color:#b23b32;">Delete</button>
+            </div>` : ''}
         </div>`).join('');
+
+      if (canSend) {
+        el.querySelectorAll('.ed-announcement').forEach(b => b.addEventListener('click', () => {
+          const a = items.find(x => String(x.id) === b.dataset.id); if (!a) return;
+          document.getElementById('a-id').value = a.id;
+          document.getElementById('a-title').value = a.title || '';
+          document.getElementById('a-category').value = a.category || 'General';
+          document.getElementById('a-content').value = a.content || '';
+          document.getElementById('a-submit').textContent = 'Update Announcement';
+          document.getElementById('a-cancel').style.display = 'inline-block';
+          document.getElementById('announcement-sender-wrap').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }));
+        el.querySelectorAll('.del-announcement').forEach(b => b.addEventListener('click', async () => {
+          // Native confirm() is blocked in sandboxed previews — use the shared in-page dialog.
+          if (!await window.confirmDialog('Delete this announcement? This action cannot be undone.')) return;
+          const res = await fetch('/api/admin/content/announcement/' + b.dataset.id, { method: 'DELETE' });
+          const out = await res.json();
+          if (res.ok) { resetAnnForm(); await loadAnnouncements(); }
+          else annMsg('error', out.error || 'Could not delete announcement.');
+        }));
+      }
+    }
+
+    async function loadAnnouncements(canSend) {
+      const items = await CPRI.fetchJson('/api/announcements');
+      renderAnnouncements(items, canSend);
+    }
+
+    (async () => {
+      // Who is logged in?
+      let me = null;
+      try {
+        const res = await fetch('/api/auth/me');
+        if (res.ok) me = (await res.json()).user;
+      } catch { /* guest */ }
+      const canSend = me && SENDER_ROLES.includes(me.role);
+
+      if (canSend) {
+        document.getElementById('announcement-sender-wrap').style.display = '';
+        document.getElementById('announcement-form').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const id = document.getElementById('a-id').value;
+          const payload = {
+            title: document.getElementById('a-title').value,
+            category: document.getElementById('a-category').value,
+            content: document.getElementById('a-content').value
+          };
+          const res = await fetch('/api/admin/content/announcement' + (id ? '/' + id : ''), {
+            method: id ? 'PATCH' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const out = await res.json();
+          if (!res.ok) return annMsg('error', out.error);
+          resetAnnForm();
+          await loadAnnouncements(true);
+          annMsg('success', id ? 'Announcement updated.' : 'Announcement posted — students have been notified.');
+        });
+        document.getElementById('a-cancel').addEventListener('click', resetAnnForm);
+      }
+
+      await loadAnnouncements(canSend);
     })();
   </script>
 </body>

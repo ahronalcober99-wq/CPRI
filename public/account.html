@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>My Account | CPRI</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -34,7 +35,7 @@
             </div>
             <button class="btn btn-navy" id="logout-btn" style="margin-top:10px;">Log Out</button>
           </div>
-          <div id="not-logged" class="empty-state">
+          <div id="not-logged" class="empty-state" style="display:none;">
             You are not logged in. <a href="login.html">Log in here</a>.
           </div>
         </div>
@@ -53,6 +54,9 @@
       const res = await fetch('/api/auth/me');
       if (!res.ok) { notLogged.style.display = 'block'; return; }
       const { user } = await res.json();
+      // Hide the not-logged-in message once we know the session is live — it
+      // is a default block element, so it must be hidden explicitly.
+      notLogged.style.display = 'none';
       card.style.display = 'block';
       document.getElementById('acc-name').textContent = user.fullName || user.username;
       document.getElementById('acc-username').textContent = user.username;

@@ -9,7 +9,7 @@ import { all, get, run, insert, update, remove } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const PUB_UPLOAD_DIR = join(__dirname, '..', '..', 'public', 'assets', 'uploads', 'publications');
+const PUB_UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'publications');
 
 const router = Router();
 
@@ -64,9 +64,10 @@ function canManage(me, pub) {
 }
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: async (req, file, cb) => {
     const dir = join(PUB_UPLOAD_DIR, req._pubId);
-    fs.mkdir(dir, { recursive: true }, () => cb(null, dir));
+    try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
+    catch (err) { cb(err); }
   },
   filename: (req, file, cb) => {
     const safe = file.fieldname.replace(/[^a-z0-9]/gi, '_');
@@ -116,6 +117,7 @@ router.get('/', async (req, res) => {
       schoolYear: p.schoolYear,
       authorType: p.authorType,
       authorTypeLabel: AUTHOR_TYPES[p.authorType] || p.authorType,
+      sourceSubmissionId: p.sourceSubmissionId || null,
       indexingStatus: p.indexingStatus,
       volume: p.volume,
       issue: p.issue,

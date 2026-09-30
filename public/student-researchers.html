@@ -6,6 +6,7 @@
   <title>Student Researchers | Submit Capstone & Research Outputs</title>
   <meta name="description" content="Student researchers can submit capstone and research outputs, upload required documents, and track submission status." />
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body class="student-researchers">
   <a class="skip-link" href="#main">Skip to content</a>
@@ -19,7 +20,7 @@
           <h1>Submit, track, and manage your student research in one portal.</h1>
           <p class="hero-copy">Upload manuscripts, approvals, and ethics forms, then monitor review progress from submission through publication.</p>
           <div class="hero-actions">
-            <a class="btn btn-primary" href="submit.html">Start a submission</a>
+            <a class="btn btn-primary" id="start-submit-btn" href="submit.html">Start a submission</a>
             <a class="btn btn-ghost" href="repository.html">View repository</a>
           </div>
         </div>
@@ -27,18 +28,18 @@
     </section>
 
     <section class="stats-strip section">
-      <div class="container stats-grid">
+      <div class="container stats-grid" id="stats-strip">
         <div class="stat-item">
-          <div class="stat-value">1,248</div>
+          <div class="stat-value" data-stat="submissions">—</div>
           <div class="stat-label">submissions filed</div>
         </div>
         <div class="stat-item">
-          <div class="stat-value">92%</div>
+          <div class="stat-value" data-stat="approved">—</div>
           <div class="stat-label">approved to date</div>
         </div>
         <div class="stat-item">
-          <div class="stat-value">4.8d</div>
-          <div class="stat-label">avg review time</div>
+          <div class="stat-value" data-stat="ontime">—</div>
+          <div class="stat-label">on-time delivery</div>
         </div>
       </div>
     </section>
@@ -48,31 +49,19 @@
         <div class="tracker-header">
           <div>
             <span class="eyebrow">Your submission</span>
-            <p class="tracker-copy">Review progress for your latest student research output.</p>
+            <p class="tracker-copy" id="tracker-copy">Review progress for your latest student research output.</p>
           </div>
-          <span class="status-pill status-in-review">In review</span>
+          <span class="status-pill status-in-review" id="tracker-pill">—</span>
         </div>
 
-        <div class="tracker-flow">
-          <div class="step completed">
-            <div class="step-circle">✓</div>
-            <div class="step-label">Submitted</div>
-          </div>
+        <div class="tracker-flow" id="tracker-flow">
+          <div class="step completed"><div class="step-circle">✓</div><div class="step-label">Submitted</div></div>
           <div class="step-line filled"></div>
-          <div class="step current">
-            <div class="step-circle">2</div>
-            <div class="step-label">Ethics review</div>
-          </div>
+          <div class="step current"><div class="step-circle">2</div><div class="step-label">Ethics review</div></div>
           <div class="step-line"></div>
-          <div class="step">
-            <div class="step-circle">3</div>
-            <div class="step-label">Approval</div>
-          </div>
+          <div class="step"><div class="step-circle">3</div><div class="step-label">Approval</div></div>
           <div class="step-line"></div>
-          <div class="step">
-            <div class="step-circle">4</div>
-            <div class="step-label">Published</div>
-          </div>
+          <div class="step"><div class="step-circle">4</div><div class="step-label">Published</div></div>
         </div>
       </div>
     </section>
@@ -82,34 +71,9 @@
         <div class="chart-panel">
           <div class="panel-head">
             <h2 class="panel-title">Submissions this year</h2>
-            <p class="panel-copy">Last 6 months, current month highlighted.</p>
+            <p class="panel-copy" id="chart-copy">Trailing 7 months, current month highlighted.</p>
           </div>
-          <div class="chart-bars">
-            <div class="bar">
-              <div class="bar-track"><span class="bar-fill" style="height:36%"></span></div>
-              <div class="bar-label">Jan</div>
-            </div>
-            <div class="bar">
-              <div class="bar-track"><span class="bar-fill" style="height:52%"></span></div>
-              <div class="bar-label">Feb</div>
-            </div>
-            <div class="bar">
-              <div class="bar-track"><span class="bar-fill" style="height:60%"></span></div>
-              <div class="bar-label">Mar</div>
-            </div>
-            <div class="bar">
-              <div class="bar-track"><span class="bar-fill" style="height:72%"></span></div>
-              <div class="bar-label">Apr</div>
-            </div>
-            <div class="bar">
-              <div class="bar-track"><span class="bar-fill" style="height:84%"></span></div>
-              <div class="bar-label">May</div>
-            </div>
-            <div class="bar">
-              <div class="bar-track"><span class="bar-fill current" style="height:100%"></span></div>
-              <div class="bar-label">Jun</div>
-            </div>
-          </div>
+          <div class="chart-bars" id="chart-bars"></div>
         </div>
 
         <div class="category-panel">
@@ -117,23 +81,7 @@
             <h2 class="panel-title">By category</h2>
             <p class="panel-copy">Submission breakdown by student research type.</p>
           </div>
-          <div class="category-progress">
-            <div class="category-row">
-              <div class="label">Capstone</div>
-              <div class="percentage">55%</div>
-            </div>
-            <div class="cat-bar"><span class="cat-fill capstone" style="width:55%"></span></div>
-            <div class="category-row">
-              <div class="label">Thesis</div>
-              <div class="percentage">28%</div>
-            </div>
-            <div class="cat-bar"><span class="cat-fill thesis" style="width:28%"></span></div>
-            <div class="category-row">
-              <div class="label">Applied work</div>
-              <div class="percentage">17%</div>
-            </div>
-            <div class="cat-bar"><span class="cat-fill applied" style="width:17%"></span></div>
-          </div>
+          <div class="category-progress" id="category-progress"></div>
         </div>
       </div>
     </section>
@@ -171,44 +119,313 @@
             <h2 class="section-title">Recent submissions</h2>
             <p class="panel-copy">Latest student work, with quick status indicators.</p>
           </div>
+          <a class="btn btn-ghost btn-sm" href="submissions.html"><i class="bi bi-list-ul"></i> My Submissions</a>
         </div>
-        <div class="submission-list">
-          <div class="submission-row">
-            <div class="submission-meta">
-              <div class="submission-avatar" style="background: rgba(59,130,246,.16); color: #1D4ED8;">AP</div>
-              <div class="submission-details">
-                <p class="submission-title">Autonomous Policy Framework</p>
-                <p class="submission-text">A. Perez · Applied work</p>
-              </div>
-            </div>
-            <span class="status-pill status-approved status-pill sm">Approved</span>
-          </div>
-          <div class="submission-row">
-            <div class="submission-meta">
-              <div class="submission-avatar" style="background: rgba(30,58,138,.12); color: var(--cpri-secondary);">LN</div>
-              <div class="submission-details">
-                <p class="submission-title">Thesis on Renewable Finance</p>
-                <p class="submission-text">L. Navarez · Thesis</p>
-              </div>
-            </div>
-            <span class="status-pill status-in-review status-pill sm">In review</span>
-          </div>
-          <div class="submission-row">
-            <div class="submission-meta">
-              <div class="submission-avatar" style="background: rgba(245,158,11,.16); color: #b45309;">SS</div>
-              <div class="submission-details">
-                <p class="submission-title">Capstone Data Ethics</p>
-                <p class="submission-text">S. Santos · Capstone</p>
-              </div>
-            </div>
-            <span class="status-pill status-revision status-pill sm">Revisions</span>
-          </div>
-        </div>
+        <div class="submission-list" id="submission-list"></div>
       </div>
     </section>
   </main>
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
+  <script>
+    // Live data wiring for the Student Researcher Portal — replaces the static
+    // mockup numbers with real records (same sources as the admin dashboards).
+    (async () => {
+      const $ = (id) => document.getElementById(id);
+      const esc = CPRI.escapeHtml;
+
+      // ---- Role-aware stats + auth check ----
+      // Logged-in users see THEIR OWN counts (stats computed server-side over
+      // the same role-filtered list); visitors fall back to the public summary.
+      // /api/auth/me is a minimal view (no department), so pull the profile in
+      // parallel — it feeds the "Start a submission" program pre-select.
+      const [meRes, profRes] = await Promise.all([
+        fetch('/api/auth/me'),
+        fetch('/api/auth/profile').catch(() => null)
+      ]);
+      const me = meRes.ok ? await meRes.json() : null;
+
+      // Quick-link: pre-select the student's program on the submission form so
+      // "Start a submission" opens submit.html with their department pre-filled.
+      if (me && me.user) {
+        const prof = profRes && profRes.ok ? await profRes.json() : null;
+        const prog = (prof && prof.profile && prof.profile.department) || '';
+        const startBtn = document.getElementById('start-submit-btn');
+        if (startBtn) startBtn.href = 'submit.html' + (prog ? `?program=${encodeURIComponent(prog)}` : '');
+      }
+
+      const fillStats = (s, scopeLabel) => {
+        const set = (key, val) => { const el = document.querySelector(`[data-stat="${key}"]`); if (el) el.textContent = val; };
+        set('submissions', Number(s.total || s.totalSubmissions || 0).toLocaleString());
+        set('approved', (s.approvalRate || 0) + '%');
+        set('ontime', (s.onTimeDelivery || 0) + '%');
+        if (scopeLabel) {
+          const lbls = document.querySelectorAll('[data-stat]');
+          const suffixes = ['submissions filed', 'approved to date', 'on-time delivery'];
+          lbls.forEach((el, i) => {
+            const lbl = el.closest('.stat-item')?.querySelector('.stat-label');
+            if (lbl && suffixes[i]) lbl.textContent = scopeLabel + ' · ' + suffixes[i];
+          });
+        }
+        // ---- Monthly output chart (trailing 7 months) ----
+        const bars = $('chart-bars');
+        if (bars) {
+          const months = Array.isArray(s.monthlyOutput) ? s.monthlyOutput : [];
+          const labels = [];
+          const now = new Date();
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+            labels.push(d.toLocaleString('en-US', { month: 'short' }));
+          }
+          const max = Math.max(1, ...months);
+          bars.innerHTML = months.map((m, i) => `
+            <div class="bar">
+              <div class="bar-track"><span class="bar-fill${i === months.length - 1 ? ' current' : ''}" style="height:${Math.max(8, Math.round((m / max) * 100))}%"></span></div>
+              <div class="bar-label">${labels[i] || ''}</div>
+            </div>`).join('');
+        }
+      };
+
+      let mine = [];
+      let myStats = null;
+      if (me && me.user) {
+        // Logged in: role-scoped stats + own/all submission list in one call.
+        const subsRes = await fetch('/api/submissions?stats=1');
+        if (subsRes.ok) {
+          const data = await subsRes.json();
+          mine = data.submissions || [];
+          myStats = data.stats || null;
+          if (myStats) fillStats(myStats, myStats.scope === 'all' ? 'All researchers' : 'Your');
+        }
+      } else {
+        // Visitor: system-wide public numbers.
+        const summary = await CPRI.fetchJson('/api/admin/public-summary');
+        if (summary && summary.summary) fillStats(summary.summary, 'All CPRI');
+
+        const copy = $('tracker-copy');
+        if (copy) copy.innerHTML = 'Log in to track your submission — or <a href="login.html">create an account</a>.';
+        const pill = $('tracker-pill');
+        if (pill) { pill.textContent = 'Login required'; pill.className = 'status-pill status-in-review'; }
+        const list = $('submission-list');
+        if (list) list.innerHTML = '<p class="empty-state"><i class="bi bi-box-arrow-in-right"></i> Log in to see your recent submissions.</p>';
+        const cats = $('category-progress');
+        if (cats) cats.innerHTML = '<p class="empty-state">Log in to see your submission breakdown.</p>';
+        return;
+      }
+
+      // ---- Tracker: latest submission's review stage ----
+      const copy = $('tracker-copy');
+      const pill = $('tracker-pill');
+      if (mine.length) {
+        const latest = mine[0]; // newest first (server sorts createdAt DESC)
+        const pillClass = latest.status === 'rejected' || latest.status === 'archived' ? 'status-revision'
+          : (['approved', 'published'].includes(latest.status) ? 'status-approved' : 'status-in-review');
+        if (pill) { pill.textContent = latest.statusLabel || latest.status; pill.className = 'status-pill ' + pillClass; }
+        if (copy) copy.innerHTML = `<strong>${esc(latest.title)}</strong> — ${esc(latest.statusLabel || latest.status)}`;
+
+        const flow = $('tracker-flow');
+        if (flow) {
+          // One active highlight for every in-progress status: completed steps
+          // up to the current stage, then the current stage itself.
+          // Note: for admins/reviewers the list holds every submission, so this
+          // tracks the newest one system-wide — intentional, matches the portal.
+          const doneSteps = latest.status === 'published' ? 4
+            : latest.status === 'approved' ? 3
+            : (['under_ethics_review', 'for_revision'].includes(latest.status) ? 2 : 1);
+          const rejectedOrArchived = ['rejected', 'archived'].includes(latest.status);
+          const steps = [
+            { label: 'Submitted' }, { label: 'Review' }, { label: 'Approval' }, { label: 'Published' }
+          ];
+          flow.innerHTML = steps.map((st, i) => {
+            const cls = i < doneSteps ? 'completed' : (i === doneSteps && !rejectedOrArchived ? 'current' : '');
+            return `
+            <div class="step ${cls}">
+              <div class="step-circle">${i < doneSteps ? '✓' : i + 1}</div>
+              <div class="step-label">${st.label}</div>
+            </div>
+            ${i < steps.length - 1 ? `<div class="step-line ${i < doneSteps ? 'filled' : ''}"></div>` : ''}
+          `;
+          }).join('');
+          if (rejectedOrArchived) {
+            flow.insertAdjacentHTML('beforeend', `<p class="empty-state" style="margin-top:16px;">This submission was ${esc(latest.status)}. Contact the research office to discuss next steps.</p>`);
+          }
+        }
+      } else {
+        if (pill) { pill.textContent = 'No submissions yet'; pill.className = 'status-pill status-in-review'; }
+        if (copy) copy.innerHTML = 'You have not submitted any research yet. <a href="submit.html">Start a submission</a>.';
+      }
+
+      // ---- Category breakdown from real submissions ----
+      const cats = $('category-progress');
+      if (cats) {
+        if (!mine.length) {
+          cats.innerHTML = '<p class="empty-state">No submissions yet.</p>';
+        } else {
+          const counts = {};
+          mine.forEach(x => { const k = x.researchType || x.category || 'Other'; counts[k] = (counts[k] || 0) + 1; });
+          const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 3);
+          const total = mine.length;
+          const colors = ['capstone', 'thesis', 'applied'];
+          cats.innerHTML = entries.map(([name, count], i) => {
+            const pct = Math.round((count / total) * 100);
+            return `
+              <div class="category-row"><div class="label">${esc(name)}</div><div class="percentage">${pct}%</div></div>
+              <div class="cat-bar"><span class="cat-fill ${colors[i % 3]}" style="width:${pct}%"></span></div>`;
+          }).join('');
+        }
+      }
+
+      // ---- Recent submissions list (with inline feedback threads) ----
+      const list = $('submission-list');
+      if (list) {
+        if (!mine.length) {
+          list.innerHTML = '<p class="empty-state"><i class="bi bi-journal-plus"></i> No submissions yet. <a href="submit.html">Start your first submission</a>.</p>';
+        } else {
+          const pillFor = (st) => st === 'rejected' || st === 'archived' ? 'status-revision'
+            : (['approved', 'published'].includes(st) ? 'status-approved' : 'status-in-review');
+          const canReply = (x) => x.isOwner || ['admin', 'cpri_staff', 'ethics_reviewer', 'adviser'].includes(me.user.role);
+          const FEEDBACK_TYPES = {
+            comment: ['Comment', 't-comment'],
+            feedback: ['Adviser Feedback', 't-feedback'],
+            revision_suggestion: ['Reviewer Suggestion', 't-revision'],
+            response: ['Researcher Response', 't-response']
+          };
+
+          // Render one comment into the thread container.
+          const commentHtml = (c) => {
+            const [label, cls] = FEEDBACK_TYPES[c.type] || [c.type || 'Comment', 't-comment'];
+            return `
+              <div class="thread-item ${cls}">
+                <div class="thread-meta">
+                  <b>${esc(c.authorName || 'Researcher')}</b>
+                  <span class="thread-type">${esc(label)}</span>
+                  <span class="thread-date">${CPRI.fmtDate(c.createdAt)}</span>
+                </div>
+                <div class="thread-body">${esc(c.body)}</div>
+              </div>`;
+          };
+
+          // Render revision versions from the detail endpoint.
+          const revisionHtml = (v) => {
+            const files = Object.values(v.files || {}).filter(Boolean)
+              .map(f => `<span class="file-chip"><i class="bi bi-file-earmark-text"></i> ${esc(f.originalName || f.filename || 'file')}</span>`).join('');
+            const extra = (v.additionalDocs || []).map(f =>
+              `<span class="file-chip"><i class="bi bi-paperclip"></i> ${esc(f.originalName || f.filename || 'file')}</span>`).join('');
+            return `
+              <div class="thread-item t-revision">
+                <div class="thread-meta">
+                  <b>Revision v${esc(v.version)}</b>
+                  <span class="thread-type">Revision</span>
+                  <span class="thread-date">${CPRI.fmtDate(v.uploadedAt)} · ${esc(v.by || '')}</span>
+                </div>
+                ${v.note ? `<div class="thread-body">${esc(v.note)}</div>` : ''}
+                ${(files || extra) ? `<div class="thread-files">${files}${extra}</div>` : ''}
+              </div>`;
+          };
+
+          // Load + render the full thread (comments + revision history).
+          async function renderThread(row, subId, isOwner) {
+            const thread = row.querySelector('.submission-thread');
+            const btn = row.querySelector('.feedback-toggle');
+            if (thread.hidden) { thread.hidden = false; btn.setAttribute('aria-expanded', 'true'); btn.classList.add('open'); }
+            if (thread.dataset.loaded) return;
+            thread.innerHTML = '<p class="empty-state" style="padding:10px 0;">Loading feedback…</p>';
+            try {
+              const [cRes, dRes] = await Promise.all([
+                fetch(`/api/submissions/${subId}/comments`),
+                fetch(`/api/submissions/${subId}`)
+              ]);
+              const comments = cRes.ok ? (await cRes.json()).comments || [] : [];
+              const detail = dRes.ok ? (await dRes.json()).submission : null;
+              const versions = (detail && detail.versions) || [];
+              const parts = [];
+              if (comments.length) parts.push(`<div class="thread-group"><div class="thread-group-label"><i class="bi bi-chat-left-text"></i> Feedback &amp; responses</div>${comments.map(commentHtml).join('')}</div>`);
+              if (versions.length) parts.push(`<div class="thread-group"><div class="thread-group-label"><i class="bi bi-arrow-counterclockwise"></i> Revision history</div>${versions.slice().reverse().map(revisionHtml).join('')}</div>`);
+              if (!parts.length) parts.push('<p class="empty-state" style="padding:8px 0;">No feedback or revisions yet.</p>');
+              if (isOwner) {
+                parts.push(`
+                  <form class="thread-reply" data-sub="${subId}">
+                    <textarea rows="2" placeholder="Post a response to the reviewer…" required></textarea>
+                    <button class="btn btn-primary btn-sm" type="submit"><i class="bi bi-send"></i> Post</button>
+                  </form>`);
+              }
+              thread.innerHTML = parts.join('');
+              thread.dataset.loaded = '1';
+            } catch {
+              // Don't mark loaded on failure so the toggle can retry.
+              thread.innerHTML = '<p class="empty-state" style="padding:8px 0;">Could not load feedback — click again to retry.</p>';
+            }
+          }
+
+          list.innerHTML = mine.slice(0, 5).map(x => {
+            const initials = (x.authors || 'SR').split(/[\s,;.]+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+            return `
+            <div class="submission-entry">
+              <div class="submission-row">
+                <div class="submission-meta">
+                  <div class="submission-avatar">${esc(initials)}</div>
+                  <div class="submission-details">
+                    <span class="sub-card-badge">${esc(x.researchType || x.program || 'Research')}</span>
+                    <p class="submission-title">${esc(x.title)}</p>
+                    <p class="submission-text">${esc(x.authors)} · ${esc(x.researchType || x.program || 'Research')}</p>
+                  </div>
+                </div>
+                <div class="submission-actions">
+                  <span class="status-pill ${pillFor(x.status)} status-pill sm">${esc(x.statusLabel || x.status)}</span>
+                  <button class="feedback-toggle" type="button" data-sub="${esc(x.id)}" aria-expanded="false"><i class="bi bi-chat-left-text"></i> Feedback</button>
+                </div>
+              </div>
+              <div class="submission-thread" hidden></div>
+            </div>`;
+          }).join('');
+
+          // Toggle threads (event delegation) + reply posting.
+          list.querySelectorAll('.feedback-toggle').forEach(btn => {
+            btn.addEventListener('click', () => {
+              const entry = btn.closest('.submission-entry');
+              const thread = entry.querySelector('.submission-thread');
+              if (!thread.hidden) { thread.hidden = true; btn.setAttribute('aria-expanded', 'false'); btn.classList.remove('open'); return; }
+              const sub = mine.find(x => x.id === btn.dataset.sub);
+              renderThread(entry, btn.dataset.sub, canReply(sub));
+            });
+          });
+
+          list.addEventListener('submit', async (e) => {
+            const form = e.target.closest('.thread-reply');
+            if (!form) return;
+            e.preventDefault();
+            const ta = form.querySelector('textarea');
+            const body = ta.value.trim();
+            if (!body) return;
+            const btn = form.querySelector('button');
+            const originalBtnHtml = btn.innerHTML;
+            btn.disabled = true; btn.innerHTML = '<i class="bi bi-hourglass-split"></i> Posting…';
+            try {
+              const res = await fetch(`/api/submissions/${form.dataset.sub}/comments`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ body })
+              });
+              const out = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(out.error || 'Could not post response.');
+              ta.value = '';
+              // Refresh the thread so the new response appears.
+              const entry = form.closest('.submission-entry');
+              const thread = entry.querySelector('.submission-thread');
+              delete thread.dataset.loaded;
+              const sub = mine.find(x => x.id === form.dataset.sub);
+              await renderThread(entry, form.dataset.sub, canReply(sub));
+              if (CPRI.toast) CPRI.toast('Posted', 'Your response was added to the thread.', 'check2-circle');
+            } catch (err) {
+              if (CPRI.toast) CPRI.toast('Error', err.message, 'exclamation-triangle');
+              else alert(err.message);
+            } finally {
+              btn.disabled = false; btn.innerHTML = originalBtnHtml;
+            }
+          });
+        }
+      }
+    })();
+  </script>
 </body>
 </html>

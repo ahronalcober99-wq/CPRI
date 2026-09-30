@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Research Events and Conferences | CPRI</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -23,10 +24,49 @@
         <div class="form-message" id="message"></div>
 
         <!-- Admin: Post event -->
-        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:#e6f4f1;">
+        <div id="admin-panel" class="card" style="display:none;margin-bottom:22px;background:var(--cpri-bg-2);">
           <h3>CPRI Staff / Admin</h3>
           <p class="form-note">Create a new research event, gala, seminar, or conference.</p>
-          <a class="btn btn-primary" href="event-detail.html" style="display:inline-block;margin-top:8px;">+ Create Event</a>
+          <button type="button" class="btn btn-primary" id="toggle-create" style="display:inline-block;margin-top:8px;"><i class="bi bi-plus-lg"></i> Create Event</button>
+
+          <form id="create-form" style="display:none;margin-top:18px;">
+            <div class="grid grid-2" style="gap:14px;">
+              <div class="form-group" style="margin:0;">
+                <label for="c-title">Title *</label>
+                <input type="text" id="c-title" name="title" required placeholder="e.g. 2026 Research Gala">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="c-theme">Theme *</label>
+                <input type="text" id="c-theme" name="theme" required placeholder="e.g. Digital Governance">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="c-datetime">Date and Time *</label>
+                <input type="datetime-local" id="c-datetime" name="dateTime" required>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="c-venue">Venue / Platform *</label>
+                <input type="text" id="c-venue" name="venue" required placeholder="e.g. CPRI Main Hall or Zoom">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="c-desc">Description</label>
+                <textarea id="c-desc" name="description" rows="3" placeholder="What is this event about?"></textarea>
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="c-reg">Registration Link</label>
+                <input type="url" id="c-reg" name="registrationLink" placeholder="https://…">
+              </div>
+              <div class="form-group" style="margin:0;">
+                <label for="c-photo">Cover Photo</label>
+                <input type="file" id="c-photo" name="photo" accept="image/*">
+                <small class="form-note" style="display:block;margin-top:4px;">Optional — shown on the event card and homepage. JPG/PNG, max 8 MB.</small>
+                <img id="c-photo-preview" alt="Cover preview" style="display:none;margin-top:10px;max-height:140px;border-radius:12px;border:1px solid var(--cpri-border);">
+              </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;">
+              <button type="submit" class="btn btn-primary">Publish Event</button>
+              <button type="button" class="btn btn-navy" id="create-cancel">Cancel</button>
+            </div>
+          </form>
         </div>
 
         <!-- Search & filter -->
@@ -72,6 +112,12 @@
     const message = document.getElementById('message');
     const recordsEl = document.getElementById('records');
 
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+      message.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
     function buildQuery() {
       const fd = new FormData(document.getElementById('filter-form'));
       const p = new URLSearchParams();
@@ -86,17 +132,24 @@
         recordsEl.innerHTML = '<p class="empty-state">No events found.</p>';
         return;
       }
-      recordsEl.innerHTML = events.map(e => `
-        <div class="card" style="margin-bottom:16px;">
-          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;">
+      recordsEl.innerHTML = events.map(e => {
+        // Content events (Admin Console) have no module detail/registration page.
+        const isModule = e.source !== 'content';
+        const titleHref = isModule ? 'event-detail.html?id=' + e.id : 'events.html';
+        return `
+        <div class="card" style="margin-bottom:16px;overflow:hidden;">
+          ${e.photo ? `<a href="${titleHref}" style="display:block;"><img src="${escapeHtml(e.photo)}" alt="${escapeHtml(e.title)}" style="width:100%;height:200px;object-fit:cover;display:block;"></a>` : ''}
+          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;padding:18px;">
             <div style="flex:1;min-width:240px;">
-              <h3 style="margin:0 0 6px;"><a href="event-detail.html?id=${e.id}">${escapeHtml(e.title)}</a></h3>
-              <div class="meta">${escapeHtml(e.theme)} · ${new Date(e.dateTime).toLocaleString()} · ${escapeHtml(e.venue)}</div>
-              <p style="margin:8px 0;">${e.description || ''}</p>
+              <h3 style="margin:0 0 6px;"><a href="${titleHref}">${escapeHtml(e.title)}</a></h3>
+              <div class="meta">${escapeHtml(e.theme || 'Event')} · ${new Date(e.dateTime).toLocaleString()} · ${escapeHtml(e.venue)}${isModule ? '' : ' · <span class="badge" style="font-size:.68rem;">Admin Console</span>'}</div>
+              <p style="margin:8px 0;">${escapeHtml(e.description || '')}</p>
               ${e.registrationLink ? `<a class="btn btn-primary" href="${escapeHtml(e.registrationLink)}" target="_blank">Register</a>` : ''}
+              ${isModule ? `<a class="btn btn-soft" href="event-detail.html?id=${e.id}" style="margin-left:8px;">Details</a>` : ''}
             </div>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
     }
 
     function escapeHtml(text) {
@@ -109,6 +162,59 @@
     document.getElementById('clear-btn').addEventListener('click', () => {
       document.getElementById('filter-form').reset();
       load();
+    });
+
+    // ---- Create event (admin / CPRI staff) ----
+    const createForm = document.getElementById('create-form');
+    const toggleCreate = document.getElementById('toggle-create');
+
+    function resetCreateForm() {
+      createForm.reset();
+      createForm.style.display = 'none';
+      toggleCreate.style.display = 'inline-block';
+      const preview = document.getElementById('c-photo-preview');
+      if (preview) { preview.style.display = 'none'; preview.src = ''; }
+    }
+
+    toggleCreate.addEventListener('click', () => {
+      const opening = createForm.style.display === 'none';
+      createForm.style.display = opening ? 'block' : 'none';
+      toggleCreate.style.display = opening ? 'none' : 'inline-block';
+      if (opening) {
+        message.className = 'form-message';
+        message.textContent = '';
+        document.getElementById('c-title').focus();
+      }
+    });
+    document.getElementById('create-cancel').addEventListener('click', () => {
+      resetCreateForm();
+      message.className = 'form-message';
+      message.textContent = '';
+    });
+
+    createForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(createForm);
+      const res = await fetch('/api/events-module', {
+        method: 'POST',
+        body: fd
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) return showMsg('error', out.error || 'Could not create event.');
+      showMsg('success', 'Event created — it now appears in the list below.');
+      resetCreateForm();
+      await load();
+      // Scroll to the list so the new event is visible right away.
+      recordsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    // Live preview of the chosen cover photo.
+    document.getElementById('c-photo').addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      const preview = document.getElementById('c-photo-preview');
+      if (!file) { preview.style.display = 'none'; preview.src = ''; return; }
+      preview.src = URL.createObjectURL(file);
+      preview.style.display = 'block';
     });
 
     (async () => {

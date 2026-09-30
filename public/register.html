@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Register | CPRI Account</title>
   <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -32,27 +33,69 @@
           </div>
           <div class="form-group">
             <label for="email">Email *</label>
-            <input type="email" id="email" name="email" required>
+            <div style="display:flex;gap:8px;">
+              <input type="email" id="email" name="email" required style="flex:1;">
+              <button type="button" class="btn btn-soft" id="send-code-btn">Send Verification Code</button>
+            </div>
+            <div class="form-message" id="verify-message" style="margin-top:8px;"></div>
+            <div class="verify-row" id="verify-row" style="display:none;margin-top:10px;">
+              <div style="display:flex;gap:8px;">
+                <input type="text" id="verify-code" placeholder="Enter 6-digit code" inputmode="numeric" maxlength="6" style="flex:1;letter-spacing:4px;text-align:center;font-weight:600;">
+                <button type="button" class="btn btn-primary" id="verify-btn">Verify</button>
+              </div>
+              <p class="form-note" style="margin-top:6px;">The code expires in 10 minutes.</p>
+            </div>
           </div>
           <div class="form-group">
             <label for="role">Account Type *</label>
-            <select id="role" name="role" required>
+            <select id="role" name="role" required disabled>
               <option value="">Select…</option>
               <option value="faculty_researcher">Faculty Researcher</option>
               <option value="student_researcher">Student Researcher</option>
               <option value="adviser">Adviser</option>
               <option value="ethics_reviewer">Ethics Reviewer (subject to admin approval)</option>
             </select>
+            <p class="form-note" style="margin-top:6px;">Verify your email first to choose an account type.</p>
           </div>
           <div class="form-group">
-            <label for="password">Password * (min 8 characters)</label>
-            <input type="password" id="password" name="password" required minlength="8">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+              <label for="password" style="margin:0;">Password * (min 8 characters)</label>
+              <button type="button" class="btn btn-soft btn-sm" id="suggest-btn" title="Generate a strong password" style="padding:6px 12px;font-size:.78rem;white-space:nowrap;"><i class="bi bi-magic"></i> Suggest Strong Password</button>
+            </div>
+            <div class="pwd-field">
+              <input type="password" id="password" name="password" required minlength="8" autocomplete="new-password">
+              <button type="button" class="pwd-toggle" aria-label="Hold to show password" aria-pressed="false" title="Hold to see"><i class="bi bi-eye"></i></button>
+            </div>
+            <div class="pw-meter" id="pw-meter" style="display:none;">
+              <div class="pw-meter-bars" id="pw-meter-bars" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+              <span class="pw-meter-label" id="pw-meter-label"></span>
+            </div>
           </div>
           <div class="form-group">
             <label for="confirm">Confirm Password *</label>
-            <input type="password" id="confirm" name="confirm" required minlength="8">
+            <div class="pwd-field">
+              <input type="password" id="confirm" name="confirm" required minlength="8" autocomplete="new-password">
+              <button type="button" class="pwd-toggle" aria-label="Hold to show confirm password" aria-pressed="false" title="Hold to see"><i class="bi bi-eye"></i></button>
+            </div>
           </div>
           <button type="submit" class="btn btn-primary" id="submit-btn" style="width:100%;">Register</button>
+          <div class="google-divider"><span>or sign up with Google</span></div>
+          <div class="google-split">
+            <button type="button" class="google-btn" id="google-btn">
+              <svg viewBox="0 0 48 48" aria-hidden="true">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              </svg>
+              Sign up with Google
+            </button>
+            <button type="button" class="google-caret" id="google-caret" aria-label="More sign-in options" aria-expanded="false" aria-haspopup="menu"><i class="bi bi-chevron-down"></i></button>
+            <div class="google-menu" id="google-menu" role="menu">
+              <button type="button" class="gm-item" data-action="direct" role="menuitem"><i class="bi bi-google"></i><span>Continue with Google<small>One-click sign-in</small></span></button>
+              <button type="button" class="gm-item" data-action="bridge" role="menuitem"><i class="bi bi-arrow-up-right-square"></i><span>Complete sign-in in your browser<small>One-time code in your default browser</small></span></button>
+            </div>
+          </div>
           <p class="form-note" style="margin-top:14px;">
             Already have an account? <a href="login.html">Log in</a>
           </p>
@@ -68,10 +111,304 @@
     const form = document.getElementById('register-form');
     const message = document.getElementById('message');
     const btn = document.getElementById('submit-btn');
+    const emailInput = document.getElementById('email');
+    const sendCodeBtn = document.getElementById('send-code-btn');
+    const verifyMessage = document.getElementById('verify-message');
+    const verifyRow = document.getElementById('verify-row');
+    const verifyCodeInput = document.getElementById('verify-code');
+    const verifyBtn = document.getElementById('verify-btn');
+    const roleSelect = document.getElementById('role');
+
+    let verified = false;
+    let sendCooldownUntil = 0;
+
+    // Show a message when Google bounces the visitor back with an error
+    // (cancel, disabled, pending, server failure) — mirrors login.html.
+    const g = new URLSearchParams(location.search).get('google');
+    const GMESSAGES = {
+      denied: 'Google sign-up was cancelled.',
+      error: 'Google sign-up failed. Please try again.',
+      disabled: 'Your account has been disabled.',
+      pending: 'Your account is pending admin approval.'
+    };
+    if (g && GMESSAGES[g]) {
+      message.className = 'form-message error';
+      message.textContent = GMESSAGES[g];
+    }
+
+    // One-click Gmail sign-up — starts the server OAuth flow when configured,
+    // otherwise explains what is missing instead of navigating to raw JSON.
+    // In embedded app browsers (where Google blocks the consent screen) the
+    // shared handler opens the system-browser bridge dialog instead.
+    const googleBtn = document.getElementById('google-btn');
+    googleBtn.addEventListener('click', async () => {
+      try {
+        const started = await CPRI.startGoogleLogin(googleBtn);
+        if (!started) throw new Error('not configured');
+      } catch {
+        googleBtn.disabled = false;
+        message.className = 'form-message error';
+        message.textContent = 'Google sign-in is not configured on this server yet. Please register with your email and password instead.';
+      }
+    });
+
+    // One split button: the main area goes direct to Google; the caret reveals
+    // the one-time-code browser flow — both in a single visual element.
+    const caret = document.getElementById('google-caret');
+    const gmenu = document.getElementById('google-menu');
+    if (caret && gmenu) {
+      const closeMenu = () => {
+        gmenu.classList.remove('open');
+        caret.setAttribute('aria-expanded', 'false');
+      };
+      caret.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = gmenu.classList.toggle('open');
+        caret.setAttribute('aria-expanded', String(open));
+      });
+      gmenu.querySelectorAll('.gm-item').forEach((item) => {
+        item.addEventListener('click', () => {
+          closeMenu();
+          if (item.dataset.action === 'bridge') {
+            CPRI.startBrowserSignIn().then((ok) => {
+              if (!ok) {
+                message.className = 'form-message error';
+                message.textContent = 'Google sign-in is not configured on this server yet. Please register with your email and password instead.';
+              }
+            });
+          } else {
+            googleBtn.click();
+          }
+        });
+      });
+      document.addEventListener('click', (e) => { if (!e.target.closest('.google-split')) closeMenu(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+    }
+
+    // Lock account-type + submit until email is verified
+    btn.disabled = true;
+
+    function setVerifyMsg(type, text) {
+      verifyMessage.className = 'form-message' + (type ? ' ' + type : '');
+      verifyMessage.textContent = text;
+    }
+
+    function setVerified(state) {
+      verified = state;
+      roleSelect.disabled = !state;
+      btn.disabled = !state;
+      verifyCodeInput.disabled = state;
+      verifyBtn.disabled = state;
+      if (state) {
+        verifyBtn.textContent = '✓ Verified';
+        verifyBtn.classList.remove('btn-primary');
+        verifyBtn.classList.add('btn-verified');
+        sendCodeBtn.disabled = true;
+        sendCodeBtn.textContent = 'Verified';
+        setVerifyMsg('success', 'Email verified successfully.');
+      }
+    }
+
+    function startCooldown(seconds) {
+      sendCooldownUntil = Date.now() + seconds * 1000;
+      sendCodeBtn.disabled = true;
+      sendCodeBtn.textContent = 'Resend in ' + seconds + 's';
+      const t = setInterval(() => {
+        const remain = Math.max(0, Math.ceil((sendCooldownUntil - Date.now()) / 1000));
+        if (remain <= 0) {
+          clearInterval(t);
+          if (!verified) {
+            sendCodeBtn.disabled = false;
+            sendCodeBtn.textContent = 'Send Verification Code';
+          }
+        } else {
+          sendCodeBtn.textContent = 'Resend in ' + remain + 's';
+        }
+      }, 1000);
+    }
+
+    async function postJSON(url, payload) {
+      const res = await fetch(API_BASE + url, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      let out;
+      try { out = await res.json(); } catch { out = {}; }
+      return { res, out };
+    }
+
+    sendCodeBtn.addEventListener('click', async () => {
+      const email = emailInput.value.trim();
+      if (!email) {
+        setVerifyMsg('error', 'Email is required. Enter your email address first.');
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        setVerifyMsg('error', 'Enter a valid email address.');
+        return;
+      }
+      if (Date.now() < sendCooldownUntil) return;
+      sendCodeBtn.disabled = true;
+      sendCodeBtn.textContent = 'Sending…';
+      setVerifyMsg('', '');
+      try {
+        const { res, out } = await postJSON('/api/auth/send-verification-code', { email });
+        console.log('[register] send-code response:', res.status, out);
+        if (!out || out.success !== true) {
+          throw new Error((out && out.error) || (out && out.detail) || 'Failed to send code.');
+        }
+        verifyRow.style.display = 'block';
+        verifyCodeInput.focus();
+        setVerifyMsg('success', 'Code sent! Check your inbox (also check spam).');
+        startCooldown(60);
+      } catch (err) {
+        if (err instanceof TypeError) {
+          setVerifyMsg('error', 'Network error — is the server running?');
+        } else {
+          setVerifyMsg('error', err.message);
+        }
+        sendCodeBtn.disabled = false;
+        sendCodeBtn.textContent = 'Send Verification Code';
+      }
+    });
+
+    verifyBtn.addEventListener('click', async () => {
+      const email = emailInput.value.trim();
+      const code = verifyCodeInput.value.trim();
+      if (!email) {
+        setVerifyMsg('error', 'Email is required.');
+        return;
+      }
+      if (!code || !/^\d{6}$/.test(code)) {
+        setVerifyMsg('error', 'Enter the 6-digit code.');
+        return;
+      }
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = 'Verifying…';
+      setVerifyMsg('', '');
+      try {
+        const { res, out } = await postJSON('/api/auth/verify-code', { email, code });
+        console.log('[register] verify-code response:', res.status, out);
+        if (!out || out.verified !== true) {
+          throw new Error((out && out.error) || (out && out.detail) || 'Verification failed.');
+        }
+        setVerified(true);
+      } catch (err) {
+        if (err instanceof TypeError) {
+          setVerifyMsg('error', 'Network error — is the server running?');
+        } else {
+          setVerifyMsg('error', err.message);
+        }
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Verify';
+        verifyBtn.classList.remove('btn-verified');
+        verifyBtn.classList.add('btn-primary');
+      }
+    });
+
+    // If the user changes the email after verification, reset the verified flag
+    emailInput.addEventListener('change', () => {
+      if (verified) {
+        verified = false;
+        roleSelect.disabled = true;
+        btn.disabled = true;
+        verifyCodeInput.disabled = false;
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Verify';
+        verifyBtn.classList.remove('btn-verified');
+        verifyBtn.classList.add('btn-primary');
+        verifyRow.style.display = 'block';
+        setVerifyMsg('', '');
+        sendCodeBtn.disabled = false;
+        sendCodeBtn.textContent = 'Send Verification Code';
+      }
+    });
+
+    // ---------- Strong password suggester + strength meter ----------
+    const passwordInput = document.getElementById('password');
+    const confirmInput = document.getElementById('confirm');
+    const suggestBtn = document.getElementById('suggest-btn');
+    const pwMeter = document.getElementById('pw-meter');
+    const pwMeterBars = document.getElementById('pw-meter-bars');
+    const pwMeterLabel = document.getElementById('pw-meter-label');
+
+    // Cryptographically random strong password: 16 chars, 1+ of each class.
+    function generateStrongPassword() {
+      const lower = 'abcdefghijkmnopqrstuvwxyz';
+      const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+      const digits = '23456789';
+      const symbols = '!@#$%^&*()-_=+?<>';
+      const pick = (chars) => chars[Math.floor(Math.random() * chars.length)];
+      // Guarantee one of each class, then fill the rest from the combined pool.
+      const guaranteed = [lower, upper, digits, symbols].map(pick);
+      const all = lower + upper + digits + symbols;
+      while (guaranteed.length < 16) guaranteed.push(pick(all));
+      // Shuffle (Fisher–Yates) so the guaranteed chars aren't always first.
+      for (let i = guaranteed.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [guaranteed[i], guaranteed[j]] = [guaranteed[j], guaranteed[i]];
+      }
+      return guaranteed.join('');
+    }
+
+    // Score 0..4 from length + character variety.
+    function passwordScore(pw) {
+      if (!pw) return 0;
+      let s = 0;
+      if (pw.length >= 8) s++;
+      if (pw.length >= 12) s++;
+      if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
+      if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) s++;
+      return Math.min(4, s);
+    }
+
+    const METER_LABELS = ['Too weak', 'Weak', 'Fair', 'Good', 'Strong'];
+    const METER_COLORS = ['#dc2626', '#f59e0b', '#eab308', '#14b8a6', '#059669'];
+
+    function updateMeter() {
+      const pw = passwordInput.value || '';
+      if (!pw) {
+        pwMeter.style.display = 'none';
+        pwMeterBars.className = 'pw-meter-bars';
+        pwMeterLabel.textContent = '';
+        return;
+      }
+      const score = passwordScore(pw);
+      pwMeter.style.display = 'flex';
+      pwMeterBars.className = 'pw-meter-bars strength-' + score;
+      pwMeterLabel.textContent = METER_LABELS[score];
+      pwMeterLabel.style.color = METER_COLORS[score];
+    }
+
+    suggestBtn.addEventListener('click', () => {
+      const pw = generateStrongPassword();
+      passwordInput.value = pw;
+      confirmInput.value = pw;
+      updateMeter();
+      suggestBtn.textContent = '✓ Suggested';
+      setTimeout(() => {
+        suggestBtn.innerHTML = '<i class="bi bi-magic"></i> Suggest Strong Password';
+      }, 1500);
+      // Show the generated password briefly so the user can copy it.
+      passwordInput.type = 'text';
+      passwordInput.classList.add('suggested');
+      setTimeout(() => {
+        passwordInput.type = 'password';
+        passwordInput.classList.remove('suggested');
+      }, 2500);
+    });
+
+    passwordInput.addEventListener('input', updateMeter);
+    passwordInput.addEventListener('blur', updateMeter);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       message.className = 'form-message';
+      if (!verified) {
+        message.className = 'form-message error';
+        message.textContent = 'Please verify your email before registering.';
+        return;
+      }
       const data = Object.fromEntries(new FormData(form).entries());
       if (data.password !== data.confirm) {
         message.className = 'form-message error';

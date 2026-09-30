@@ -2,10 +2,10 @@ import { Router } from 'express';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
-import { dirname, join, extname } from 'path';
+import { dirname, join, extname, basename } from 'path';
 import { promises as fs } from 'fs';
 import { requireAdmin, readUsers } from './auth.js';
-import { all, get } from './server/db/queries.js';
+import { all, get, update } from './server/db/queries.js';
 import { addLog } from './audit.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -326,7 +326,20 @@ router.get('/files', requireAdmin, async (req, res) => {
       all('SELECT id, title, supportingDocuments, impactDocuments FROM innovation_extension')
     ]);
 
-    const files = [];
+    let files = [];
+
+    // JSON columns come back as strings if a row is malformed or the column
+    // type drifted from the schema — never let one bad row 500 the whole list.
+    const asArray = (v) => {
+      if (Array.isArray(v)) return v;
+      if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : []; } catch { return []; } }
+      return [];
+    };
+    const asObject = (v) => {
+      if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+      if (typeof v === 'string') { try { const p = JSON.parse(v); return p && typeof p === 'object' ? p : {}; } catch { return {}; } }
+      return {};
+    };
 
     const pushFile = (rec, meta, module, folder, uploader) => {
       if (!meta || !meta.filename) return;
@@ -346,35 +359,47 @@ router.get('/files', requireAdmin, async (req, res) => {
 
     submissions.forEach(s => {
       const folder = 'submissions';
-      Object.values(s.files || {}).forEach(meta => pushFile(s, meta, 'Submission', folder, s.submitterName));
-      (s.additionalDocs || []).forEach(doc => pushFile(s, doc, 'Submission (Additional)', folder, s.submitterName));
-      (s.versions || []).forEach(v => {
-        Object.values(v.files || {}).forEach(meta => pushFile(s, meta, `Submission v${v.version}`, folder, v.by));
-        (v.additionalDocs || []).forEach(doc => pushFile(s, doc, `Submission v${v.version}`, folder, v.by));
+      Object.values(asObject(s.files)).forEach(meta => pushFile(s, meta, 'Submission', folder, s.submitterName));
+      asArray(s.additionalDocs).forEach(doc => pushFile(s, doc, 'Submission (Additional)', folder, s.submitterName));
+      asArray(s.versions).forEach(v => {
+        Object.values(asObject(v.files)).forEach(meta => pushFile(s, meta, `Submission v${v.version}`, folder, v.by));
+        asArray(v.additionalDocs).forEach(doc => pushFile(s, doc, `Submission v${v.version}`, folder, v.by));
       });
     });
     ethics.forEach(e => {
       const folder = 'ethics';
-      Object.values(e.files || {}).forEach(meta => pushFile(e, meta, 'Ethics', folder, e.submitterName));
-      (e.revisedDocuments || []).forEach(doc => pushFile(e, doc, 'Ethics (Revision)', folder, e.submitterName));
+      Object.values(asObject(e.files)).forEach(meta => pushFile(e, meta, 'Ethics', folder, e.submitterName));
+      asArray(e.revisedDocuments).forEach(doc => pushFile(e, doc, 'Ethics (Revision)', folder, e.submitterName));
     });
     publications.forEach(p => {
       const folder = 'publications';
-      (p.proofDocuments || []).forEach(doc => pushFile(p, doc, 'Publication Proof', folder, p.submitterName));
+      asArray(p.proofDocuments).forEach(doc => pushFile(p, doc, 'Publication Proof', folder, p.submitterName));
     });
     events.forEach(e => {
       const folder = 'events-module';
-      (e.gallery || []).forEach(doc => pushFile(e, doc, 'Event', folder, ''));
+      asArray(e.gallery).forEach(doc => pushFile(e, doc, 'Event', folder, ''));
     });
     innovation.forEach(i => {
       const folder = 'innovation-extension';
-      (i.supportingDocuments || []).forEach(doc => pushFile(i, doc, 'Innovation & Extension', folder, ''));
-      (i.impactDocuments || []).forEach(doc => pushFile(i, doc, 'Innovation & Extension (Impact)', folder, ''));
+      asArray(i.supportingDocuments).forEach(doc => pushFile(i, doc, 'Innovation & Extension', folder, ''));
+      asArray(i.impactDocuments).forEach(doc => pushFile(i, doc, 'Innovation & Extension (Impact)', folder, ''));
     });
 
     // Include direct uploads dir
     const direct = await collectUploadsFiles();
     files.push(...direct);
+
+    // The same physical file is often referenced by several JSON columns
+    // (files, versions, additionalDocs, …), so it would appear as duplicate
+    // rows. Dedupe by path to show each file exactly once.
+    const seenPaths = new Set();
+    const deduped = [];
+    for (const f of files) {
+      if (seenPaths.has(f.path)) continue;
+      seenPaths.add(f.path);
+      deduped.push(f);
+    }
+    files = deduped;
 
     // Get file sizes from disk where available
     for (const f of files) {
@@ -397,8 +422,9 @@ router.get('/files', requireAdmin, async (req, res) => {
 });
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    fs.mkdir(FILE_UPLOAD_DIR, { recursive: true }).then(() => cb(null, FILE_UPLOAD_DIR));
+  destination: async (req, file, cb) => {
+    try { await fs.mkdir(FILE_UPLOAD_DIR, { recursive: true }); cb(null, FILE_UPLOAD_DIR); }
+    catch (err) { cb(err); }
   },
   filename: (req, file, cb) => {
     const safe = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
@@ -430,6 +456,76 @@ router.post('/files/upload', requireAdmin, upload.array('files', 10), async (req
   }
 });
 
+// Remove every reference to `filename` from the JSON metadata columns across
+// all modules. The File Manager list is built from these columns, so without
+// this a deleted file's row would keep reappearing after reload. Metadata is
+// stored three ways: `files` as an object { key: meta }, most others as an
+// array of meta, and `versions` as an array of { files, additionalDocs }.
+async function removeFileRefs(filename) {
+  const scans = [
+    { table: 'submissions', fields: ['files', 'additionalDocs', 'versions'] },
+    { table: 'ethics', fields: ['files', 'revisedDocuments'] },
+    { table: 'publications', fields: ['proofDocuments'] },
+    { table: 'events_module', fields: ['gallery'] },
+    { table: 'innovation_extension', fields: ['supportingDocuments', 'impactDocuments'] }
+  ];
+
+  for (const { table, fields } of scans) {
+    const rows = await all(`SELECT id, ${fields.join(', ')} FROM ${table}`).catch(() => []);
+    for (const row of rows) {
+      const next = {};
+      let changed = false;
+
+      for (const field of fields) {
+        const raw = row[field];
+        if (raw == null) continue;
+        let parsed = raw;
+        if (typeof raw === 'string') {
+          try { parsed = JSON.parse(raw); } catch { continue; }
+        }
+
+        if (field === 'versions' && Array.isArray(parsed)) {
+          let vChanged = false;
+          const versions = parsed.map(v => {
+            if (!v || typeof v !== 'object') return v;
+            const vFiles = (v.files && typeof v.files === 'object' && !Array.isArray(v.files))
+              ? Object.fromEntries(Object.entries(v.files).filter(([, m]) => !m || m.filename !== filename))
+              : v.files;
+            const vDocs = Array.isArray(v.additionalDocs)
+              ? v.additionalDocs.filter(m => !m || m.filename !== filename)
+              : v.additionalDocs;
+            if (vFiles !== v.files || vDocs !== v.additionalDocs) vChanged = true;
+            return (vFiles !== v.files || vDocs !== v.additionalDocs)
+              ? { ...v, files: vFiles, additionalDocs: vDocs }
+              : v;
+          });
+          if (vChanged) { next[field] = JSON.stringify(versions); changed = true; }
+          continue;
+        }
+
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          // files: { key: meta }
+          const filtered = Object.fromEntries(
+            Object.entries(parsed).filter(([, m]) => !m || m.filename !== filename)
+          );
+          if (Object.keys(filtered).length !== Object.keys(parsed).length) {
+            next[field] = JSON.stringify(filtered);
+            changed = true;
+          }
+        } else if (Array.isArray(parsed)) {
+          const filtered = parsed.filter(m => !m || m.filename !== filename);
+          if (filtered.length !== parsed.length) {
+            next[field] = JSON.stringify(filtered);
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) await update(table, row.id, next);
+    }
+  }
+}
+
 router.post('/files/delete', requireAdmin, async (req, res) => {
   try {
     const { path } = req.body || {};
@@ -440,11 +536,23 @@ router.post('/files/delete', requireAdmin, async (req, res) => {
     const target = join(__dirname, '..', 'public', path.replace(/^\/+/, ''));
     if (!target.startsWith(uploadsRoot)) return res.status(400).json({ error: 'Invalid path.' });
 
+    const filename = basename(target);
+
+    // 1) Scrub DB metadata references first, so the row disappears from the
+    //    list even when the physical file is already gone ("0 B" rows).
+    await removeFileRefs(filename);
+
+    // 2) Delete the physical file if it still exists.
     try {
       await fs.unlink(target);
-    } catch (err) {
-      return res.status(404).json({ error: 'File not found.' });
+    } catch (err) { /* already gone — references were still cleaned up */ }
+
+    // 3) Sweep now-empty per-record folders (e.g. uploads/submissions/<id>).
+    const parent = dirname(target);
+    if (parent.startsWith(uploadsRoot) && parent !== uploadsRoot) {
+      await fs.rmdir(parent).catch(() => {});
     }
+
     await addLog('file_delete', `Deleted file ${path}`, req);
     res.json({ message: 'File deleted.' });
   } catch (err) {
