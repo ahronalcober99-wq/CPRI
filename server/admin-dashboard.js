@@ -13,6 +13,23 @@ import { notify } from './notifications.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, 'data');
+// Sessions are file-backed (see server.js), which is also how "online now" is counted.
+const SESSIONS_DIR = join(__dirname, 'data', 'sessions');
+
+// mysql2 hands back DATETIME columns as Date objects, so timestamps must be
+// formatted rather than string-sliced. Matches the helpers in admin-insights.js.
+function toDate(value) {
+  const d = new Date(value);
+  return isNaN(d) ? null : d;
+}
+function monthKeyOf(value) {
+  const d = toDate(value);
+  return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : '';
+}
+function dayKeyOf(value) {
+  const d = toDate(value);
+  return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+}
 const EVENT_UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'events');
 
 const router = Router();
@@ -220,6 +237,138 @@ router.get('/hero-stats', async (req, res) => {
   } catch (err) {
     console.error('[hero-stats] error:', err);
     res.status(500).json({ error: 'Failed to load hero stats.' });
+  }
+});
+
+// ---------- Research Impact Dashboard (admin) ----------
+// Backs public/research-impact-dashboard.html. Every figure is computed from MySQL;
+// nothing is hard-coded. The few metrics this schema does not record (per-record
+// views, downloads and the top-viewed/top-downloaded lists) are returned as null or
+// an empty list so the page can label them "Not tracked" instead of showing a made-up 0.
+router.get('/impact-dashboard', requireAdmin, async (req, res) => {
+  try {
+    const { year, department, category, adviser, from, to } = req.query;
+
+    // The page's filters map onto columns of `submissions`.
+    const where = [];
+    const params = [];
+    if (year) { where.push('schoolYear = ?'); params.push(String(year)); }
+    if (department) { where.push('program = ?'); params.push(String(department)); }
+    if (category) { where.push('category = ?'); params.push(String(category)); }
+    if (adviser) { where.push('adviser = ?'); params.push(String(adviser)); }
+    if (from) { where.push('createdAt >= ?'); params.push(String(from)); }
+    if (to) { where.push('createdAt <= ?'); params.push(String(to) + ' 23:59:59'); }
+    const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
+
+    const [subs, allSubs, researchers, adviserAccounts, logs] = await Promise.all([
+      all(`SELECT id, title, status, program, category, adviser, schoolYear, createdAt FROM submissions${whereSql}`, params),
+      all('SELECT schoolYear, program, category, adviser FROM submissions'),
+      all('SELECT department FROM researchers'),
+      // "Registered" researchers/advisers are user accounts, not directory entries.
+      all("SELECT id, role FROM users WHERE role IN ('faculty_researcher', 'student_researcher', 'adviser')"),
+      all('SELECT action, details, timestamp FROM system_logs ORDER BY timestamp DESC LIMIT 10')
+    ]);
+
+    const countBy = (rows, keyOf) => rows.reduce((m, r) => {
+      const k = keyOf(r);
+      m[k] = (m[k] || 0) + 1;
+      return m;
+    }, {});
+
+    const statusCount = countBy(subs, (s) => String(s.status || 'unknown'));
+    const statusValue = (...names) => names.reduce((n, name) => n + (statusCount[name] || 0), 0);
+    const total = subs.length;
+
+    // Last 12 months of submissions, oldest first.
+    const now = new Date();
+    const monthly = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      monthly.push({
+        key: monthKeyOf(d),
+        label: d.toLocaleString('en-US', { month: 'short', year: 'numeric' }),
+        value: 0
+      });
+    }
+    subs.forEach((s) => {
+      const bucket = monthly.find((m) => m.key === monthKeyOf(s.createdAt));
+      if (bucket) bucket.value += 1;
+    });
+
+    const STATUS_LABELS = {
+      submitted: 'Submitted',
+      under_initial_checking: 'Initial Checking',
+      for_revision: 'For Revision',
+      under_ethics_review: 'Ethics Review',
+      approved: 'Approved',
+      published: 'Published',
+      archived: 'Archived',
+      rejected: 'Rejected'
+    };
+    const asChartRows = (map) => Object.entries(map)
+      .map(([label, value]) => ({ label, value }))
+      .sort((a, b) => b.value - a.value);
+
+    // "Online" = a session file touched in the last 15 minutes.
+    let activeUsersOnline = null;
+    try {
+      const files = await fs.readdir(SESSIONS_DIR);
+      const cutoff = Date.now() - 15 * 60 * 1000;
+      let live = 0;
+      for (const f of files) {
+        const st = await fs.stat(join(SESSIONS_DIR, f)).catch(() => null);
+        if (st && st.mtimeMs >= cutoff) live += 1;
+      }
+      activeUsersOnline = live;
+    } catch { /* no session directory on this host */ }
+
+    const today = dayKeyOf(new Date());
+
+    res.json({
+      generatedAt: new Date().toISOString(),
+      hasData: total > 0 || researchers.length > 0,
+      stats: {
+        totalResearchPapers: total,
+        publishedResearch: statusValue('published'),
+        approvedResearch: statusValue('approved'),
+        pendingResearch: statusValue('submitted', 'under_initial_checking', 'for_revision', 'under_ethics_review'),
+        rejectedResearch: statusValue('rejected'),
+        archivedResearch: statusValue('archived'),
+        totalResearchers: adviserAccounts.filter(u => u.role !== 'adviser').length,
+        totalFacultyAdvisers: adviserAccounts.filter(u => u.role === 'adviser').length,
+        // Not recorded anywhere in this schema — null renders as "Not tracked".
+        totalDownloads: null,
+        totalViews: null,
+        activeUsersOnline,
+        newResearchSubmittedToday: subs.filter(s => dayKeyOf(s.createdAt) === today).length
+      },
+      charts: {
+        monthlySubmissions: monthly.map(({ label, value }) => ({ label, value })),
+        statusBreakdown: asChartRows(statusCount).map(r => ({ label: STATUS_LABELS[r.label] || r.label, value: r.value })),
+        departmentBreakdown: asChartRows(countBy(subs, s => String(s.program || 'Unspecified'))),
+        categoryBreakdown: asChartRows(countBy(subs, s => String(s.category || 'Uncategorised'))),
+        downloadsVsViews: [],
+        topViewed: [],
+        topDownloaded: []
+      },
+      activity: logs.map(l => ({
+        title: String(l.action || 'activity').replace(/_/g, ' '),
+        details: l.details || '',
+        status: String(l.action || 'activity').split('_')[0],
+        badgeClass: /delete|reject|error|fail/i.test(l.action || '') ? 'bg-danger'
+          : /create|approve|publish|add/i.test(l.action || '') ? 'bg-success' : 'bg-primary',
+        timestamp: l.timestamp ? new Date(l.timestamp).toLocaleString() : ''
+      })),
+      filters: {
+        academicYears: [...new Set(allSubs.map(s => s.schoolYear).filter(Boolean))].sort().reverse(),
+        departments: [...new Set(allSubs.map(s => s.program).filter(Boolean))].sort(),
+        categories: [...new Set(allSubs.map(s => s.category).filter(Boolean))].sort(),
+        advisers: [...new Set(allSubs.map(s => s.adviser).filter(Boolean))].sort()
+      }
+    });
+  } catch (err) {
+    console.error('[impact-dashboard] error:', err);
+    res.status(500).json({ error: 'Failed to build the research impact dashboard.' });
   }
 });
 

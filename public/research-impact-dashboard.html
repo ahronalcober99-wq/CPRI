@@ -191,18 +191,28 @@
         { label: 'New Research Submitted Today', value: stats.newResearchSubmittedToday, icon: 'bi-calendar2-plus', tone: 'warning' }
       ];
       const hasData = stats.hasData;
-      grid.innerHTML = cards.map(card => `
+      // The API returns null for a metric this database does not record (per-record
+      // views, downloads). Say so instead of printing a misleading 0.
+      const cellFor = (value) => {
+        if (value === null || value === undefined) return { text: 'Not tracked', animate: '' };
+        if (!hasData) return { text: 'No data available', animate: '' };
+        return { text: formatMetric(Number(value)), animate: Number(value) };
+      };
+      grid.innerHTML = cards.map(card => {
+        const cell = cellFor(card.value);
+        return `
         <div class="col-12 col-sm-6 col-xl-4">
           <div class="card impact-card stat-card h-100">
             <div class="d-flex justify-content-between align-items-start">
               <div>
                 <div class="small text-uppercase fw-semibold" style="letter-spacing:.08em;color:var(--cpri-muted)">${card.label}</div>
-                <div class="stat-value mt-2" data-value="${hasData ? card.value : ''}">${hasData ? formatMetric(card.value) : 'No data available'}</div>
+                <div class="stat-value mt-2" data-value="${cell.animate}">${cell.text}</div>
               </div>
               <div class="stat-icon ${card.tone}"><i class="bi ${card.icon}"></i></div>
             </div>
           </div>
-        </div>`).join('');
+        </div>`;
+      }).join('');
       if (hasData) animateValues();
     }
 
@@ -224,14 +234,49 @@
       });
     }
 
+    // The dashboard refreshes every 8 seconds and re-runs renderCharts. A chart's
+    // "no data" message must therefore be a sibling element, never a replacement of
+    // the canvas — wiping the canvas made the next refresh throw on a null element.
+    function showChartMessage(canvasId, message) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      canvas.classList.add('d-none');
+      let note = canvas.parentElement.querySelector(`[data-chart-message="${canvasId}"]`);
+      if (!note) {
+        note = document.createElement('div');
+        note.className = 'text-muted py-5 text-center';
+        note.setAttribute('data-chart-message', canvasId);
+        canvas.parentElement.appendChild(note);
+      }
+      note.textContent = message;
+    }
+
+    function clearChartMessage(canvasId) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      canvas.classList.remove('d-none');
+      const note = canvas.parentElement.querySelector(`[data-chart-message="${canvasId}"]`);
+      if (note) note.remove();
+    }
+
     function renderCharts(charts) {
       destroyCharts();
+      charts = charts || {};
+      charts.monthlySubmissions = Array.isArray(charts.monthlySubmissions) ? charts.monthlySubmissions : [];
+      charts.statusBreakdown = Array.isArray(charts.statusBreakdown) ? charts.statusBreakdown : [];
+      charts.departmentBreakdown = Array.isArray(charts.departmentBreakdown) ? charts.departmentBreakdown : [];
+      charts.categoryBreakdown = Array.isArray(charts.categoryBreakdown) ? charts.categoryBreakdown : [];
       const hasData = charts && (charts.monthlySubmissions.some(item => item.value > 0) || charts.departmentBreakdown.length || charts.categoryBreakdown.length || charts.statusBreakdown.some(item => item.value > 0));
       const lineCtx = document.getElementById('submissionsChart');
+      if (!lineCtx) return;
       if (!hasData) {
-        lineCtx.parentElement.innerHTML = '<div class="text-muted py-5 text-center">No data available</div>';
+        showChartMessage('submissionsChart', 'No data available');
+        showChartMessage('statusChart', 'No data available');
+        showChartMessage('departmentChart', 'No data available');
+        showChartMessage('engagementChart', 'Not tracked — this system does not record view or download counts.');
         return;
       }
+      clearChartMessage('submissionsChart');
       state.charts.submissions = new Chart(lineCtx, {
         type: 'line',
         data: {
@@ -250,42 +295,57 @@
       });
 
       const statusCtx = document.getElementById('statusChart');
-      state.charts.status = new Chart(statusCtx, {
-        type: 'doughnut',
-        data: {
-          labels: charts.statusBreakdown.map(item => item.label),
-          datasets: [{ data: charts.statusBreakdown.map(item => item.value), backgroundColor: ['#1E3A8A','#14B8A6','#F59E0B','#EF4444'] }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
-      });
+      if (statusCtx) {
+        clearChartMessage('statusChart');
+        state.charts.status = new Chart(statusCtx, {
+          type: 'doughnut',
+          data: {
+            labels: charts.statusBreakdown.map(item => item.label),
+            datasets: [{ data: charts.statusBreakdown.map(item => item.value), backgroundColor: ['#1E3A8A','#14B8A6','#F59E0B','#EF4444'] }]
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+        });
+      }
 
+      // Engagement is only drawn when the back end actually tracks it; this schema
+      // records no view or download counts, so the API returns an empty series.
       const engagementCtx = document.getElementById('engagementChart');
-      state.charts.engagement = new Chart(engagementCtx, {
-        type: 'line',
-        data: {
-          labels: charts.downloadsVsViews.map(item => item.label),
-          datasets: [
-            { label: 'Downloads', data: charts.downloadsVsViews.map(item => item.downloads), borderColor: '#14B8A6', backgroundColor: 'rgba(20,184,166,.16)', fill: true, tension: .35 },
-            { label: 'Views', data: charts.downloadsVsViews.map(item => item.views), borderColor: '#1E3A8A', backgroundColor: 'rgba(30,58,138,.16)', fill: true, tension: .35 }
-          ]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
-      });
+      if (!engagementCtx) {
+        // nothing to draw into
+      } else if (!Array.isArray(charts.downloadsVsViews) || !charts.downloadsVsViews.length) {
+        showChartMessage('engagementChart', 'Not tracked — this system does not record view or download counts.');
+      } else {
+        clearChartMessage('engagementChart');
+        state.charts.engagement = new Chart(engagementCtx, {
+          type: 'line',
+          data: {
+            labels: charts.downloadsVsViews.map(item => item.label),
+            datasets: [
+              { label: 'Downloads', data: charts.downloadsVsViews.map(item => item.downloads), borderColor: '#14B8A6', backgroundColor: 'rgba(20,184,166,.16)', fill: true, tension: .35 },
+              { label: 'Views', data: charts.downloadsVsViews.map(item => item.views), borderColor: '#1E3A8A', backgroundColor: 'rgba(30,58,138,.16)', fill: true, tension: .35 }
+            ]
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true } } }
+        });
+      }
 
       const departmentCtx = document.getElementById('departmentChart');
-      state.charts.department = new Chart(departmentCtx, {
-        type: 'bar',
-        data: {
-          labels: charts.departmentBreakdown.map(item => item.label),
-          datasets: [{ label: 'Research Count', data: charts.departmentBreakdown.map(item => item.value), backgroundColor: '#1E3A8A' }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
-      });
+      if (departmentCtx) {
+        clearChartMessage('departmentChart');
+        state.charts.department = new Chart(departmentCtx, {
+          type: 'bar',
+          data: {
+            labels: charts.departmentBreakdown.map(item => item.label),
+            datasets: [{ label: 'Research Count', data: charts.departmentBreakdown.map(item => item.value), backgroundColor: '#1E3A8A' }]
+          },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+        });
+      }
     }
 
     function renderActivity(activity) {
       const feed = document.getElementById('activityFeed');
-      if (!activity.length) {
+      if (!Array.isArray(activity) || !activity.length) {
         feed.innerHTML = '<div class="text-muted">No data available</div>';
         return;
       }
@@ -305,8 +365,11 @@
     }
 
     function renderTopLists(viewed, downloaded) {
-      const viewedHtml = viewed.length ? viewed.slice(0, 10).map((item, index) => `<li class="mb-2"><span class="fw-semibold">${index + 1}. ${item.title}</span><div class="small text-muted">${item.views} views</div></li>`).join('') : '<li>No data available</li>';
-      const downloadedHtml = downloaded.length ? downloaded.slice(0, 10).map((item, index) => `<li class="mb-2"><span class="fw-semibold">${index + 1}. ${item.title}</span><div class="small text-muted">${item.downloads} downloads</div></li>`).join('') : '<li>No data available</li>';
+      // These two lists need per-record view/download stats, which this database does not keep.
+      viewed = Array.isArray(viewed) ? viewed : [];
+      downloaded = Array.isArray(downloaded) ? downloaded : [];
+      const viewedHtml = viewed.length ? viewed.slice(0, 10).map((item, index) => `<li class="mb-2"><span class="fw-semibold">${index + 1}. ${item.title}</span><div class="small text-muted">${item.views} views</div></li>`).join('') : '<li class="text-muted">Not tracked</li>';
+      const downloadedHtml = downloaded.length ? downloaded.slice(0, 10).map((item, index) => `<li class="mb-2"><span class="fw-semibold">${index + 1}. ${item.title}</span><div class="small text-muted">${item.downloads} downloads</div></li>`).join('') : '<li class="text-muted">Not tracked</li>';
       document.getElementById('topViewedList').innerHTML = viewedHtml;
       document.getElementById('topDownloadedList').innerHTML = downloadedHtml;
     }
@@ -327,17 +390,18 @@
       const data = await res.json();
       state.dashboard = data;
       document.getElementById('lastUpdated').textContent = data.generatedAt ? new Date(data.generatedAt).toLocaleString() : 'Unavailable';
-      renderStats({ ...data.stats, hasData: data.hasData });
-      renderCharts(data.charts);
+      renderStats({ ...(data.stats || {}), hasData: data.hasData });
+      renderCharts(data.charts || {});
       renderActivity(data.activity);
-      renderTopLists(data.charts.topViewed, data.charts.topDownloaded);
-      populateFilters(data.filters);
+      renderTopLists(data.charts && data.charts.topViewed, data.charts && data.charts.topDownloaded);
+      populateFilters(data.filters || {});
     }
 
     function populateFilters(filters) {
       const setOptions = (selectId, values) => {
         const select = document.getElementById(selectId);
         if (!select) return;
+        if (!Array.isArray(values)) return;
         const current = select.value;
         select.innerHTML = '<option value="">All</option>' + values.map(value => `<option value="${value}">${value}</option>`).join('');
         if (current) select.value = current;
