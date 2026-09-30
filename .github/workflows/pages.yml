@@ -37,6 +37,19 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      # Pages serves assets with `Cache-Control: max-age=600`, so a browser can pair
+      # a freshly fetched page with the previous deploy's main.js. That is exactly
+      # how `CPRI.apiFetch is not a function` shows up after shipping front-end JS:
+      # the new login.html calls a helper the stale script never defined. Rewriting
+      # the asset URLs per commit gives every deploy a distinct URL, so the page and
+      # its scripts always come from the same build.
+      - name: Cache-bust asset URLs
+        run: |
+          SHA="${GITHUB_SHA::8}"
+          find public -name '*.html' -print0 \
+            | xargs -0 sed -i "s|assets/js/main.js|assets/js/main.js?v=${SHA}|g; s|assets/css/styles.css|assets/css/styles.css?v=${SHA}|g"
+          echo "Stamped ?v=${SHA} onto asset URLs"
+
       - name: Upload public/ as the Pages site
         uses: actions/upload-pages-artifact@v3
         with:
