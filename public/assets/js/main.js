@@ -7,6 +7,23 @@
 // Guaranteed page-loader dismissal (runs no matter what else happens)
 setTimeout(() => { const l = document.getElementById('pageLoader'); if (l) l.classList.add('hide'); }, 2200);
 
+// ============================================================
+//  DEPLOYMENT SETTING — the ONE place the API address lives.
+//
+//  Every /api/... request in this project goes through this value; there are no
+//  scattered API URLs to edit.
+//
+//  • Served by the Express server (`npm start` → http://localhost:3000)?
+//      leave it as '' and the front end calls the API on its own origin.
+//  • Static front end on GitHub Pages with the API hosted elsewhere?
+//      put that origin here, e.g. 'https://cpri-api.onrender.com'
+//      (scheme required, no trailing slash).
+//
+//  A per-browser override, useful for testing without redeploying, wins over this:
+//      localStorage.setItem('cpri-api-base', 'https://my-api.example.com')
+// ============================================================
+window.CPRI_API_BASE = window.CPRI_API_BASE || '';
+
 const CPRI = (() => {
   // ---- API base / transport ------------------------------------------------
   // The front-end talks to the Express back end. When the site is served BY that
@@ -58,16 +75,17 @@ const CPRI = (() => {
     try {
       response = await fetch(path, options);
     } catch {
-      throw new Error('Cannot reach the CPRI server. Start the back end with `npm start` (http://localhost:3000), or configure the API address for this deployment.');
+      throw new Error('Could not reach the CPRI server at ' + path + '. Start it with `npm start` (http://localhost:3000), or set CPRI_API_BASE to your hosted API address.');
     }
     const text = await response.text();
     if (!text) return { res: response, data: null };
     try {
       return { res: response, data: JSON.parse(text) };
     } catch {
-      throw new Error(response.status === 404 || response.status === 405
-        ? 'The CPRI back end is not reachable from this address. This deployment is the static front end only, so sign-in and live data are unavailable here.'
-        : 'The server sent an unexpected (non-JSON) response. Please try again.');
+      // The usual cause: this address is the static front end (GitHub Pages)
+      // answering /api/* with its own HTML 404 page, because no API is configured.
+      throw new Error('The CPRI server did not answer with JSON at ' + path + ' (HTTP ' + response.status +
+        '). Live data and sign-in need the API — start it with `npm start`, or point CPRI_API_BASE at the hosted API address.');
     }
   }
 

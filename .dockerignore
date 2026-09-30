@@ -1,0 +1,19 @@
+# Never ship these into an image.
+node_modules
+.env
+.env.*
+.git
+.gitignore
+.github
+.vscode
+.vs
+
+# Local machine state, logs, dumps and test artifacts.
+.freebuff
+backups
+*.log
+cookies.txt
+
+# Runtime data written by the app (must come from a mounted volume instead).
+server/data/sessions
+server/data/*.key

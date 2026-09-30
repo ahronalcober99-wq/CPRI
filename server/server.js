@@ -196,6 +196,17 @@ app.use(express.static(PUBLIC_DIR, {
   }
 }));
 
+// Liveness probe for hosting platforms (Render/Railway/Fly, Docker, k8s).
+// Always JSON, so a monitor can distinguish "API up" from "database down".
+app.get('/healthz', async (req, res) => {
+  try {
+    await all('SELECT 1 AS ok');
+    res.json({ ok: true, db: 'up', uptime: Math.round(process.uptime()) });
+  } catch (err) {
+    res.status(503).json({ ok: false, db: 'down', error: err.message });
+  }
+});
+
 // Content APIs (switch from readJson to SQL)
 app.get('/api/site', async (req, res) => {
   const row = await fs.readFile(join(DATA_DIR, 'profile.json'), 'utf8').catch(() => '{}');

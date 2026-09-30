@@ -169,6 +169,45 @@ npm run seed
 
 This reads each JSON file and inserts the records into the corresponding MySQL table.
 
+## Deploying the API
+
+GitHub Pages can only serve the static front end, so the Express API and MySQL must run
+somewhere that executes Node.js. Any Node host works — Render, Railway, Fly.io, a VPS, Docker,
+Kubernetes; a `Dockerfile` is included and the start command is `node server/server.js`.
+
+The API must be reachable over **HTTPS**: the session cookie is `SameSite=None; Secure` when
+`CORS_ORIGINS` is set, and a browser rejects that cookie over plain HTTP.
+
+1. **Create the database** on the MySQL host, then load the schema:
+   ```bash
+   mysql -h <host> -u <user> -p < server/init-db.sql
+   ```
+2. **Deploy this repository** with the Dockerfile or a Node buildpack.
+3. **Set the environment variables** below and check the JSON health endpoint:
+   ```bash
+   curl https://<your-api-host>/healthz     # {"ok":true,"db":"up",...}
+   ```
+4. **Point the front end at it** — edit `CPRI_API_BASE` in `public/assets/js/main.js` to the
+   API origin (the single place the API address lives), and list the Pages origin in
+   `CORS_ORIGINS`. Redeploy the Pages site and sign-in works cross-origin.
+
+| Variable | Purpose |
+|---|---|
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_POOL_LIMIT` | MySQL connection — server-side only, never in front-end files |
+| `PORT` | Listening port (most hosts inject this) |
+| `SESSION_SECRET` | Signs the session cookie; set a long random value in production |
+| `CORS_ORIGINS` | Comma-separated front-end origins allowed to call the API, e.g. `https://ahronalcober99-wq.github.io` |
+| `TRUST_PROXY` | `1` when a load balancer terminates TLS, so the `Secure` cookie is actually emitted |
+| `GMAIL_USER`, `GMAIL_APP_PASSWORD` | Sends registration verification codes and password reset links |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Google sign-in |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Admin account seeded on first boot |
+
+Sessions and uploads are written under `server/data/`; on a host with an ephemeral disk, mount
+a volume there or logins and uploaded files disappear on every redeploy.
+
+`server/server.js` reads `process.env.PORT`, and dotenv never overrides an already-set variable,
+so launch locally with an explicit `PORT=3000 node server/server.js`.
+
 ## Project structure
 
 ```
