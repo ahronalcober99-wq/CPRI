@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { promises as fs } from 'fs';
 import express from 'express';
 import session from 'express-session';
@@ -18,13 +18,18 @@ import { reportsRouter } from './reports.js';
 import { notificationsRouter, ensureNotificationsTable } from './notifications.js';
 import { messagesRouter, ensureMessagesTable } from './messages.js';
 import { testConnection } from './db.js';
-import { insert, all } from './server/db/queries.js';
+import { insert, all, get } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const DATA_DIR = join(__dirname, 'data');
 const PUBLIC_DIR = join(__dirname, '..', 'public');
-const PORT = process.env.PORT || 3000;
+// A stray PORT in the shell environment (this machine exports PORT=0, and
+// dotenv never overwrites an existing variable) used to win over .env and bind
+// the server to a random port, so every http://localhost:3000 request failed
+// with a connection error. Only a real, positive port number is honoured.
+const REQUESTED_PORT = Number(process.env.PORT);
+const PORT = Number.isInteger(REQUESTED_PORT) && REQUESTED_PORT > 0 ? REQUESTED_PORT : 3000;
 
 // ---- Process-level crash guards ----------------------------------------
 // One uncaught error used to take the whole server down (e.g. the MariaDB
@@ -181,6 +186,47 @@ app.use('/api/admin', adminInsightsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api', notificationsRouter);
 app.use('/api/messages', messagesRouter);
+
+// ---- Page access control --------------------------------------------------
+// The API already refuses anonymous calls with JSON 401s, but the page shells
+// for member and admin screens were downloadable by anyone. Those pages have
+// nothing to show a signed-out visitor, so gate them here and send the visitor
+// to the login form with a ?next= link back. Server-side, so it does not depend
+// on any page's JavaScript. (A statically hosted copy of the front end — GitHub
+// Pages — has no server to run this; there the API guard is what protects data.)
+const ADMIN_ONLY_PAGES = new Set([
+  'admin-dashboard.html', 'research-impact-dashboard.html', 'audit-logs.html',
+  'calendar.html', 'file-manager.html', 'email-notifications.html', 'reports.html'
+]);
+const MEMBER_ONLY_PAGES = new Set([
+  'account.html', 'profile.html', 'messages.html',
+  'submissions.html', 'submission.html', 'submit.html',
+  'ethics.html', 'ethics-detail.html', 'ethics-form.html',
+  'researcher-form.html', 'publication-form.html', 'innovation-extension-form.html',
+  'event-abstract.html', 'event-registration.html'
+]);
+
+app.use(async (req, res, next) => {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+  const page = basename(req.path);
+  if (!page.endsWith('.html')) return next();
+  const adminOnly = ADMIN_ONLY_PAGES.has(page);
+  if (!adminOnly && !MEMBER_ONLY_PAGES.has(page)) return next();
+
+  let user = null;
+  if (req.session?.userId) {
+    user = await get('SELECT id, role, status FROM users WHERE id = ?', [req.session.userId]).catch(() => null);
+  }
+  if (!user || user.status === 'disabled') {
+    const next = encodeURIComponent(req.originalUrl);
+    return res.redirect(302, `/login.html?next=${next}`);
+  }
+  if (adminOnly && user.role !== 'admin') {
+    return res.redirect(302, '/account.html');
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 // Serve static assets with `Cache-Control: no-cache` (revalidate every load via
 // ETag/Last-Modified) instead of default heuristic caching. In-app browsers

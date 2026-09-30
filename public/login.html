@@ -143,7 +143,11 @@
           body: JSON.stringify(data)
         });
         if (!res.ok) throw new Error((out && out.error) || 'Login failed');
-        window.location.href = 'account.html';
+        // Server-side page guards send visitors here with ?next=<path> so a
+        // protected page is where they land once they are signed in. Only
+        // site-relative paths are followed (never an off-site address).
+        const next = new URLSearchParams(window.location.search).get('next');
+        window.location.href = (next && /^\/(?!\/)/.test(next)) ? next : 'account.html';
       } catch (err) {
         message.className = 'form-message error';
         message.textContent = err.message;

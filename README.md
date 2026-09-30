@@ -205,8 +205,17 @@ The API must be reachable over **HTTPS**: the session cookie is `SameSite=None; 
 Sessions and uploads are written under `server/data/`; on a host with an ephemeral disk, mount
 a volume there or logins and uploaded files disappear on every redeploy.
 
-`server/server.js` reads `process.env.PORT`, and dotenv never overrides an already-set variable,
-so launch locally with an explicit `PORT=3000 node server/server.js`.
+`server/server.js` reads `process.env.PORT`, and dotenv never overrides an already-set variable.
+An empty or `0` value — some shells export `PORT=0` — is ignored and the server falls back to 3000,
+so plain `npm start` always lands on <http://localhost:3000>.
+
+`npm run check:api` smoke-tests the whole API surface (JSON everywhere, `401` for anonymous member
+and admin calls instead of HTML, admin login, and that logout really ends the session):
+
+```bash
+npm run check:api
+CPRI_BASE=https://your-api.example.com npm run check:api   # against a deployed API
+```
 
 ## Project structure
 

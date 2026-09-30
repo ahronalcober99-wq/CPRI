@@ -1,0 +1,53 @@
+# Render blueprint for the CPRI API.
+#
+# Render → New → Blueprint → pick this repository. Render reads this file and
+# asks for every value marked `sync: false` (the secrets). Nothing here contains
+# a credential.
+#
+# After the first deploy, set the front end's API address to this service's URL
+# (see docs/SETUP-DEPLOY-TEST.md) and add the Pages origin to CORS_ORIGINS.
+services:
+  - type: web
+    name: cpri-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: node server/server.js
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: '20'
+      - key: NODE_ENV
+        value: production
+      # The front end runs on a different origin (GitHub Pages), so the session
+      # cookie must be SameSite=None; Secure. Render terminates TLS, so Express
+      # needs TRUST_PROXY to see the request as secure.
+      - key: TRUST_PROXY
+        value: '1'
+      - key: CORS_ORIGINS
+        value: https://ahronalcober99-wq.github.io
+      # Asked for at deploy time — never stored in this file.
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false

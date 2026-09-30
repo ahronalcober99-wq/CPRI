@@ -14,7 +14,8 @@
     "seed:demo": "node server/server/seed-demo.mjs",
     "seed:demo:clear": "node server/server/seed-demo.mjs --clear",
     "migrate": "node server/server/seed.mjs",
-    "test:dropdowns": "node server/dev/test-dropdowns.mjs"
+    "test:dropdowns": "node server/dev/test-dropdowns.mjs",
+    "check:api": "node server/dev/check-api.mjs"
   },
   "engines": {
     "node": ">=18"

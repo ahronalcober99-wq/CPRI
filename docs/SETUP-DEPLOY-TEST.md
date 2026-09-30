@@ -48,15 +48,16 @@ MySQL must be running **before** the server, or every `/api/` call fails.
 npm install
 
 # 3. Server
-PORT=3000 npm start          # = node server/server.js
-#   or: PORT=3000 node server/server.js
-#   or during development: PORT=3000 npm run dev   (node --watch)
+npm start                    # = node server/server.js
+#   or: node server/server.js
+#   or during development: npm run dev   (node --watch)
 ```
 
-Windows note: always pass `PORT=3000` explicitly. A `PORT` left over in the
-shell environment from another tool will otherwise move the server off 3000.
-To stop a stale listener: `taskkill //PID <pid> //F` (find it with
-`netstat -ano | grep :3000`).
+The server only honours a real, positive `PORT`; an empty or `0` value (some
+shells export `PORT=0`, and dotenv never overwrites an existing variable)
+falls back to 3000, so `npm start` puts the site on <http://localhost:3000>
+without any prefix. To stop a stale listener:
+`taskkill //PID <pid> //F` (find it with `netstat -ano | grep :3000`).
 
 ## 3. Local website URL
 
@@ -186,6 +187,11 @@ docker run -p 3000:3000 \
 * Point `DB_HOST` at a managed MySQL that the host can reach (a database on your
   laptop is not reachable from the internet).
 
+**Render blueprint.** `render.yaml` is committed: Render → New → Blueprint →
+this repository. It prompts for `DB_*`, `ADMIN_*`, `GMAIL_*` and `GOOGLE_*`
+(`sync: false`), generates `SESSION_SECRET`, and presets `CORS_ORIGINS` and
+`TRUST_PROXY=1`.
+
 **Back-end host must have the data.** Content pages read tracked JSON in
 `server/data/`, but users, submissions, repository records, inquiries and the
 impact dashboard read MySQL. Migrate/seed the managed database before the front
@@ -267,6 +273,29 @@ browser while signed in as admin.
 
 ## 12. How to verify every endpoint
 
+The whole surface is covered by one command:
+
+```bash
+npm run check:api
+# CPRI API check against http://localhost:3000
+#   ok   GET /healthz — status 200, db up
+#   ok   GET /api/site — status 200, JSON, object
+#   ...
+#   36/36 checks passed
+```
+
+It checks that every public endpoint answers JSON, that every protected and
+admin endpoint answers `401` JSON **rather than an HTML page** when anonymous,
+that an unknown route is a JSON `404`, that the contact form writes a row, that
+a wrong password is a `401`, and — when `ADMIN_EMAIL`/`ADMIN_PASSWORD` are set
+in `.env` — that admin login works, every admin endpoint answers `200`, and that
+logout really invalidates the session. Exit code is non-zero on any failure, so
+it can run in CI. It writes one `inquiries` row; the command prints the SQL to
+delete it. Point it at a deployed API with
+`CPRI_BASE=https://your-api.example.com npm run check:api`.
+
+By hand:
+
 ```bash
 for p in site announcements events research agenda researchers publications \
          events-module notifications repository innovation-extension; do
@@ -283,6 +312,30 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://localhost:3000/api/conta
 curl -s -o /dev/null -w '%{http_code} %{content_type}\n' \
      http://localhost:3000/api/does-not-exist                                    # 404 application/json
 ```
+
+## 13. Protected pages
+
+`server/server.js` gates the member and admin page shells themselves, not just
+their data:
+
+* anonymous → `302 /login.html?next=<the page you asked for>`
+* signed in as a non-admin on an admin page → `302 /account.html`
+* `login.html` follows a site-relative `?next=` after a successful sign-in
+
+Admin pages: `admin-dashboard.html`, `research-impact-dashboard.html`,
+`audit-logs.html`, `calendar.html`, `file-manager.html`,
+`email-notifications.html`, `reports.html`.
+Member pages: `account.html`, `profile.html`, `messages.html`,
+`submissions.html`, `submission.html`, `submit.html`, `ethics*.html`,
+`researcher-form.html`, `publication-form.html`,
+`innovation-extension-form.html`, `event-abstract.html`,
+`event-registration.html`. Public pages are untouched.
+
+This guard runs on the Express server. A statically hosted copy of the front
+end (GitHub Pages) has no server to run it, so there the JSON `401` from the API
+is what protects the data — the page shell is downloadable but shows nothing.
+If you serve the front end from the API host as well, visitors also get the
+redirect.
 
 Research records live at `/api/submissions` and `/api/repository` (both
 authenticated); `/api/research` is the public content feed. There are no
