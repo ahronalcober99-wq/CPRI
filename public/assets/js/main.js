@@ -44,6 +44,20 @@ const CPRI = (() => {
 
   const API_BASE = apiBase();
 
+  // True when the page is served by a local dev server (Express already serves the API too).
+  function isLocalHost() {
+    return /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+  }
+
+  // A statically hosted copy with no API configured fails in a confusing way: the
+  // web host answers /api/* itself, rejecting POST with 405 and returning HTML. Say
+  // so up front in the console instead of leaving it to be decoded from a response.
+  if (!API_BASE && location.protocol.startsWith('http') && !isLocalHost()) {
+    console.warn('[CPRI] No API address is configured on ' + location.host +
+      ', so /api/* requests will be answered by this static host (POST → 405, HTML bodies).' +
+      " Set CPRI_API_BASE in public/assets/js/main.js to the hosted HTTPS API address.");
+  }
+
   // Rewrite root-relative API calls to the configured origin so ONE setting moves
   // the whole site (there are ~168 fetch('/api/...') call sites). Only installed
   // when a base is configured, so same-origin behaviour is unchanged.
@@ -82,8 +96,15 @@ const CPRI = (() => {
     try {
       return { res: response, data: JSON.parse(text) };
     } catch {
-      // The usual cause: this address is the static front end (GitHub Pages)
-      // answering /api/* with its own HTML 404 page, because no API is configured.
+      // Two very different situations produce a non-JSON reply:
+      //  • no API address is configured, so the static host (GitHub Pages) answered the
+      //    request itself — it rejects non-GET methods with 405 and returns an HTML error;
+      //  • the configured API replied with something unexpected.
+      if (!API_BASE && !isLocalHost()) {
+        throw new Error('This deployment has no API address configured, so /api/... is answered by the static host (' +
+          location.host + ', HTTP ' + response.status + ') instead of the CPRI server. Set CPRI_API_BASE in ' +
+          'public/assets/js/main.js to the HTTPS address of the hosted API and redeploy the site.');
+      }
       throw new Error('The CPRI server did not answer with JSON at ' + path + ' (HTTP ' + response.status +
         '). Live data and sign-in need the API — start it with `npm start`, or point CPRI_API_BASE at the hosted API address.');
     }
