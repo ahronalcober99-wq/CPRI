@@ -259,7 +259,11 @@
           showMsg('error', 'Network error during upload.');
         };
 
-        xhr.open('POST', '/api/admin/files/upload', true);
+        // apiUrl() points the upload at the configured API origin, and
+        // withCredentials keeps the session cookie attached when the front end
+        // is hosted on a different domain (GitHub Pages).
+        xhr.open('POST', CPRI.apiUrl('/api/admin/files/upload'), true);
+        xhr.withCredentials = true;
         xhr.send(formData);
       } catch (e) {
         progressText.textContent = 'Upload failed.';

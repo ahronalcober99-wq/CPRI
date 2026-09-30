@@ -996,7 +996,11 @@ async function initAuth() {
   }
   const adminUser = await get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
   if (!adminUser) {
-    const adminPassword = process.env.ADMIN_PASSWORD || 'admin12345';
+    // Never boot a public deployment with a guessable admin password: when
+    // ADMIN_PASSWORD is unset, generate one and print it once so the owner can
+    // sign in and change it.
+    const generated = !process.env.ADMIN_PASSWORD;
+    const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(12).toString('base64url');
     const admin = {
       id: randomUUID(),
       username: 'admin',
@@ -1016,7 +1020,11 @@ async function initAuth() {
     createdAt: new Date().toISOString()
   };
   await insert('users', admin);
-    console.log('[seed] Default admin created — username: admin | password: ' + adminPassword);
+    console.log('[seed] Default admin created — username: admin');
+    if (generated) {
+      console.log('[seed] ADMIN_PASSWORD was not set, so this one-time password was generated: ' + adminPassword);
+      console.log('[seed] Sign in as admin and change it, or set ADMIN_PASSWORD in the environment and recreate the account.');
+    }
   }
 }
 

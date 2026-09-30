@@ -77,6 +77,26 @@ const CPRI = (() => {
     };
   }
 
+  // Downloads and other plain links cannot go through fetch: 46 anchors in the site
+  // are generated as href="/api/..." (report exports, uploaded files, certificates).
+  // A capture-phase click listener rewrites them at click time, which also covers
+  // links created later by innerHTML, so no page needs its own API logic.
+  if (API_BASE) {
+    document.addEventListener('click', (event) => {
+      const anchor = event.target && event.target.closest ? event.target.closest('a[href]') : null;
+      if (!anchor) return;
+      const href = anchor.getAttribute('href') || '';
+      if (href.startsWith('/api/')) anchor.setAttribute('href', API_BASE + href);
+    }, true);
+  }
+
+  // Build an absolute API URL, for the rare places that need a plain link
+  // (window.open, <img src>, and so on) instead of a fetch.
+  function apiUrl(path) {
+    if (!API_BASE || !path.startsWith('/api/')) return path;
+    return API_BASE + path;
+  }
+
   // Read a JSON reply without choking on an HTML error page: static hosts answer
   // /api/* with a 404 HTML document, which reached users as
   // `Unexpected token '<', "<html> <he"... is not valid JSON`.
@@ -89,7 +109,11 @@ const CPRI = (() => {
     try {
       response = await fetch(path, options);
     } catch {
-      throw new Error('Could not reach the CPRI server at ' + path + '. Start it with `npm start` (http://localhost:3000), or set CPRI_API_BASE to your hosted API address.');
+      // The API address is configured but nothing answered (DNS, refused
+      // connection, certificate, or a host that is asleep).
+      throw new Error(API_BASE
+        ? 'Unable to connect to the CPRI server at ' + API_BASE + '. The API host may be starting up or unreachable — please try again in a moment.'
+        : 'Could not reach the CPRI server. Start it with `npm start` (http://localhost:3000), or set CPRI_API_BASE in public/assets/js/main.js to your hosted API address.');
     }
     const text = await response.text();
     if (!text) return { res: response, data: null };
@@ -105,8 +129,12 @@ const CPRI = (() => {
           location.host + ', HTTP ' + response.status + ') instead of the CPRI server. Set CPRI_API_BASE in ' +
           'public/assets/js/main.js to the HTTPS address of the hosted API and redeploy the site.');
       }
-      throw new Error('The CPRI server did not answer with JSON at ' + path + ' (HTTP ' + response.status +
-        '). Live data and sign-in need the API — start it with `npm start`, or point CPRI_API_BASE at the hosted API address.');
+      if (response.status >= 500) {
+        throw new Error('The CPRI server hit a problem handling ' + path + ' (HTTP ' + response.status +
+          '). Please try again in a moment; if it keeps failing, check the API logs.');
+      }
+      throw new Error('The CPRI server at ' + (API_BASE || location.origin) + ' answered ' + path +
+        ' with a non-JSON response (HTTP ' + response.status + ').');
     }
   }
 
@@ -1983,7 +2011,9 @@ const CPRI = (() => {
     // signed in (e.g. Google blocked the embedded browser and they pressed
     // Back), we offer the code-based flow instead of leaving them stuck.
     sessionStorage.setItem('cpriGoogleAttempt', '1');
-    window.location.href = '/api/auth/google' + (fromParam ? '?' + fromParam : '');
+    // apiUrl() keeps the OAuth start on the API host when the front end is
+    // hosted elsewhere (GitHub Pages), instead of the static host.
+    window.location.href = apiUrl('/api/auth/google') + (fromParam ? '?' + fromParam : '');
     return true;
   }
 
@@ -2060,7 +2090,7 @@ const CPRI = (() => {
   document.addEventListener('DOMContentLoaded', () => { injectLayout(); injectConfirmDialog(); });
 
   return {
-    fetchJson, apiBase, apiFetch, fmtDate, escapeHtml, reveal: initReveal, toast, SITE,
+    fetchJson, apiBase, apiUrl, apiFetch, fmtDate, escapeHtml, reveal: initReveal, toast, SITE,
     buildResearch, buildNews, buildResearchers, buildStats,
     buildEvents,
     buildFaqs, initHeroExtras, loadPublicDashboard, loadHeroStats,

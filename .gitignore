@@ -16,3 +16,7 @@ public/assets/uploads/
 !.freebuff/run.md
 public/.freebuff/
 cookies.txt
+
+# Private database dumps (real user records) — db/schema.sql is the tracked one.
+cpri-data.sql
+*.data.sql
