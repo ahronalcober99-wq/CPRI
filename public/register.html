@@ -107,7 +107,6 @@
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script>
-    const API_BASE = location.protocol.startsWith('http') ? location.origin : 'http://localhost:3000';
     const form = document.getElementById('register-form');
     const message = document.getElementById('message');
     const btn = document.getElementById('submit-btn');
@@ -227,14 +226,20 @@
       }, 1000);
     }
 
+    // Every auth call goes through the shared transport: it applies the configured
+    // API base and turns a non-JSON reply (the static GitHub Pages copy answers
+    // /api/* with a 404 HTML page) into a readable message instead of
+    // `Unexpected token '<', "<html> <he"... is not valid JSON`.
     async function postJSON(url, payload) {
-      const res = await fetch(API_BASE + url, {
-        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      let out;
-      try { out = await res.json(); } catch { out = {}; }
-      return { res, out };
+      try {
+        const { res, data } = await CPRI.apiFetch(url, {
+          method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        return { res, out: data || {} };
+      } catch (err) {
+        return { res: { ok: false, status: 0 }, out: { error: err.message } };
+      }
     }
 
     sendCodeBtn.addEventListener('click', async () => {
@@ -417,12 +422,11 @@
       }
       btn.disabled = true; btn.textContent = 'Registering…';
       try {
-        const res = await fetch(API_BASE + '/api/auth/register', {
+        const { res, data: out } = await CPRI.apiFetch('/api/auth/register', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
-        const out = await res.json();
-        if (!res.ok) throw new Error(out.error || 'Registration failed');
+        if (!res.ok) throw new Error((out && out.error) || 'Registration failed');
         message.className = 'form-message success';
         message.textContent = out.message + (res.status === 202 ? '' : ' Redirecting to login…');
         if (res.status !== 202) setTimeout(() => (window.location.href = 'login.html'), 1200);

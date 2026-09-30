@@ -8,6 +8,63 @@
 setTimeout(() => { const l = document.getElementById('pageLoader'); if (l) l.classList.add('hide'); }, 2200);
 
 const CPRI = (() => {
+  // ---- API base / transport ------------------------------------------------
+  // The front-end talks to the Express back end. When the site is served BY that
+  // server (`npm start` -> http://localhost:3000) root-relative '/api/...' calls
+  // just work. A statically hosted copy (GitHub Pages) has no back end, so point
+  // it at a deployed API either before this script loads:
+  //   <script>window.CPRI_API_BASE = 'https://your-api.example.com';</script>
+  // or at runtime:
+  //   localStorage.setItem('cpri-api-base', 'https://your-api.example.com')
+  // Leaving it unset keeps every call same-origin, so local dev is untouched.
+  function apiBase() {
+    let override = null;
+    try { override = window.CPRI_API_BASE || localStorage.getItem('cpri-api-base'); } catch { /* storage blocked */ }
+    if (override) return String(override).replace(/\/+$/, '');
+    if (location.protocol === 'file:') return 'http://localhost:3000';
+    return '';
+  }
+
+  const API_BASE = apiBase();
+
+  // Rewrite root-relative API calls to the configured origin so ONE setting moves
+  // the whole site (there are ~168 fetch('/api/...') call sites). Only installed
+  // when a base is configured, so same-origin behaviour is unchanged.
+  if (API_BASE && typeof window.fetch === 'function') {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      if (typeof input === 'string' && input.startsWith('/api/')) {
+        input = API_BASE + input;
+      } else if (typeof Request !== 'undefined' && input instanceof Request) {
+        const u = new URL(input.url, location.href);
+        if (u.pathname.startsWith('/api/')) input = new Request(API_BASE + u.pathname + u.search, input);
+      }
+      return nativeFetch(input, init);
+    };
+  }
+
+  // Read a JSON reply without choking on an HTML error page: static hosts answer
+  // /api/* with a 404 HTML document, which reached users as
+  // `Unexpected token '<', "<html> <he"... is not valid JSON`.
+  async function apiFetch(path, options) {
+    if (API_BASE && path.startsWith('/api/')) path = API_BASE + path;
+    let response;
+    try {
+      response = await fetch(path, options);
+    } catch {
+      throw new Error('Cannot reach the CPRI server. Start the back end with `npm start` (http://localhost:3000), or configure the API address for this deployment.');
+    }
+    const text = await response.text();
+    if (!text) return { res: response, data: null };
+    try {
+      return { res: response, data: JSON.parse(text) };
+    } catch {
+      throw new Error(response.status === 404 || response.status === 405
+        ? 'The CPRI back end is not reachable from this address. This deployment is the static front end only, so sign-in and live data are unavailable here.'
+        : 'The server sent an unexpected (non-JSON) response. Please try again.');
+    }
+  }
+
   const SITE = {
     shortName: 'CPRI',
     name: 'Center for Policy and Research Innovations',
@@ -1958,7 +2015,7 @@ const CPRI = (() => {
   document.addEventListener('DOMContentLoaded', () => { injectLayout(); injectConfirmDialog(); });
 
   return {
-    fetchJson, fmtDate, escapeHtml, reveal: initReveal, toast, SITE,
+    fetchJson, apiBase, apiFetch, fmtDate, escapeHtml, reveal: initReveal, toast, SITE,
     buildResearch, buildNews, buildResearchers, buildStats,
     buildEvents,
     buildFaqs, initHeroExtras, loadPublicDashboard, loadHeroStats,

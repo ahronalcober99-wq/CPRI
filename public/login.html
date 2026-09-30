@@ -64,7 +64,6 @@
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script>
-    const API_BASE = location.protocol.startsWith('http') ? location.origin : 'http://localhost:3000';
     const form = document.getElementById('login-form');
     const message = document.getElementById('message');
     const btn = document.getElementById('submit-btn');
@@ -137,12 +136,13 @@
       const data = Object.fromEntries(new FormData(form).entries());
       btn.disabled = true; btn.textContent = 'Logging in…';
       try {
-        const res = await fetch(API_BASE + '/api/auth/login', {
+        // CPRI.apiFetch applies the configured API base (same-origin by default)
+        // and reports a readable error when /api/* answers with an HTML page.
+        const { res, data: out } = await CPRI.apiFetch('/api/auth/login', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
-        const out = await res.json();
-        if (!res.ok) throw new Error(out.error || 'Login failed');
+        if (!res.ok) throw new Error((out && out.error) || 'Login failed');
         window.location.href = 'account.html';
       } catch (err) {
         message.className = 'form-message error';

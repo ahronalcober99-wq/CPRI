@@ -63,18 +63,22 @@
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script>
-    const API_BASE = location.protocol.startsWith('http') ? location.origin : 'http://localhost:3000';
     const message = document.getElementById('message');
     const form = document.getElementById('setup-form');
     const btn = document.getElementById('submit-btn');
 
     (async () => {
-      const res = await fetch(API_BASE + '/api/auth/me', { credentials: 'include' });
-      if (!res.ok) { window.location.href = 'login.html'; return; }
-      const { user } = await res.json();
-      if (!user || !user.needsSetup) { window.location.href = 'account.html'; return; }
-      if (user.fullName) document.getElementById('fullName').value = user.fullName;
-      document.getElementById('email').value = user.email || '';
+      try {
+        const { res, data } = await CPRI.apiFetch('/api/auth/me', { credentials: 'include' });
+        const user = data && data.user;
+        if (!res.ok || !user) { window.location.href = 'login.html'; return; }
+        if (!user.needsSetup) { window.location.href = 'account.html'; return; }
+        if (user.fullName) document.getElementById('fullName').value = user.fullName;
+        document.getElementById('email').value = user.email || '';
+      } catch (err) {
+        message.className = 'form-message error';
+        message.textContent = err.message;
+      }
     })();
 
     form.addEventListener('submit', async (e) => {
@@ -89,13 +93,12 @@
       data.role = role.value;
       btn.disabled = true; btn.textContent = 'Saving…';
       try {
-        const res = await fetch(API_BASE + '/api/auth/profile/setup', {
+        const { res, data: out } = await CPRI.apiFetch('/api/auth/profile/setup', {
           method: 'PUT', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
-        const out = await res.json();
-        if (!res.ok) throw new Error(out.error || 'Save failed');
+        if (!res.ok) throw new Error((out && out.error) || 'Save failed');
         window.location.href = 'account.html';
       } catch (err) {
         message.className = 'form-message error';
