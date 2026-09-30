@@ -383,7 +383,7 @@ router.post('/login', async (req, res) => {
   }
   const user = await get('SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)', [String(identifier).toLowerCase(), String(identifier).toLowerCase()]);
   if (!user) {
-    return res.status(401).json({ error: 'Invalid credentials.' });
+    return res.status(401).json({ error: 'Invalid username/email or password.' });
   }
   if (user.status === 'pending') {
     return res.status(403).json({ error: 'Your account is pending admin approval.' });
@@ -393,7 +393,7 @@ router.post('/login', async (req, res) => {
   }
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) {
-    return res.status(401).json({ error: 'Invalid credentials.' });
+    return res.status(401).json({ error: 'Invalid username/email or password.' });
   }
   req.session.userId = user.id;
   addLog('login', `User ${user.username} logged in`, req);
