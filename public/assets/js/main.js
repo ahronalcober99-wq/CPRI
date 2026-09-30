@@ -25,6 +25,7 @@ setTimeout(() => { const l = document.getElementById('pageLoader'); if (l) l.cla
 window.CPRI_API_BASE = window.CPRI_API_BASE || '';
 
 const CPRI = (() => {
+     const CPRI_API_BASE = "https://cpri-api.onrender.com";
   // ---- API base / transport ------------------------------------------------
   // The front-end talks to the Express back end. When the site is served BY that
   // server (`npm start` -> http://localhost:3000) root-relative '/api/...' calls
