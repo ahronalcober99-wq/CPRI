@@ -30,18 +30,9 @@ const ROLE_LABELS = {
   public_visitor: 'Public Visitor'
 };
 
-async function ensureMessagesTable() {
-  await run(`CREATE TABLE IF NOT EXISTS direct_messages (
-    id VARCHAR(36) PRIMARY KEY,
-    senderId VARCHAR(36),
-    recipientId VARCHAR(36),
-    body TEXT,
-    readAt DATETIME NULL,
-    createdAt DATETIME
-  )`);
-  await run('CREATE INDEX IF NOT EXISTS idx_dm_sender ON direct_messages(senderId, createdAt)');
-  await run('CREATE INDEX IF NOT EXISTS idx_dm_recipient ON direct_messages(recipientId, createdAt)');
-}
+// The table is created by the Netlify Database migrations in
+// netlify/database/migrations; kept as a no-op so existing callers still work.
+async function ensureMessagesTable() {}
 
 // Async middleware: requireAuth + the user must be active and in DM_ROLES.
 function requireDMRole(req, res, next) {

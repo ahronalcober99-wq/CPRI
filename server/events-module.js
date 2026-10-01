@@ -6,7 +6,6 @@ import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
-import pool from './db.js';
 import { notify } from './notifications.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -16,21 +15,9 @@ const DATA_DIR = join(__dirname, 'data');
 
 const router = Router();
 
-// Add the `photo` column on existing installs (fresh installs get it from
-// init-db.sql). Called once at boot. Only the duplicate-column error is
-// expected; anything else is logged so a real failure isn't hidden.
+// The schema (including the `photo` column) is managed by the Netlify Database
+// migrations in netlify/database/migrations. Called once at boot.
 export async function ensureEventsSchema() {
-  try {
-    await pool.query(
-      "ALTER TABLE events_module ADD COLUMN photo VARCHAR(500) DEFAULT ''"
-    );
-  } catch (err) {
-    if (err && (err.code === 'ER_DUP_FIELDNAME' || err.errno === 1060)) {
-      // Already migrated.
-    } else {
-      console.error('[events] schema ensure failed:', err && err.message);
-    }
-  }
   // Sweep leftover temp folders from crashed/interrupted requests.
   try {
     await fs.rm(join(UPLOAD_DIR, '_tmp'), { recursive: true, force: true });
