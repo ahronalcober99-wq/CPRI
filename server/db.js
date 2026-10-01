@@ -40,7 +40,72 @@ const pool = mysql.createPool({
   timezone: 'Z'
 });
 
+const rawPassword = String(process.env.DB_PASSWORD ?? localDefaults?.password ?? '');
+
 console.log(`[db] MySQL connection host=${databaseHost} port=${databasePort} ssl=${sslEnabled}`);
+
+// A password that arrives with surrounding whitespace or wrapping quotation
+// marks is sent to the server verbatim and always fails with "Access denied".
+// This happens when a value is pasted as `"secret"` (including the quotes) or
+// copied with a trailing newline into a host's env-var box. Flag the *shape*
+// (never the value) so the cause is obvious from the deploy log.
+if (rawPassword !== rawPassword.trim() || /^(['"]).*\1$/.test(rawPassword)) {
+  console.warn('[db] DB_PASSWORD has surrounding whitespace or quotation marks. '
+    + 'They are sent verbatim and cause "Access denied" — re-enter the password without them.');
+}
+
+// The connection target, minus the secret. Used by the boot log and the
+// `npm run doctor` diagnostic so both describe the same configuration.
+export function describeDbTarget() {
+  return {
+    host: databaseHost,
+    port: databasePort,
+    user: process.env.DB_USER || localDefaults?.user,
+    database: databaseName,
+    ssl: sslEnabled
+  };
+}
+
+// Turns a driver error into the likely cause and the fix, so a failed
+// connection reports something actionable instead of a bare error code.
+// Returns null when the error is not one we can explain. Never includes the
+// password (the driver itself only ever reports "(using password: YES/NO)").
+export function explainDbError(err) {
+  if (!err) return null;
+  const code = err.code || '';
+  const errno = err.errno;
+  const message = String(err.message || '');
+
+  if (code === 'ER_ACCESS_DENIED_ERROR' || errno === 1045) {
+    return [
+      'Cause: the database rejected the username/password.',
+      '  • DB_PASSWORD is wrong or stale — re-copy it from the database console.',
+      '  • The database firewall does not allow this host\'s public IP (see docs/FIX-DB-CONNECTION.md).',
+      '  • DB_USER is truncated (some providers need the full prefixed name, e.g. "abc123.root").'
+    ].join('\n');
+  }
+  if (code === 'ER_DBACCESS_DENIED_ERROR' || errno === 1044) {
+    return 'Cause: the user may not access DB_NAME. Grant it or pick a database the user owns.';
+  }
+  if (code === 'ER_BAD_DB_ERROR' || errno === 1049) {
+    return `Cause: database "${databaseName}" does not exist on the server. Create it, or fix DB_NAME.`;
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') {
+    return `Cause: the hostname "${databaseHost}" does not resolve. Check DB_HOST for typos.`;
+  }
+  if (code === 'ECONNREFUSED') {
+    return `Cause: nothing is listening on ${databaseHost}:${databasePort}. Check DB_PORT `
+      + '(TiDB Cloud uses 4000, not 3306) and that the server is running.';
+  }
+  if (code === 'ETIMEDOUT' || code === 'ESOCKET' || code === 'PROTOCOL_CONNECTION_LOST') {
+    return 'Cause: the connection timed out or was dropped mid-handshake. Usually a firewall '
+      + 'blocking this host\'s public IP, or the database not exposing a public endpoint.';
+  }
+  if (/self.signed|certificate|TLS|SSL/i.test(message)) {
+    return 'Cause: the TLS handshake failed. Set DB_SSL=true for a managed host, or DB_SSL=false for a local one.';
+  }
+  return null;
+}
 
 export async function testConnection() {
   let c;
@@ -51,6 +116,8 @@ export async function testConnection() {
     return true;
   } catch (err) {
     console.warn('[db] MySQL not available — running in file-only mode.', err.message);
+    const hint = explainDbError(err);
+    if (hint) console.warn('[db] ' + hint.replace(/\n/g, '\n[db] '));
     return false;
   } finally {
     if (c) c.release();
