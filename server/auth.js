@@ -993,19 +993,6 @@ router.delete('/admin/users/:id', requireAdmin, async (req, res) => {
 
 // ---------- Seed default admin ----------
 async function initAuth() {
-  // Boot migration: user_prefs was added after the users table shipped, so
-  // existing databases need the column added once. MariaDB ignores it if
-  // the column already exists.
-  try {
-    await run('ALTER TABLE users ADD COLUMN IF NOT EXISTS user_prefs JSON');
-  } catch (err) {
-    console.warn('[auth] user_prefs migration skipped:', err.message);
-  }
-  try {
-    await run('ALTER TABLE users ADD COLUMN IF NOT EXISTS setupPending TINYINT(1) DEFAULT 0');
-  } catch (err) {
-    console.warn('[auth] setupPending migration skipped:', err.message);
-  }
   const adminUser = await get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
   if (!adminUser) {
     // Never boot a public deployment with a guessable admin password: when

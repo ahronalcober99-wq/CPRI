@@ -38,19 +38,9 @@ const DEFAULT_PREFS = {
   quietHours: { enabled: false, start: '22:00', end: '07:00' }
 };
 
-async function ensureNotificationsTable() {
-  await run(`CREATE TABLE IF NOT EXISTS notifications (
-    id VARCHAR(36) PRIMARY KEY,
-    userId VARCHAR(36),
-    action VARCHAR(80),
-    title VARCHAR(255),
-    message TEXT,
-    link VARCHAR(255),
-    readAt DATETIME NULL,
-    createdAt DATETIME
-  )`);
-  await run('CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(userId, createdAt)');
-}
+// The table is created by the Netlify Database migrations in
+// netlify/database/migrations; kept as a no-op so existing callers still work.
+async function ensureNotificationsTable() {}
 
 async function loadPrefs(userId) {
   if (!userId) return DEFAULT_PREFS;
