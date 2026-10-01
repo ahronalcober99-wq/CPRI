@@ -22,7 +22,7 @@ setTimeout(() => { const l = document.getElementById('pageLoader'); if (l) l.cla
 //  A per-browser override, useful for testing without redeploying, wins over this:
 //      localStorage.setItem('cpri-api-base', 'https://my-api.example.com')
 // ============================================================
-window.CPRI_API_BASE = window.CPRI_API_BASE || '';
+window.CPRI_API_BASE = window.CPRI_API_BASE || 'https://YOUR-RENDER-URL.onrender.com';
 
 const CPRI = (() => {
      const CPRI_API_BASE = "https://cpri-api.onrender.com";
