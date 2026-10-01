@@ -17,21 +17,30 @@ if (isProduction) {
 }
 
 const databaseName = process.env.DB_NAME || localDefaults?.database;
+const databaseHost = process.env.DB_HOST || localDefaults?.host;
+const databasePort = Number(process.env.DB_PORT || localDefaults?.port);
+const normalizedHost = databaseHost.toLowerCase().replace(/^\[|\]$/g, '');
+const isLoopbackHost = normalizedHost === 'localhost'
+  || normalizedHost === '127.0.0.1'
+  || normalizedHost === '::1';
+const sslEnabled = process.env.DB_SSL === 'true' || !isLoopbackHost;
 
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || localDefaults?.host,
-  port: Number(process.env.DB_PORT || localDefaults?.port),
+  host: databaseHost,
+  port: databasePort,
   user: process.env.DB_USER || localDefaults?.user,
   password: process.env.DB_PASSWORD ?? localDefaults?.password,
   database: databaseName,
-  ...(process.env.DB_SSL === 'true'
-    ? { ssl: { rejectUnauthorized: true } }
+  ...(sslEnabled
+    ? { ssl: { minVersion: 'TLSv1.2', rejectUnauthorized: true } }
     : {}),
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_POOL_LIMIT || 10),
   charset: 'utf8mb4',
   timezone: 'Z'
 });
+
+console.log(`[db] MySQL connection host=${databaseHost} port=${databasePort} ssl=${sslEnabled}`);
 
 export async function testConnection() {
   let c;
