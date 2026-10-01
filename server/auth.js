@@ -381,7 +381,19 @@ router.post('/login', async (req, res) => {
   if (!identifier || !password) {
     return res.status(400).json({ error: 'Username/email and password are required.' });
   }
-  const user = await get('SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)', [String(identifier).toLowerCase(), String(identifier).toLowerCase()]);
+  // A rejected async handler becomes an unhandled rejection in Express 4: no
+  // response is ever sent, so the browser's login request hangs forever
+  // ("Logging in…" never resolves) whenever the database is unreachable — the
+  // query error only lands in the process-level unhandledRejection log. Catch it
+  // and answer with a clear, actionable error so the form can re-enable itself
+  // and tell the visitor what is wrong instead of spinning.
+  let user;
+  try {
+    user = await get('SELECT * FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)', [String(identifier).toLowerCase(), String(identifier).toLowerCase()]);
+  } catch (err) {
+    console.error('[auth] login could not read users (database unavailable):', err.message);
+    return res.status(503).json({ error: 'The server cannot reach its database right now. Please try again in a moment.' });
+  }
   if (!user) {
     return res.status(401).json({ error: 'Invalid username/email or password.' });
   }
