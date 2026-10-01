@@ -1,12 +1,28 @@
 import mysql from 'mysql2/promise';
 
-const databaseName = process.env.DB_NAME || 'cpri';
+const isProduction = process.env.NODE_ENV === 'production';
+const localDefaults = isProduction
+  ? null
+  : { host: 'localhost', port: 3306, user: 'root', password: '', database: 'cpri' };
+
+if (isProduction) {
+  const requiredVariables = ['DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'];
+  const missingVariables = requiredVariables.filter((name) => {
+    const value = process.env[name];
+    return value === undefined || (name !== 'DB_PASSWORD' && value.trim() === '');
+  });
+  if (missingVariables.length > 0) {
+    throw new Error(`[db] Missing required production environment variables: ${missingVariables.join(', ')}`);
+  }
+}
+
+const databaseName = process.env.DB_NAME || localDefaults?.database;
 
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
+  host: process.env.DB_HOST || localDefaults?.host,
+  port: Number(process.env.DB_PORT || localDefaults?.port),
+  user: process.env.DB_USER || localDefaults?.user,
+  password: process.env.DB_PASSWORD ?? localDefaults?.password,
   database: databaseName,
   ...(process.env.DB_SSL === 'true'
     ? { ssl: { rejectUnauthorized: true } }
