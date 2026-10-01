@@ -16,7 +16,8 @@
     "migrate": "node server/server/seed.mjs",
     "test:dropdowns": "node server/dev/test-dropdowns.mjs",
     "check:api": "node server/dev/check-api.mjs",
-    "doctor": "node server/dev/db-doctor.mjs"
+    "doctor": "node server/dev/db-doctor.mjs",
+    "db:init": "node server/dev/db-init.mjs"
   },
   "engines": {
     "node": ">=18"

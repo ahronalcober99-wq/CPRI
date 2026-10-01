@@ -32,7 +32,9 @@ console.log(`  host      ${target.host ?? '(unset)'}`);
 console.log(`  port      ${target.port || '(unset)'}`);
 console.log(`  user      ${username}`);
 console.log(`  database  ${target.database ?? '(unset)'}`);
-console.log(`  ssl       ${target.ssl ? 'on (TLS 1.2+, certificate verified)' : 'off'}`);
+console.log(`  ssl       ${target.ssl
+  ? `on (mode=${target.sslMode}, ca=${target.sslCa ? 'custom' : 'system'}, verify=${target.sslVerify})`
+  : `off (mode=${target.sslMode})`}`);
 console.log(`  password  ${password ? `set (${password.length} chars)` : 'EMPTY'}`);
 console.log(RULE);
 

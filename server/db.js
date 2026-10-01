@@ -1,4 +1,6 @@
 import mysql from 'mysql2/promise';
+import { existsSync, readFileSync } from 'fs';
+import { resolve } from 'path';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const localDefaults = isProduction
@@ -23,26 +25,78 @@ const normalizedHost = databaseHost.toLowerCase().replace(/^\[|\]$/g, '');
 const isLoopbackHost = normalizedHost === 'localhost'
   || normalizedHost === '127.0.0.1'
   || normalizedHost === '::1';
-const sslEnabled = process.env.DB_SSL === 'true' || !isLoopbackHost;
 
-const pool = mysql.createPool({
+// ---- TLS ----------------------------------------------------------------
+// Managed MySQL hosts almost always require TLS, and several (Aiven, Clever
+// Cloud, …) sign their certificate with their OWN CA, which Node's trust store
+// does not know. TLS used to be forced on for every non-loopback host with no
+// way to supply that CA or to switch TLS off, so those providers could not be
+// used at all.
+//
+//   DB_SSL_MODE=auto     (default) TLS for any non-loopback host
+//   DB_SSL_MODE=require  always TLS, even to localhost
+//   DB_SSL_MODE=disable  never TLS (for providers that do not offer it)
+//   DB_SSL_CA=<pem|path> the provider's CA certificate — PEM text (real
+//                        newlines, or escaped "\n") or a path to a .pem file
+//   DB_SSL_REJECT_UNAUTHORIZED=false  keep TLS but skip the certificate check
+//
+// DB_SSL=true/false is still honoured as a legacy alias (true ⇒ require,
+// false ⇒ auto), so existing deployments keep the behaviour they already had.
+const SSL_MODES = ['auto', 'require', 'disable'];
+const sslMode = String(
+  process.env.DB_SSL_MODE || (process.env.DB_SSL === 'true' ? 'require' : 'auto')
+).toLowerCase();
+if (!SSL_MODES.includes(sslMode)) {
+  throw new Error(`[db] DB_SSL_MODE must be one of ${SSL_MODES.join(', ')} (got "${sslMode}")`);
+}
+const sslEnabled = sslMode === 'disable' ? false : (sslMode === 'require' || !isLoopbackHost);
+const sslRejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false';
+
+function resolveSslCa() {
+  const raw = process.env.DB_SSL_CA;
+  if (!raw || !raw.trim()) return null;
+  if (raw.includes('BEGIN CERTIFICATE')) {
+    // A PEM pasted into a host's env-var box often arrives with literal "\n"
+    // instead of real newlines; accept either form.
+    return raw.replace(/\\n/g, '\n');
+  }
+  const asPath = resolve(raw.trim());
+  if (existsSync(asPath)) return readFileSync(asPath, 'utf8');
+  throw new Error('[db] DB_SSL_CA is neither a PEM certificate nor a path to an existing file.');
+}
+
+const sslCa = sslEnabled ? resolveSslCa() : null;
+const sslOptions = sslEnabled
+  ? { minVersion: 'TLSv1.2', rejectUnauthorized: sslRejectUnauthorized, ...(sslCa ? { ca: sslCa } : {}) }
+  : null;
+
+// Shared by the pool and by `npm run db:init` (server/dev/db-init.mjs), so a
+// schema import always uses exactly the same host, credentials and TLS settings
+// as the running API.
+export const connectionOptions = {
   host: databaseHost,
   port: databasePort,
   user: process.env.DB_USER || localDefaults?.user,
   password: process.env.DB_PASSWORD ?? localDefaults?.password,
   database: databaseName,
-  ...(sslEnabled
-    ? { ssl: { minVersion: 'TLSv1.2', rejectUnauthorized: true } }
-    : {}),
-  waitForConnections: true,
-  connectionLimit: Number(process.env.DB_POOL_LIMIT || 10),
+  ...(sslOptions ? { ssl: sslOptions } : {}),
   charset: 'utf8mb4',
   timezone: 'Z'
+};
+
+const pool = mysql.createPool({
+  ...connectionOptions,
+  waitForConnections: true,
+  connectionLimit: Number(process.env.DB_POOL_LIMIT || 10)
 });
 
 const rawPassword = String(process.env.DB_PASSWORD ?? localDefaults?.password ?? '');
 
-console.log(`[db] MySQL connection host=${databaseHost} port=${databasePort} ssl=${sslEnabled}`);
+const sslLabel = sslEnabled
+  ? `on (mode=${sslMode}, ca=${sslCa ? 'custom' : 'system'}, verify=${sslRejectUnauthorized})`
+  : `off (mode=${sslMode})`;
+
+console.log(`[db] MySQL connection host=${databaseHost} port=${databasePort} ssl=${sslLabel}`);
 
 // A password that arrives with surrounding whitespace or wrapping quotation
 // marks is sent to the server verbatim and always fails with "Access denied".
@@ -62,7 +116,10 @@ export function describeDbTarget() {
     port: databasePort,
     user: process.env.DB_USER || localDefaults?.user,
     database: databaseName,
-    ssl: sslEnabled
+    ssl: sslEnabled,
+    sslMode,
+    sslCa: Boolean(sslCa),
+    sslVerify: sslEnabled ? sslRejectUnauthorized : false
   };
 }
 
@@ -101,8 +158,13 @@ export function explainDbError(err) {
     return 'Cause: the connection timed out or was dropped mid-handshake. Usually a firewall '
       + 'blocking this host\'s public IP, or the database not exposing a public endpoint.';
   }
-  if (/self.signed|certificate|TLS|SSL/i.test(message)) {
-    return 'Cause: the TLS handshake failed. Set DB_SSL=true for a managed host, or DB_SSL=false for a local one.';
+  if (/self.signed|certificate|TLS|handshake/i.test(message)) {
+    return [
+      'Cause: the TLS handshake failed.',
+      '  • A managed host usually needs TLS — set DB_SSL_MODE=require.',
+      '  • If the provider signs with its own CA (Aiven, Clever Cloud, …), supply it with DB_SSL_CA=<ca.pem>.',
+      '  • A local MySQL usually needs none — set DB_SSL_MODE=disable.'
+    ].join('\n');
   }
   return null;
 }
