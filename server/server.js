@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import './load-env.js';
 import { fileURLToPath } from 'url';
 import { basename, dirname, join } from 'path';
 import { promises as fs } from 'fs';

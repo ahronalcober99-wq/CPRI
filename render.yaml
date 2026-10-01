@@ -37,6 +37,8 @@ services:
         sync: false
       - key: DB_NAME
         sync: false
+      - key: DB_SSL
+        value: 'false'
       - key: SESSION_SECRET
         generateValue: true
       - key: ADMIN_EMAIL
