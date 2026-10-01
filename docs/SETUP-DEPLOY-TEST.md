@@ -76,18 +76,17 @@ whole site works from one origin:
 
 ## 4. API origin
 
-`public/assets/js/main.js` holds the **single** API setting:
+`public/assets/js/main.js` holds the default API setting:
 
 ```js
-window.CPRI_API_BASE = window.CPRI_API_BASE || '';
+const CPRI_API_BASE = 'https://cpri.onrender.com';
 ```
 
-* `''` (default) — same origin. Correct for `npm start`; nothing else to change.
-* Static front end + hosted API — put the API origin there, e.g.
-  `window.CPRI_API_BASE = 'https://cpri-api.onrender.com';` (scheme required,
-  no trailing slash).
-* Per-browser override, no redeploy needed:
-  `localStorage.setItem('cpri-api-base', 'https://cpri-api.onrender.com')`.
+The Pages site uses this HTTPS origin by default. For local testing or an
+intentional per-browser override, set `window.CPRI_API_BASE` before `main.js`
+loads, or use:
+`localStorage.setItem('cpri-api-base', 'https://your-api.example.com')`.
+The scheme is required and trailing slashes are removed.
 
 Every `/api/` call goes through `CPRI.apiFetch()` / `CPRI.apiBase()`, which
 rewrite the path, send `credentials: 'include'` when a base is set, and turn a
@@ -152,7 +151,11 @@ Repository → Settings → Pages:
   currently downloads the back-end source. Nothing secret is exposed (`.env`,
   sessions, uploads, backups all 404), but the source tree should not be served.
 
-Also add the Pages origin to the API host's `CORS_ORIGINS`:
+The production server always allows the canonical Pages origin
+`https://ahronalcober99-wq.github.io` (origin only; do not append `/CPRI`).
+The Render blueprint also sets `CORS_ORIGINS` to that value. For a Render
+service not managed by the blueprint, set this environment variable in its
+dashboard:
 
 ```
 CORS_ORIGINS=https://ahronalcober99-wq.github.io

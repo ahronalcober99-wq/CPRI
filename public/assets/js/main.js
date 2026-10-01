@@ -16,16 +16,13 @@ setTimeout(() => { const l = document.getElementById('pageLoader'); if (l) l.cla
 //  • Served by the Express server (`npm start` → http://localhost:3000)?
 //      leave it as '' and the front end calls the API on its own origin.
 //  • Static front end on GitHub Pages with the API hosted elsewhere?
-//      put that origin here, e.g. 'https://cpri-api.onrender.com'
-//      (scheme required, no trailing slash).
+//      use the configured HTTPS API origin below (scheme required, no trailing slash).
 //
 //  A per-browser override, useful for testing without redeploying, wins over this:
 //      localStorage.setItem('cpri-api-base', 'https://my-api.example.com')
 // ============================================================
-const CPRI_API_BASE = "https://cpri.onrender.com";
-
 const CPRI = (() => {
-     const CPRI_API_BASE = "https://cpri-api.onrender.com";
+  const CPRI_API_BASE = "https://cpri.onrender.com";
   // ---- API base / transport ------------------------------------------------
   // The front-end talks to the Express back end. When the site is served BY that
   // server (`npm start` -> http://localhost:3000) root-relative '/api/...' calls
@@ -40,6 +37,19 @@ const CPRI = (() => {
     try { override = window.CPRI_API_BASE || localStorage.getItem('cpri-api-base'); } catch { /* storage blocked */ }
     if (override) return String(override).replace(/\/+$/, '');
     if (location.protocol === 'file:') return 'http://localhost:3000';
+    if (isLocalHost()) return '';
+    if (CPRI_API_BASE) {
+      // When the site is served BY the API host itself (e.g. the Render deploy
+      // at https://cpri.onrender.com), the configured origin is the page's own
+      // origin. Return '' so every call stays relative ('/api/...') and nothing
+      // depends on a hard-coded host — the session cookie also stays first-party.
+      // The same code still uses the absolute origin on GitHub Pages, where the
+      // page origin (github.io) differs from the API origin.
+      try {
+        if (new URL(CPRI_API_BASE, location.href).origin === location.origin) return '';
+      } catch { /* malformed base — fall back to the literal value below */ }
+      return CPRI_API_BASE.replace(/\/+$/, '');
+    }
     return '';
   }
 
@@ -2098,4 +2108,3 @@ const CPRI = (() => {
     startGoogleLogin, startBrowserSignIn
   };
 })();
-

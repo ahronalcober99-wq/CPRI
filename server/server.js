@@ -95,14 +95,16 @@ class DirectFileStore extends session.Store {
 
 // ---- Cross-origin front end (the GitHub Pages copy) ----------------------
 // The static site can be hosted apart from this API. CORS_ORIGINS is a
-// comma-separated allowlist of front-end origins, e.g.
-//   CORS_ORIGINS=https://ahronalcober99-wq.github.io
-// Leaving it empty keeps the API same-origin only — the default, and the safest
-// option for local development.
-const CORS_ORIGINS = (process.env.CORS_ORIGINS || '')
-  .split(',')
-  .map((s) => s.trim().replace(/\/+$/, ''))
-  .filter(Boolean);
+// comma-separated allowlist of front-end origins. In production, always allow
+// the canonical Pages origin; it is an origin, not the repository's /CPRI path.
+const PAGES_ORIGIN = 'https://ahronalcober99-wq.github.io';
+const CORS_ORIGINS = [...new Set([
+  ...(process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((s) => s.trim().replace(/\/+$/, ''))
+    .filter(Boolean),
+  ...(process.env.NODE_ENV === 'production' ? [PAGES_ORIGIN] : [])
+])];
 const CROSS_SITE = CORS_ORIGINS.length > 0;
 
 const app = express();
@@ -234,13 +236,26 @@ app.use(async (req, res, next) => {
 // styles.css — e.g. the old wide Login/Register pills — making the mobile
 // header look broken after CSS changes. no-cache means unchanged files still
 // get a fast 304; changed files are fetched fresh immediately.
-app.use(express.static(PUBLIC_DIR, {
+//
+// These mounts MUST stay above the catch-all route further down: existing CSS,
+// JS, image and font files are answered here, and only genuinely unmatched
+// paths reach the fallback. If a mount moved below the catch-all, every asset
+// request would receive index.html (HTTP 200) and pages would render unstyled.
+const STATIC_OPTIONS = {
   etag: true,
   lastModified: true,
   setHeaders(res) {
     res.setHeader('Cache-Control', 'no-cache');
   }
-}));
+};
+app.use(express.static(PUBLIC_DIR, STATIC_OPTIONS));
+// The GitHub Pages copy is published from the repository ROOT, so its links read
+// /CPRI/public/login.html — i.e. the URL path contains a "public/" segment. This
+// server serves PUBLIC_DIR itself at the root (so /login.html works), which left
+// /public/login.html unmatched and it fell through to the home page instead.
+// Alias /public/* onto PUBLIC_DIR too, so both URL shapes resolve to the same
+// files (a relative "assets/..." inside them then resolves under /public/...).
+app.use('/public', express.static(PUBLIC_DIR, STATIC_OPTIONS));
 
 // Liveness probe for hosting platforms (Render/Railway/Fly, Docker, k8s).
 // Always JSON, so a monitor can distinguish "API up" from "database down".
@@ -332,13 +347,25 @@ app.post('/api/contact', async (req, res) => {
   res.status(201).json({ ok: true, message: 'Thank you. Your inquiry has been received.' });
 });
 
-app.get(/^\/(?!api).*/, (req, res) => {
+// Fallback for client-side / extension-less routes (e.g. /login, /about): send
+// the home page shell. Requests for a real file (anything ending in an
+// extension) are deliberately NOT answered with index.html — a missing
+// styles.css / main.js / image must return a real 404 so the browser reports the
+// missing file instead of quietly receiving an HTML page under a CSS/JS URL.
+app.get(/^\/(?!api).*/, (req, res, next) => {
+  if (/\.[a-z0-9]+$/i.test(req.path)) return next();
   res.sendFile(join(PUBLIC_DIR, 'index.html'));
 });
 
 // JSON 404 for unknown API routes (instead of the Express HTML default)
 app.use('/api', (req, res) => {
   res.status(404).json({ error: 'Not found.' });
+});
+
+// Real 404 for anything else (a missing asset or unknown path). No HTML fallback
+// here, so /missing.css is a 404 rather than the home page with status 200.
+app.use((req, res) => {
+  res.status(404).type('text/plain').send('Not found');
 });
 
 // Central error handler — log the failure, return JSON, keep serving.
