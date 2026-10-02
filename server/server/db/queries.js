@@ -38,6 +38,10 @@ function toDbParams(params) {
   return Array.isArray(params) ? params.map(toDbValue) : params;
 }
 
+function escapeId(identifier) {
+  return '`' + String(identifier).replace(/`/g, '``') + '`';
+}
+
 export async function all(sql, params = []) {
   const [rows] = await pool.query(sql, toDbParams(params));
   return rows.map(parseRow);
@@ -56,18 +60,23 @@ export async function run(sql, params = []) {
 export async function insert(table, obj) {
   const cols = Object.keys(obj);
   const vals = Object.values(obj).map(toDbValue);
-  const sql = `INSERT INTO ${table} (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`;
+  const safeTable = escapeId(table);
+  const safeCols = cols.map(escapeId).join(', ');
+  const sql = `INSERT INTO ${safeTable} (${safeCols}) VALUES (${cols.map(() => '?').join(', ')})`;
   const [result] = await pool.query(sql, vals);
   return result.insertId;
 }
 
 export async function update(table, id, obj) {
   const cols = Object.keys(obj);
-  const sql = `UPDATE ${table} SET ${cols.map(c => `${c} = ?`).join(',')} WHERE id = ?`;
+  const safeTable = escapeId(table);
+  const safeAssignments = cols.map(c => `${escapeId(c)} = ?`).join(', ');
+  const sql = `UPDATE ${safeTable} SET ${safeAssignments} WHERE id = ?`;
   const vals = [...Object.values(obj).map(toDbValue), id];
   await pool.query(sql, vals);
 }
 
 export async function remove(table, id) {
-  await pool.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
+  const safeTable = escapeId(table);
+  await pool.query(`DELETE FROM ${safeTable} WHERE id = ?`, [id]);
 }

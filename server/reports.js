@@ -163,7 +163,7 @@ router.get('/export/:reportType', requireAdmin, async (req, res) => {
 
   if (!reportData || !reportData.length) return res.status(404).json({ error: 'No data available for this report.' });
 
-  if (format === 'csv' || format === 'excel') {
+  if (format === 'csv') {
     const headers = Object.keys(reportData[0]);
     const csvRows = [headers.join(',')];
     reportData.forEach(row => {
@@ -177,22 +177,51 @@ router.get('/export/:reportType', requireAdmin, async (req, res) => {
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename=${filename}.csv`);
     res.send(csv);
-  } else if (format === 'pdf') {
-    const reports = [];
+  } else if (format === 'excel') {
+    const headers = Object.keys(reportData[0]);
+    let table = `<table border="1"><thead><tr style="background-color:#0b2545;color:#ffffff;">`;
+    headers.forEach(h => { table += `<th style="padding:8px;">${h}</th>`; });
+    table += `</tr></thead><tbody>`;
     reportData.forEach(row => {
-      let html = '<table cellpadding="6" cellspacing="0" border="1" style="border-collapse:collapse;font-size:12px;">';
-      html += '<thead><tr>';
-      Object.keys(row).forEach(k => html += `<th style="background:#0b2545;color:#fff;">${k}</th>`);
-      html += '</tr></thead><tbody><tr>';
-      Object.values(row).forEach(v => html += `<td>${v}</td>`);
-      html += '</tr></tbody></table>';
-      reports.push(html);
+      table += `<tr>`;
+      headers.forEach(h => { table += `<td style="padding:6px;">${row[h] !== undefined ? row[h] : ''}</td>`; });
+      table += `</tr>`;
     });
+    table += `</tbody></table>`;
+    const excelDoc = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"/><style>td,th{font-family:Arial;font-size:12px;}</style></head><body><h2>CPRI Report: ${filename.replace(/-/g, ' ').toUpperCase()}</h2>${table}</body></html>`;
+    res.setHeader('Content-Type', 'application/vnd.ms-excel;charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=${filename}.xls`);
+    res.send(excelDoc);
+  } else if (format === 'pdf') {
+    const headers = Object.keys(reportData[0]);
+    let table = `<table border="1" cellpadding="6" cellspacing="0" style="width:100%;border-collapse:collapse;margin-top:16px;"><thead><tr style="background-color:#0b2545;color:#ffffff;">`;
+    headers.forEach(h => { table += `<th style="text-align:left;padding:8px;">${h}</th>`; });
+    table += `</tr></thead><tbody>`;
+    reportData.forEach(row => {
+      table += `<tr>`;
+      headers.forEach(h => { table += `<td style="padding:6px;">${row[h] !== undefined ? row[h] : ''}</td>`; });
+      table += `</tr>`;
+    });
+    table += `</tbody></table>`;
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${filename}</title>
-      <style>body{font-family:Arial,sans-serif;margin:20px;}h1{color:#0b2545;}table{width:100%;margin-bottom:20px;}</style>
-      </head><body><h1>${filename.replace(/_/g, ' ').toUpperCase()}</h1><p>Generated: ${new Date().toLocaleString()}</p>${reports.join('<br><br>')}</body></html>`;
+      <style>
+        body { font-family: Arial, sans-serif; margin: 30px; color: #1e293b; }
+        h1 { color: #0b2545; margin-bottom: 4px; }
+        .meta { color: #64748b; font-size: 13px; margin-bottom: 20px; }
+        table { font-size: 12px; border-color: #cbd5e1; }
+        th { font-size: 13px; }
+        @media print { .no-print { display: none; } }
+      </style>
+      </head><body onload="window.print()">
+      <div class="no-print" style="margin-bottom:20px;">
+        <button onclick="window.print()" style="padding:8px 16px;background:#0b2545;color:#fff;border:none;border-radius:4px;cursor:pointer;">Print / Save as PDF</button>
+      </div>
+      <h1>CPRI Administrative Report</h1>
+      <div class="meta"><b>Report:</b> ${filename.replace(/-/g, ' ').toUpperCase()} | <b>Generated:</b> ${new Date().toLocaleString()}</div>
+      ${table}
+      </body></html>`;
     res.setHeader('Content-Type', 'text/html');
-    res.setHeader('Content-Disposition', `attachment; filename=${filename}.html`);
+    res.setHeader('Content-Disposition', `inline; filename=${filename}.html`);
     res.send(fullHtml);
   } else {
     res.status(400).json({ error: 'Unsupported format. Use csv, excel, or pdf.' });

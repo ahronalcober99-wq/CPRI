@@ -334,19 +334,28 @@ async function syncRepository(sub, newStatus, ctx = {}) {
   };
 
   if (rec) {
-    const citation = rec.citation || { apa: `${sub.authors} (${year}). ${sub.title}. ${sub.program}.` };
+    const citation = rec.citation && rec.citation.mla ? rec.citation : {
+      apa: `${sub.authors} (${year}). ${sub.title}. ${sub.program}.`,
+      mla: `${sub.authors}. "${sub.title}." ${sub.program}, ${year}.`,
+      institutional: `CPRI (${year}). ${sub.title}. ${sub.authors}. ${sub.program}.`
+    };
     await update('repository', rec.id, {
       ...base,
       citation: JSON.stringify(citation),
       updatedAt: new Date().toISOString()
     });
   } else if (newStatus === 'approved' || newStatus === 'published') {
+    const citationObj = {
+      apa: `${sub.authors} (${year}). ${sub.title}. ${sub.program}.`,
+      mla: `${sub.authors}. "${sub.title}." ${sub.program}, ${year}.`,
+      institutional: `CPRI (${year}). ${sub.title}. ${sub.authors}. ${sub.program}.`
+    };
     const recData = {
       id: randomUUID(),
       sourceSubmissionId: sub.id,
       ...base,
       accessLevel: 'downloadable',
-      citation: JSON.stringify({ apa: `${sub.authors} (${year}). ${sub.title}. ${sub.program}.` }),
+      citation: JSON.stringify(citationObj),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -392,6 +401,32 @@ router.get('/:id/file', requireAuth, async (req, res) => {
   const folder = (version && Number(version) > 1) ? join(SUB_UPLOAD_DIR, sub.id, 'v' + version) : join(SUB_UPLOAD_DIR, sub.id);
   const p = join(folder, meta.filename);
   res.download(p, meta.originalName);
+});
+// ---------- Revisions Side-by-Side Comparison ----------
+router.get('/:id/revisions/compare', requireAuth, async (req, res) => {
+  const me = await currentUser(req);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
+  if (!sub) return res.status(404).json({ error: 'Submission not found.' });
+  if (!canAccess(me, sub)) return res.status(403).json({ error: 'Access denied.' });
+
+  const versions = sub.versions || [];
+  const v1 = Number(req.query.v1) || 1;
+  const v2 = Number(req.query.v2) || (versions.length > 0 ? versions[versions.length - 1].version : 1);
+
+  const ver1 = versions.find(v => Number(v.version) === v1) || null;
+  const ver2 = versions.find(v => Number(v.version) === v2) || null;
+
+  if (!ver1 || !ver2) {
+    return res.status(404).json({ error: 'One or both specified versions were not found.' });
+  }
+
+  res.json({
+    submissionId: sub.id,
+    title: sub.title,
+    comparing: { v1, v2 },
+    version1: ver1,
+    version2: ver2
+  });
 });
 
 // ---------- Comments & Feedback ----------

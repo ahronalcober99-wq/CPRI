@@ -1,9 +1,13 @@
 import './load-env.js';
+import 'express-async-errors';
 import { fileURLToPath } from 'url';
 import { basename, dirname, join } from 'path';
 import { promises as fs } from 'fs';
 import express from 'express';
 import session from 'express-session';
+import helmet from 'helmet';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 import { authRouter, initAuth } from './auth.js';
 import { submissionsRouter } from './submissions.js';
 import { repositoryRouter } from './repository.js';
@@ -108,6 +112,37 @@ const CORS_ORIGINS = [...new Set([
 const CROSS_SITE = CORS_ORIGINS.length > 0;
 
 const app = express();
+
+// Security HTTP headers
+app.use(helmet({
+  contentSecurityPolicy: false
+}));
+
+// Gzip/Brotli response compression
+app.use(compression());
+
+// Rate limiters
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication or contact attempts, please try again later.' }
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot', authLimiter);
+app.use('/api/contact', authLimiter);
 
 // Hosting platforms (Render, Railway, Fly, nginx, the cloudflared share tunnel)
 // terminate TLS and forward X-Forwarded-Proto, so Express must be told to trust
@@ -328,10 +363,23 @@ app.get('/api/agenda', async (req, res) => {
   res.json(JSON.parse(items));
 });
 
+app.get('/api/captcha', (req, res) => {
+  const num1 = Math.floor(Math.random() * 10) + 1;
+  const num2 = Math.floor(Math.random() * 10) + 1;
+  req.session.captchaAnswer = num1 + num2;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="130" height="38" viewBox="0 0 130 38"><rect width="100%" height="100%" fill="#0f172a" rx="6"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="18" font-weight="bold" fill="#38bdf8">${num1} + ${num2} = ?</text></svg>`;
+  res.json({ question: `${num1} + ${num2} = ?`, svg });
+});
+
 app.post('/api/contact', async (req, res) => {
-  const { name, email, subject, message } = req.body || {};
+  const { name, email, subject, message, captchaAnswer } = req.body || {};
   if (!name || !email || !message) {
     return res.status(400).json({ error: 'Name, email and message are required.' });
+  }
+  if (req.session && req.session.captchaAnswer !== undefined && captchaAnswer !== undefined) {
+    if (Number(captchaAnswer) !== Number(req.session.captchaAnswer)) {
+      return res.status(400).json({ error: 'Incorrect CAPTCHA answer.' });
+    }
   }
   try {
     await insert('inquiries', {
