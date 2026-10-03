@@ -4,7 +4,6 @@ import { fileURLToPath } from 'url';
 import { basename, dirname, join } from 'path';
 import { promises as fs } from 'fs';
 import express from 'express';
-import mysql from 'mysql2/promise';
 import session from 'express-session';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -113,8 +112,6 @@ const CORS_ORIGINS = [...new Set([
 const CROSS_SITE = CORS_ORIGINS.length > 0;
 
 const app = express();
-
-app.set('trust proxy', 1);
 
 // Security HTTP headers
 app.use(helmet({
@@ -441,41 +438,6 @@ app.use((err, req, res, next) => {
   const status = err.status || err.statusCode || 500;
   res.status(status).json({ error: status >= 500 ? 'Internal server error.' : (err.message || 'Request failed.') });
 });
-
-
-// ---- Schema auto-setup (idempotent) --------------------------------------
-const SCHEMA_SQL_PATH = join(__dirname, '..', 'db', 'schema.sql');
-const POOL_FOR_SCHEMA = mysql.createPool({
-  host: process.env.DB_HOST || (process.env.NODE_ENV === 'production' ? null : 'localhost'),
-  port: Number(process.env.DB_PORT || (process.env.NODE_ENV === 'production' ? null : 3306)),
-  user: process.env.DB_USER || (process.env.NODE_ENV === 'production' ? null : 'root'),
-  password: process.env.DB_PASSWORD ?? (process.env.NODE_ENV === 'production' ? null : ''),
-  database: process.env.DB_NAME || (process.env.NODE_ENV === 'production' ? null : 'cpri'),
-  ssl: process.env.DB_HOST && process.env.DB_HOST.toLowerCase() !== 'localhost'
-    ? { rejectUnauthorized: true }
-    : false,
-  waitForConnections: true,
-  connectionLimit: 1
-});
-async function loadSchema() {
-  let schema;
-  try {
-    schema = await fs.readFile(SCHEMA_SQL_PATH, 'utf8');
-  } catch (err) {
-    console.error('[schema] could not read ' + SCHEMA_SQL_PATH + ': ' + err.message);
-    return;
-  }
-  await POOL_FOR_SCHEMA.query(schema, { multiStatement: true });
-  console.log('[schema] ready.');
-}
-try {
-  await loadSchema().catch((err) => {
-    console.error('[schema] initialising database failed:', err.message);
-    console.error('[schema] Check DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME');
-  });
-} catch (err) {
-  console.error('[schema] schema run threw:', err.message);
-}
 
 const server = app.listen(PORT, async () => {
   let dbUp = true;

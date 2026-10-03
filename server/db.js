@@ -187,3 +187,14 @@ export async function testConnection() {
 }
 
 export default pool;
+
+export function getDbConfig() {
+  return {
+    host: databaseHost,
+    port: databasePort,
+    user: process.env.DB_USER || localDefaults?.user,
+    password: process.env.DB_PASSWORD ?? localDefaults?.password,
+    database: databaseName,
+    ssl: sslEnabled ? { minVersion: 'TLSv1.2', rejectUnauthorized: sslRejectUnauthorized, ...(sslCa ? { ca: sslCa } : {}) } : false
+  };
+}
