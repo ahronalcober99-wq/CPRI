@@ -21,7 +21,7 @@ import { adminInsightsRouter } from './admin-insights.js';
 import { reportsRouter } from './reports.js';
 import { notificationsRouter, ensureNotificationsTable } from './notifications.js';
 import { messagesRouter, ensureMessagesTable } from './messages.js';
-import { testConnection } from './db.js';
+import { testConnection, explainDbError } from './db.js';
 import { insert, all, get } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -299,7 +299,13 @@ app.get('/healthz', async (req, res) => {
     await all('SELECT 1 AS ok');
     res.json({ ok: true, db: 'up', uptime: Math.round(process.uptime()) });
   } catch (err) {
-    res.status(503).json({ ok: false, db: 'down', error: err.message });
+    const diagnosis = explainDbError(err);
+    res.status(503).json({
+      ok: false,
+      db: 'down',
+      error: err.message,
+      ...(diagnosis ? { diagnosis } : {})
+    });
   }
 });
 
@@ -381,6 +387,7 @@ app.post('/api/contact', async (req, res) => {
       return res.status(400).json({ error: 'Incorrect CAPTCHA answer.' });
     }
   }
+  let saved = false;
   try {
     await insert('inquiries', {
       name: String(name).trim(),
@@ -389,8 +396,14 @@ app.post('/api/contact', async (req, res) => {
       message: String(message).trim(),
       receivedAt: new Date().toISOString()
     });
+    saved = true;
   } catch (err) {
     console.error('Could not persist inquiry:', err);
+  }
+  if (!saved) {
+    return res.status(500).json({
+      error: 'Could not save your inquiry. The server could not reach its database. Please try again in a moment.'
+    });
   }
   res.status(201).json({ ok: true, message: 'Thank you. Your inquiry has been received.' });
 });
@@ -427,7 +440,25 @@ app.use((err, req, res, next) => {
 });
 
 const server = app.listen(PORT, async () => {
-  await testConnection();
+  let dbUp = true;
+  try {
+    await testConnection();
+  } catch (err) {
+    dbUp = false;
+    const diagnosis = explainDbError(err);
+    console.error('');
+    console.error('┌──────────────────────────────────────────────┐');
+    console.error('│  DATABASE UNREACHABLE');
+    console.error('├──────────────────────────────────────────────┤');
+    console.error('│  Login, registration, and every');
+    console.error('│  database-backed API endpoint will fail');
+    console.error('│  until this is fixed in Render:');
+    console.error('│  https://render.com/docs/setting-env-variables');
+    console.error('│  ');
+    console.error('│  ' + (diagnosis || err.message));
+    console.error('└──────────────────────────────────────────────┘');
+    console.error('');
+  }
   await initAuth();
   await ensureNotificationsTable().catch(err => console.error('[notifications] table ensure failed:', err.message));
   await ensureMessagesTable().catch(err => console.error('[messages] table ensure failed:', err.message));
@@ -450,6 +481,9 @@ const server = app.listen(PORT, async () => {
   }
 
   console.log(`CPRI public website running at http://localhost:${PORT}`);
+  if (!dbUp) {
+    console.warn('[boot] Running WITHOUT a database — login, registration, contact, and all database-backed endpoints are broken. Visit /healthz for the diagnosis.');
+  }
 }).on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`Port ${PORT} is already in use. The server may already be running.`);

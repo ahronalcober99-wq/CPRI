@@ -137,7 +137,7 @@ export function explainDbError(err) {
     return [
       'Cause: the database rejected the username/password.',
       '  • DB_PASSWORD is wrong or stale — re-copy it from the database console.',
-      '  • The database firewall does not allow this host\'s public IP (see docs/FIX-DB-CONNECTION.md).',
+      '  • The database firewall does not allow this host\'s public IP (see docs/FIX-DB-CONNECTION.md once it is restored, or the guide comment below).',
       '  • DB_USER is truncated (some providers need the full prefixed name, e.g. "abc123.root").'
     ].join('\n');
   }

@@ -1,35 +1,5 @@
 [
   {
-    "id": "demo-ev-2",
-    "title": "Policy Forum: Digital Governance",
-    "type": "Forum",
-    "date": "2026-10-09",
-    "location": "University Boardroom",
-    "description": "Public forum on inclusive, accountable e-government with national and local experts.",
-    "photo": "",
-    "createdAt": "2026-08-01T09:00:00.000Z"
-  },
-  {
-    "id": "demo-ev-3",
-    "title": "Capability Building: Impact Evaluation",
-    "type": "Workshop",
-    "date": "2026-11-12",
-    "location": "CPRI Training Room 2",
-    "description": "Two-day workshop on impact evaluation design for faculty and student researchers.",
-    "photo": "",
-    "createdAt": "2026-08-01T09:00:00.000Z"
-  },
-  {
-    "id": "demo-ev-4",
-    "title": "Research Ethics Training 2026",
-    "type": "Training",
-    "date": "2027-01-15",
-    "location": "CPRI Training Room 1",
-    "description": "Required ethics certification for researchers working with human participants.",
-    "photo": "",
-    "createdAt": "2026-08-01T09:00:00.000Z"
-  },
-  {
     "id": "8f72ebb2-37e6-4388-ac87-5bf684f6c55c",
     "title": "Past Webinar: UHC Progress in the Regions",
     "type": "Webinar",

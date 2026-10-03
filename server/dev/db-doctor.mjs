@@ -9,7 +9,7 @@
 //
 //  Run it with the SAME values the host (Render, Railway, …) uses. A green
 //  result here plus a "db down" /healthz on the host means the database is
-//  refusing the host's IP address — see docs/FIX-DB-CONNECTION.md.
+//  refusing the host's IP address.
 //
 //  Exit code is 0 when the database is usable, 1 otherwise.
 // ============================================================
@@ -51,7 +51,7 @@ try {
   const hint = explainDbError(err);
   if (hint) {
     console.log('\n' + hint);
-    console.log('\nNext: docs/FIX-DB-CONNECTION.md, or run again with corrected values:');
+    console.log('\nNext: fix the credentials/Firewall above, or run again with corrected values:');
     console.log('  DB_HOST=... DB_PORT=4000 DB_USER=... DB_PASSWORD=... DB_NAME=... npm run doctor\n');
   } else {
     console.log('\n  No canned cause for this error — read the message above.\n');
