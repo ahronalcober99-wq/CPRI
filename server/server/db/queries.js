@@ -5,7 +5,8 @@ const JSON_COLS = new Set([
   'researches','files','additionalDocs','versions','comments','statusHistory',
   'proofDocuments','certificate','compliance','gallery','impactDocuments',
   'supportingDocuments','revisedDocuments','completedResearches','publishedWorks',
-  'presentedPapers','awards','innovationProjects','data','profile','user_prefs'
+  'presentedPapers','awards','innovationProjects','data','profile','user_prefs',
+  'citation'
 ]);
 
 function parseRow(row) {

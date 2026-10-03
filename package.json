@@ -17,7 +17,8 @@
     "test:dropdowns": "node server/dev/test-dropdowns.mjs",
     "check:api": "node server/dev/check-api.mjs",
     "doctor": "node server/dev/db-doctor.mjs",
-    "db:init": "node server/dev/db-init.mjs"
+    "db:init": "node server/dev/db-init.mjs",
+    "purge:sessions": "node server/session-purge.mjs"
   },
   "engines": {
     "node": ">=18"
