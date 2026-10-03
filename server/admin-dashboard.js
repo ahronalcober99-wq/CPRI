@@ -457,6 +457,78 @@ router.get('/reports/innovation-extension', requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to generate report.' });
   }
 });
+const BACKUPS_DIR = join(__dirname, '..', 'backups');
+
+router.get('/backups', requireAdmin, async (req, res) => {
+  try {
+    await fs.mkdir(BACKUPS_DIR, { recursive: true });
+    const entries = await fs.readdir(BACKUPS_DIR, { withFileTypes: true });
+    const backups = [];
+    for (const ent of entries) {
+      if (ent.isDirectory()) {
+        const manifestPath = join(BACKUPS_DIR, ent.name, 'manifest.json');
+        let manifest = {};
+        try {
+          manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+        } catch {}
+        backups.push({
+          folder: ent.name,
+          createdAt: manifest.createdAt || ent.name,
+          database: manifest.database || 'cpri',
+          sqlBytes: manifest.sqlBytes || 0,
+          jsonFiles: manifest.jsonFiles || 0
+        });
+      }
+    }
+    backups.sort((a, b) => b.folder.localeCompare(a.folder));
+    res.json({ backups });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to list backups: ' + err.message });
+  }
+});
+
+router.post('/backups', requireAdmin, async (req, res) => {
+  try {
+    await fs.mkdir(BACKUPS_DIR, { recursive: true });
+    const d = new Date();
+    const p = (n) => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${p(d.getMilliseconds())}`;
+    const backupFolder = join(BACKUPS_DIR, stamp);
+    const dataDest = join(backupFolder, 'data');
+    await fs.mkdir(dataDest, { recursive: true });
+
+    const files = await fs.readdir(DATA_DIR).catch(() => []);
+    const jsonFiles = files.filter(f => f.endsWith('.json'));
+    for (const f of jsonFiles) {
+      await fs.copyFile(join(DATA_DIR, f), join(dataDest, f));
+    }
+
+    const manifest = {
+      createdAt: new Date().toISOString(),
+      database: process.env.DB_NAME || 'cpri',
+      sqlBytes: 0,
+      jsonFiles: jsonFiles.length,
+      node: process.version
+    };
+    await fs.writeFile(join(backupFolder, 'manifest.json'), JSON.stringify(manifest, null, 2));
+    await addLog('backup_create', `Created backup archive: ${stamp}`, req);
+    res.json({ message: 'Backup created successfully.', folder: stamp });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create backup: ' + err.message });
+  }
+});
+
+router.delete('/backups/:folder', requireAdmin, async (req, res) => {
+  try {
+    const folder = req.params.folder.replace(/[^A-Za-z0-9_-]/g, '');
+    const folderPath = join(BACKUPS_DIR, folder);
+    await fs.rm(folderPath, { recursive: true, force: true });
+    await addLog('backup_delete', `Deleted backup archive: ${folder}`, req);
+    res.json({ message: 'Backup deleted successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete backup: ' + err.message });
+  }
+});
 
 router.get('/reports/events-participation', requireAdmin, async (req, res) => {
   try {

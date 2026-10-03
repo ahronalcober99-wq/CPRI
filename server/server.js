@@ -1,9 +1,13 @@
 import './load-env.js';
+import 'express-async-errors';
 import { fileURLToPath } from 'url';
 import { basename, dirname, join } from 'path';
 import { promises as fs } from 'fs';
 import express from 'express';
 import session from 'express-session';
+import helmet from 'helmet';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
 import { authRouter, initAuth } from './auth.js';
 import { submissionsRouter } from './submissions.js';
 import { repositoryRouter } from './repository.js';
@@ -17,7 +21,7 @@ import { adminInsightsRouter } from './admin-insights.js';
 import { reportsRouter } from './reports.js';
 import { notificationsRouter, ensureNotificationsTable } from './notifications.js';
 import { messagesRouter, ensureMessagesTable } from './messages.js';
-import { testConnection } from './db.js';
+import { testConnection, explainDbError } from './db.js';
 import { insert, all, get } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -108,6 +112,37 @@ const CORS_ORIGINS = [...new Set([
 const CROSS_SITE = CORS_ORIGINS.length > 0;
 
 const app = express();
+
+// Security HTTP headers
+app.use(helmet({
+  contentSecurityPolicy: false
+}));
+
+// Gzip/Brotli response compression
+app.use(compression());
+
+// Rate limiters
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication or contact attempts, please try again later.' }
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot', authLimiter);
+app.use('/api/contact', authLimiter);
 
 // Hosting platforms (Render, Railway, Fly, nginx, the cloudflared share tunnel)
 // terminate TLS and forward X-Forwarded-Proto, so Express must be told to trust
@@ -264,7 +299,13 @@ app.get('/healthz', async (req, res) => {
     await all('SELECT 1 AS ok');
     res.json({ ok: true, db: 'up', uptime: Math.round(process.uptime()) });
   } catch (err) {
-    res.status(503).json({ ok: false, db: 'down', error: err.message });
+    const diagnosis = explainDbError(err);
+    res.status(503).json({
+      ok: false,
+      db: 'down',
+      error: err.message,
+      ...(diagnosis ? { diagnosis } : {})
+    });
   }
 });
 
@@ -328,11 +369,25 @@ app.get('/api/agenda', async (req, res) => {
   res.json(JSON.parse(items));
 });
 
+app.get('/api/captcha', (req, res) => {
+  const num1 = Math.floor(Math.random() * 10) + 1;
+  const num2 = Math.floor(Math.random() * 10) + 1;
+  req.session.captchaAnswer = num1 + num2;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="130" height="38" viewBox="0 0 130 38"><rect width="100%" height="100%" fill="#0f172a" rx="6"/><text x="50%" y="55%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="18" font-weight="bold" fill="#38bdf8">${num1} + ${num2} = ?</text></svg>`;
+  res.json({ question: `${num1} + ${num2} = ?`, svg });
+});
+
 app.post('/api/contact', async (req, res) => {
-  const { name, email, subject, message } = req.body || {};
+  const { name, email, subject, message, captchaAnswer } = req.body || {};
   if (!name || !email || !message) {
     return res.status(400).json({ error: 'Name, email and message are required.' });
   }
+  if (req.session && req.session.captchaAnswer !== undefined && captchaAnswer !== undefined) {
+    if (Number(captchaAnswer) !== Number(req.session.captchaAnswer)) {
+      return res.status(400).json({ error: 'Incorrect CAPTCHA answer.' });
+    }
+  }
+  let saved = false;
   try {
     await insert('inquiries', {
       name: String(name).trim(),
@@ -341,8 +396,14 @@ app.post('/api/contact', async (req, res) => {
       message: String(message).trim(),
       receivedAt: new Date().toISOString()
     });
+    saved = true;
   } catch (err) {
     console.error('Could not persist inquiry:', err);
+  }
+  if (!saved) {
+    return res.status(500).json({
+      error: 'Could not save your inquiry. The server could not reach its database. Please try again in a moment.'
+    });
   }
   res.status(201).json({ ok: true, message: 'Thank you. Your inquiry has been received.' });
 });
@@ -379,7 +440,25 @@ app.use((err, req, res, next) => {
 });
 
 const server = app.listen(PORT, async () => {
-  await testConnection();
+  let dbUp = true;
+  try {
+    await testConnection();
+  } catch (err) {
+    dbUp = false;
+    const diagnosis = explainDbError(err);
+    console.error('');
+    console.error('┌──────────────────────────────────────────────┐');
+    console.error('│  DATABASE UNREACHABLE');
+    console.error('├──────────────────────────────────────────────┤');
+    console.error('│  Login, registration, and every');
+    console.error('│  database-backed API endpoint will fail');
+    console.error('│  until this is fixed in Render:');
+    console.error('│  https://render.com/docs/setting-env-variables');
+    console.error('│  ');
+    console.error('│  ' + (diagnosis || err.message));
+    console.error('└──────────────────────────────────────────────┘');
+    console.error('');
+  }
   await initAuth();
   await ensureNotificationsTable().catch(err => console.error('[notifications] table ensure failed:', err.message));
   await ensureMessagesTable().catch(err => console.error('[messages] table ensure failed:', err.message));
@@ -402,6 +481,9 @@ const server = app.listen(PORT, async () => {
   }
 
   console.log(`CPRI public website running at http://localhost:${PORT}`);
+  if (!dbUp) {
+    console.warn('[boot] Running WITHOUT a database — login, registration, contact, and all database-backed endpoints are broken. Visit /healthz for the diagnosis.');
+  }
 }).on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`Port ${PORT} is already in use. The server may already be running.`);

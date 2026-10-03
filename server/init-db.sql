@@ -20,9 +20,11 @@ CREATE TABLE IF NOT EXISTS users (
   profilePhoto VARCHAR(255) DEFAULT NULL,
   researches JSON,
   user_prefs JSON,
+  setupPending TINYINT(1) DEFAULT 0,
   resetToken VARCHAR(120) DEFAULT NULL,
   resetTokenExpiry BIGINT DEFAULT NULL,
-  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `unique_email` (`email`)
 );
 
 -- Submissions table

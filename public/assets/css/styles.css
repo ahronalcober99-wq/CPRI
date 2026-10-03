@@ -70,6 +70,9 @@
   --glass-bg: rgba(255,255,255,.14);
   --glass-border: rgba(255,255,255,.28);
   --glass-blur: 16px;
+
+  /* Smooth theme crossfade surfaces */
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
 }
 
 /* ---- Design tokens : DARK ---- */

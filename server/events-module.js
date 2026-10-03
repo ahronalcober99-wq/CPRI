@@ -351,6 +351,61 @@ router.post('/:id/registrations/:regId/certificate', requireAuth, async (req, re
   const updated = await get('SELECT * FROM event_registrations WHERE id = ?', [r.id]);
   res.json({ message: 'Certificate issued.', registration: updated });
 });
+router.get('/:id/registrations/:regId/certificate/view', async (req, res) => {
+  const r = await get('SELECT * FROM event_registrations WHERE id = ? AND eventId = ?', [req.params.regId, req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Registration record not found.' });
+  if (!r.certificateIssued) return res.status(400).json({ error: 'Certificate has not been issued yet.' });
+  const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Certificate of Participation - ${r.participantName}</title>
+  <style>
+    @page { size: landscape; margin: 0; }
+    body { font-family: 'Georgia', serif; background: #f8fafc; margin: 0; padding: 40px; text-align: center; }
+    .cert-border { border: 12px double #0b2545; padding: 40px; background: #ffffff; max-width: 900px; margin: 0 auto; box-shadow: 0 10px 30px rgba(0,0,0,0.1); border-radius: 8px; }
+    .header { font-size: 28px; font-weight: bold; color: #0b2545; text-transform: uppercase; letter-spacing: 2px; }
+    .sub-header { font-size: 16px; color: #64748b; margin-top: 5px; }
+    .title { font-size: 38px; color: #1e3a8a; margin: 25px 0 10px; font-family: 'Cinzel', 'Times New Roman', serif; text-transform: uppercase; }
+    .recipient { font-size: 30px; font-weight: bold; color: #0f172a; margin: 15px 0; border-bottom: 2px solid #cbd5e1; display: inline-block; padding-bottom: 5px; }
+    .body-text { font-size: 18px; color: #334155; line-height: 1.6; margin: 20px 40px; }
+    .event-title { font-weight: bold; color: #0b2545; }
+    .footer { margin-top: 50px; display: flex; justify-content: space-around; align-items: flex-end; }
+    .sig-block { text-align: center; width: 220px; }
+    .sig-line { border-top: 1px solid #475569; margin-top: 40px; padding-top: 5px; font-size: 14px; font-weight: bold; color: #1e293b; }
+    .cert-no { font-family: monospace; font-size: 12px; color: #94a3b8; margin-top: 25px; }
+    @media print { .no-print { display: none; } }
+  </style>
+</head>
+<body onload="window.print()">
+  <div class="no-print" style="margin-bottom:20px;">
+    <button onclick="window.print()" style="padding:10px 20px;background:#0b2545;color:#fff;border:none;border-radius:6px;cursor:pointer;font-weight:bold;">Print Certificate</button>
+  </div>
+  <div class="cert-border">
+    <div class="header">Center for Policy Research and Innovation</div>
+    <div class="sub-header">CPRI Official Certificate</div>
+    <div class="title">Certificate of ${r.participantType === 'presenter' ? 'Presentation' : 'Participation'}</div>
+    <p class="body-text">This is proudly presented to</p>
+    <div class="recipient">${r.participantName}</div>
+    <p class="body-text">for actively participating as a <b>${r.participantType === 'presenter' ? 'Research Presenter' : 'Participant'}</b> in the event titled<br><span class="event-title">"${e ? e.title : 'CPRI Symposium'}"</span><br>held on ${e ? e.dateTime : '2026'}.</p>
+    <div class="footer">
+      <div class="sig-block">
+        <div class="sig-line">CPRI Executive Director</div>
+      </div>
+      <div class="sig-block">
+        <div class="sig-line">Event Chairperson</div>
+      </div>
+    </div>
+    <div class="cert-no">Certificate No: ${r.certificateData?.certificateNumber || r.id.substring(0,8).toUpperCase()} | Date Issued: ${new Date(r.certificateData?.issuedAt || Date.now()).toLocaleDateString()}</div>
+  </div>
+</body>
+</html>`;
+
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
 
 router.get('/:id/certificates', requireAuth, async (req, res) => {
   const me = await caller(req);

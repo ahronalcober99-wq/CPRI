@@ -134,6 +134,4 @@ npm run seed     # uses ADMIN_EMAIL / ADMIN_PASSWORD
 
 * `npm run doctor` — `server/dev/db-doctor.mjs`
 * Startup hints — `explainDbError()` / `describeDbTarget()` in `server/db.js`
-* **Giving up on TiDB?** — [`SWITCH-DATABASE.md`](./SWITCH-DATABASE.md) walks
-  through moving to a plain managed MySQL (Aiven, free, no credit card)
 * Deploy reference — [`SETUP-DEPLOY-TEST.md`](./SETUP-DEPLOY-TEST.md)
