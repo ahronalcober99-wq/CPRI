@@ -923,7 +923,10 @@ img { max-width: 100%; display: block; }
 .notif-panel .np-role { font-size: .7rem; font-weight: 700; color: var(--cpri-muted); text-transform: uppercase; letter-spacing: .04em; }
 .notif-panel .np-actions { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
 .notif-panel .np-mark { background: transparent; border: none; color: var(--cpri-secondary); font-size: .75rem; font-weight: 700; cursor: pointer; padding: 4px 8px; border-radius: 8px; display: inline-flex; align-items: center; gap: 4px; text-decoration: none; white-space: nowrap; }
+.notif-panel button.np-mark { font-family: inherit; line-height: inherit; }
 .notif-panel .np-mark:hover { background: var(--cpri-bg-2); color: var(--cpri-secondary); }
+.notif-panel .np-mark.np-clear-all { color: var(--bs-danger, #dc3545); }
+.notif-panel .np-mark.np-clear-all:hover { color: var(--bs-danger, #dc3545); }
 .notif-panel .np-mark#npSettings { color: var(--cpri-muted); }
 .notif-panel .np-mark#npSettings:hover { color: var(--cpri-secondary); }
 .notif-panel .np-body { max-height: 46vh; overflow: auto; }
@@ -935,6 +938,18 @@ img { max-width: 100%; display: block; }
 .notif-panel .np-item.unread { background: rgba(20,184,166,.06); }
 .notif-panel .np-item.read { opacity: .62; }
 .notif-panel .np-item.read .np-icon { background: var(--cpri-bg-2); color: var(--cpri-muted); }
+.notif-panel .np-item-link { display: flex; flex: 1; min-width: 0; gap: 12px; align-items: flex-start; color: inherit; text-decoration: none; }
+.notif-panel .np-delete { width: 34px; height: 34px; flex: 0 0 34px; display: grid; place-items: center; border: 0; border-radius: 9px; background: transparent; color: var(--cpri-muted); cursor: pointer; opacity: 0; transition: opacity .15s, background .15s, color .15s; }
+.notif-panel .np-delete:hover, .notif-panel .np-delete:focus-visible { background: var(--cpri-bg-2); color: var(--bs-danger, #dc3545); }
+.notif-panel .np-delete:focus-visible { outline: 2px solid var(--cpri-accent); outline-offset: 1px; opacity: 1; }
+.notif-panel .np-delete-x { display: none; }
+.notif-panel .np-toasts { display: flex; flex-direction: column; gap: 6px; padding: 0 10px 10px; }
+.notif-panel .np-toasts:empty { display: none; }
+.notif-panel .np-toast { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 12px; border-radius: 10px; background: var(--cpri-primary); color: #fff; font-size: .78rem; box-shadow: var(--shadow-sm); }
+.notif-panel .np-toast-error { border-left: 3px solid var(--bs-danger, #dc3545); }
+.notif-panel .np-toast.is-sending { opacity: .8; }
+.notif-panel .np-undo { flex: 0 0 auto; padding: 3px 6px; border: 0; border-radius: 5px; background: transparent; color: inherit; font: inherit; font-weight: 800; text-decoration: underline; cursor: pointer; }
+.notif-panel .np-undo:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .notif-panel .np-icon { width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0; display: grid; place-items: center; font-size: 1.05rem; background: var(--grad-brand-soft); color: var(--cpri-secondary); }
 .notif-panel .np-text { min-width: 0; }
 .notif-panel .np-text b { display: block; font-size: .88rem; font-family: var(--font-head); color: var(--cpri-text); }
@@ -942,6 +957,15 @@ img { max-width: 100%; display: block; }
 .notif-panel .np-time { font-size: .7rem; color: var(--cpri-muted-2); margin-top: 2px; }
 .notif-panel .np-view-all { display: block; text-align: center; padding: 12px; border-top: 1px solid var(--cpri-border-soft); color: var(--cpri-secondary); font-weight: 700; font-size: .84rem; }
 .notif-panel .np-view-all:hover { background: var(--cpri-bg-2); }
+@media (hover: hover) {
+  .notif-panel .np-item:hover .np-delete,
+  .notif-panel .np-item:focus-within .np-delete { opacity: 1; }
+}
+@media (hover: none) {
+  .notif-panel .np-delete { width: 40px; height: 40px; flex-basis: 40px; opacity: 1; }
+  .notif-panel .np-delete-trash { display: none; }
+  .notif-panel .np-delete-x { display: inline; }
+}
 
 /* Notification preferences card (profile page) */
 .prefs-row {
@@ -2415,8 +2439,5 @@ main { animation: pageIn .45s ease both; }
     linear-gradient(to right, rgba(0,0,0,.12), transparent 20px) 0 0 / 20px 100% no-repeat scroll,
     linear-gradient(var(--cpri-card), var(--cpri-card)) 0 0 / 100% 100% no-repeat local;
 }
-
-
-
 
 

@@ -448,11 +448,13 @@ const CPRI = (() => {
       <div class="np-head"><b><i class="bi bi-bell"></i> Notifications <span class="np-role" id="npRole"></span></b>
         <div class="np-actions">
           <a class="np-mark" id="npMarkAll" href="#" title="Mark all as read"><i class="bi bi-check2-all"></i> Mark all read</a>
+          <button class="np-mark np-clear-all" id="npClearAll" type="button" title="Delete all notifications" style="display:none;"><i class="bi bi-trash"></i> Clear all</button>
           <a class="np-mark" id="npMessages" href="messages.html" title="Direct messages" style="display:none;"><i class="bi bi-chat-left-text"></i> Messages</a>
           <a class="np-mark" id="npSettings" href="profile.html#prefs" title="Notification settings"><i class="bi bi-gear"></i> Settings</a>
         </div>
       </div>
       <div class="np-body" id="npBody"></div>
+      <div class="np-toasts" id="npToasts" aria-live="polite"></div>
     </div>
 
     <div class="toast-wrap" id="toastWrap"></div>`;
@@ -1337,6 +1339,158 @@ const CPRI = (() => {
   let notifPublic = false;
   let notifRoleLabel = '';
   let notifTimer = null;
+  const pendingNotificationDeletes = new Map();
+
+  function updateNotificationActions() {
+    const markAll = document.getElementById('npMarkAll');
+    const clearAll = document.getElementById('npClearAll');
+    const hasNotifications = Boolean(document.querySelector('#npBody .np-item[data-id]'));
+    if (markAll) markAll.style.display = notifPublic ? 'none' : '';
+    if (clearAll) clearAll.style.display = !notifPublic && hasNotifications ? '' : 'none';
+  }
+
+  function showNotificationEmptyState() {
+    if (notifPublic) return;
+    const body = document.getElementById('npBody');
+    if (!body || body.querySelector('.np-item[data-id]')) return;
+    body.innerHTML = "<div class=\"np-empty\"><i class=\"bi bi-bell-slash\"></i><b>You're all caught up</b><span>New notifications will show up here.</span></div>";
+    updateNotificationActions();
+  }
+
+  function restorePendingNotificationDelete(entry) {
+    if (entry.invalidated || entry.row.isConnected) return;
+    const body = document.getElementById('npBody');
+    if (!body) return;
+    const empty = body.querySelector('.np-empty');
+    if (empty) body.replaceChildren();
+    const rows = Array.from(body.querySelectorAll('.np-item[data-id]'));
+    if (entry.next && entry.next.parentNode === body) {
+      body.insertBefore(entry.row, entry.next);
+    } else if (entry.previous && entry.previous.parentNode === body) {
+      body.insertBefore(entry.row, entry.previous.nextSibling);
+    } else {
+      body.insertBefore(entry.row, rows[entry.index] || null);
+    }
+    if (entry.unread) notifUnread += 1;
+    updateNotifBadge();
+    updateNotificationActions();
+  }
+
+  function removeNotificationToast(entry) {
+    if (entry.toast && entry.toast.parentNode) entry.toast.parentNode.removeChild(entry.toast);
+  }
+
+  function showNotificationError(message) {
+    const toasts = document.getElementById('npToasts');
+    if (!toasts) return;
+    const toast = document.createElement('div');
+    toast.className = 'np-toast np-toast-error';
+    toast.textContent = message;
+    toasts.appendChild(toast);
+    setTimeout(() => toast.remove(), 4000);
+  }
+
+  async function commitNotificationDelete(entry, keepalive = false) {
+    if (entry.inFlight || entry.invalidated) return;
+    entry.inFlight = true;
+    clearTimeout(entry.timer);
+    if (entry.toast) {
+      entry.toast.classList.add('is-sending');
+      const undo = entry.toast.querySelector('.np-undo');
+      if (undo) undo.remove();
+    }
+
+    try {
+      const res = await fetch('/api/notifications/' + encodeURIComponent(entry.id), {
+        method: 'DELETE',
+        credentials: 'include',
+        keepalive
+      });
+      const data = await res.json();
+      if (!res.ok || !data || data.ok !== true) {
+        throw new Error((data && data.message) || 'Delete request failed.');
+      }
+      pendingNotificationDeletes.delete(entry.id);
+      removeNotificationToast(entry);
+      showNotificationEmptyState();
+    } catch (err) {
+      pendingNotificationDeletes.delete(entry.id);
+      restorePendingNotificationDelete(entry);
+      if (entry.toast) {
+        entry.toast.classList.remove('is-sending');
+        entry.toast.classList.add('np-toast-error');
+        entry.toast.textContent = "Couldn't delete that notification. Try again.";
+        setTimeout(() => removeNotificationToast(entry), 4000);
+      } else {
+        showNotificationError("Couldn't delete that notification. Try again.");
+      }
+    }
+  }
+
+  function flushPendingNotificationDeletes() {
+    pendingNotificationDeletes.forEach(entry => {
+      if (!entry.inFlight) commitNotificationDelete(entry, true);
+    });
+  }
+
+  function restoreUnsentNotificationDeletes() {
+    pendingNotificationDeletes.forEach(entry => {
+      if (entry.inFlight) return;
+      clearTimeout(entry.timer);
+      pendingNotificationDeletes.delete(entry.id);
+      restorePendingNotificationDelete(entry);
+      entry.invalidated = true;
+      removeNotificationToast(entry);
+    });
+  }
+
+  function closeNotificationPanel(panel) {
+    panel.classList.remove('open');
+    flushPendingNotificationDeletes();
+  }
+
+  function beginNotificationDelete(row) {
+    const id = row.dataset.id;
+    if (pendingNotificationDeletes.has(id)) return;
+    const body = document.getElementById('npBody');
+    const toasts = document.getElementById('npToasts');
+    if (!body || !toasts) return;
+
+    const rows = Array.from(body.querySelectorAll('.np-item[data-id]'));
+    const entry = {
+      id,
+      row,
+      index: rows.indexOf(row),
+      previous: row.previousElementSibling,
+      next: row.nextElementSibling,
+      unread: row.classList.contains('unread'),
+      toast: document.createElement('div'),
+      timer: null,
+      inFlight: false,
+      invalidated: false
+    };
+    entry.toast.className = 'np-toast';
+    entry.toast.innerHTML = '<span>Notification deleted</span><button type="button" class="np-undo">Undo</button>';
+    entry.toast.querySelector('.np-undo').addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (entry.inFlight || entry.invalidated) return;
+      clearTimeout(entry.timer);
+      pendingNotificationDeletes.delete(id);
+      restorePendingNotificationDelete(entry);
+      removeNotificationToast(entry);
+      showNotificationEmptyState();
+    });
+
+    pendingNotificationDeletes.set(id, entry);
+    row.remove();
+    if (entry.unread && notifUnread > 0) notifUnread -= 1;
+    toasts.appendChild(entry.toast);
+    updateNotifBadge();
+    updateNotificationActions();
+    showNotificationEmptyState();
+    entry.timer = setTimeout(() => commitNotificationDelete(entry), 5000);
+  }
 
   function initNotifications() {
     const bell = document.getElementById('nav-bell');
@@ -1348,7 +1502,7 @@ const CPRI = (() => {
     const openFor = (btn) => {
       const sameBell = panel._bell === btn;
       if (sameBell && panel.classList.contains('open')) {
-        panel.classList.remove('open');
+        closeNotificationPanel(panel);
         return;
       }
       panel._bell = btn;
@@ -1382,9 +1536,10 @@ const CPRI = (() => {
     // Close on outside click / Escape.
     document.addEventListener('click', (e) => {
       if (e.target.closest('#notifPanel') || e.target.closest('#nav-bell') || e.target.closest('#nav-bell-m') || e.target.closest('#dash-bell')) return;
-      panel.classList.remove('open');
+      closeNotificationPanel(panel);
     });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') panel.classList.remove('open'); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNotificationPanel(panel); });
+    window.addEventListener('pagehide', flushPendingNotificationDeletes);
 
     // Settings gear: logged-in → profile prefs; guests → login page. Checks the
     // session directly instead of the notifPublic flag so a fast click before the
@@ -1408,9 +1563,52 @@ const CPRI = (() => {
       try {
         await fetch('/api/notifications/read', { method: 'POST', credentials: 'include' });
       } catch { /* keep optimistic state */ }
+      pendingNotificationDeletes.forEach(entry => {
+        entry.unread = false;
+        entry.row.classList.remove('unread');
+        entry.row.classList.add('read');
+      });
       notifUnread = 0;
       document.querySelectorAll('#npBody .np-item.unread').forEach(el => { el.classList.remove('unread'); el.classList.add('read'); });
       updateNotifBadge();
+    });
+
+    const clearAll = document.getElementById('npClearAll');
+    if (clearAll) clearAll.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (notifPublic || !document.querySelector('#npBody .np-item[data-id]')) return;
+      if (typeof window.confirmDialog !== 'function') {
+        showNotificationError('Unable to open the confirmation dialog. Please try again.');
+        return;
+      }
+      if (!await window.confirmDialog('Delete all notifications?', 'Delete')) return;
+
+      restoreUnsentNotificationDeletes();
+      clearAll.disabled = true;
+      try {
+        const res = await fetch('/api/notifications', {
+          method: 'DELETE',
+          credentials: 'include'
+        });
+        const data = await res.json();
+        if (!res.ok || !data || data.ok !== true) {
+          throw new Error((data && data.message) || 'Delete request failed.');
+        }
+        pendingNotificationDeletes.forEach(entry => {
+          entry.invalidated = true;
+          clearTimeout(entry.timer);
+          removeNotificationToast(entry);
+        });
+        pendingNotificationDeletes.clear();
+        notifUnread = 0;
+        renderNotifications([]);
+        updateNotifBadge();
+      } catch (err) {
+        showNotificationError("Couldn't delete notifications. Try again.");
+      } finally {
+        clearAll.disabled = false;
+      }
     });
 
     loadNotifications();
@@ -1427,10 +1625,16 @@ const CPRI = (() => {
       const res = await fetch('/api/notifications', { credentials: 'include' });
       if (!res.ok) return;
       const data = await res.json();
+      const notifications = Array.isArray(data.notifications) ? data.notifications : [];
+      const pendingIds = new Set(pendingNotificationDeletes.keys());
+      const pendingUnread = notifications.filter(notification => {
+        const pending = pendingNotificationDeletes.get(String(notification.id));
+        return pending && pending.unread && !notification.readAt;
+      }).length;
       notifPublic = data.public === true;
       notifRoleLabel = data.roleLabel || '';
-      notifUnread = Number(data.unread) || 0;
-      renderNotifications(Array.isArray(data.notifications) ? data.notifications : []);
+      notifUnread = Math.max(0, (Number(data.unread) || 0) - pendingUnread);
+      renderNotifications(notifications.filter(notification => !pendingIds.has(String(notification.id))));
       // Direct messages are for all registered roles — mirror the server DM gate.
       const npMessages = document.getElementById('npMessages');
       if (npMessages) npMessages.style.display = (!notifPublic && ['admin','cpri_staff','faculty_researcher','adviser','ethics_reviewer','student_researcher','public_visitor'].includes(data.role)) ? '' : 'none';
@@ -1457,27 +1661,40 @@ const CPRI = (() => {
           </a>`).join('')
           + '<a class="np-view-all" href="login.html"><i class="bi bi-box-arrow-in-right"></i> Sign in for personal notifications</a>';
       }
+      updateNotificationActions();
       updateNotifBadge();
       return;
     }
 
     if (!list.length) {
-      body.innerHTML = '<div class="np-empty"><i class="bi bi-bell-slash"></i><span>No notifications yet.</span></div>';
+      body.innerHTML = "<div class=\"np-empty\"><i class=\"bi bi-bell-slash\"></i><b>You're all caught up</b><span>New notifications will show up here.</span></div>";
+      updateNotificationActions();
       updateNotifBadge();
       return;
     }
 
     body.innerHTML = list.map(n => `
-      <a class="np-item${n.readAt ? ' read' : ' unread'}" href="${escapeHtml(n.link || '#')}" data-id="${escapeHtml(n.id)}">
-        <span class="np-icon"><i class="bi bi-bell"></i></span>
-        <span class="np-text"><b>${escapeHtml(n.title)}</b><small>${escapeHtml(n.message)}</small><span class="np-time">${fmtAgo(n.createdAt)}</span></span>
-      </a>`).join('');
+      <div class="np-item${n.readAt ? ' read' : ' unread'}" data-id="${escapeHtml(n.id)}">
+        <a class="np-item-link" href="${escapeHtml(n.link || '#')}">
+          <span class="np-icon"><i class="bi bi-bell"></i></span>
+          <span class="np-text"><b>${escapeHtml(n.title)}</b><small>${escapeHtml(n.message)}</small><span class="np-time">${fmtAgo(n.createdAt)}</span></span>
+        </a>
+        <button class="np-delete" type="button" aria-label="Delete notification" title="Delete notification">
+          <i class="bi bi-trash np-delete-trash"></i><i class="bi bi-x-lg np-delete-x"></i>
+        </button>
+      </div>`).join('');
 
     // Clicking a row marks it read server-side and keeps it visible (styled as
-    // read), then follows the link. Rows without data-id (the guest feed) never
-    // trigger the authenticated mark-read endpoint.
+    // read), then follows the link.
     body.querySelectorAll('.np-item[data-id]').forEach(row => {
-      row.addEventListener('click', async (e) => {
+      const link = row.querySelector('.np-item-link');
+      const deleteButton = row.querySelector('.np-delete');
+      deleteButton.addEventListener('click', event => {
+        event.preventDefault();
+        event.stopPropagation();
+        beginNotificationDelete(row);
+      });
+      link.addEventListener('click', async () => {
         const alreadyRead = !row.classList.contains('unread');
         if (!alreadyRead) {
           // Mark read + persist immediately so a reload doesn't bring it back.
@@ -1488,9 +1705,10 @@ const CPRI = (() => {
             await fetch('/api/notifications/read/' + encodeURIComponent(row.dataset.id), { method: 'POST', credentials: 'include' });
           } catch { /* keep optimistic state */ }
         }
-        // Let the default navigation happen (the row is an <a>).
+        // The anchor's default navigation follows its notification link.
       });
     });
+    updateNotificationActions();
     updateNotifBadge();
   }
 

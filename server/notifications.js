@@ -2,8 +2,8 @@
 //  CPRI — In-app notifications (bell)
 //  Role-aware: logged-in users see their personal notifications
 //  with unread count + role label; public visitors get a read-only
-//  feed of the latest announcements & events. Marking read is
-//  behind requireAuth — guests can never mutate state.
+//  feed of the latest announcements & events. Mutations are behind
+//  requireAuth — guests can never change notification state.
 // ============================================================
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
@@ -187,6 +187,39 @@ router.post('/notifications/read/:id', requireAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to mark as read.' });
+  }
+});
+
+router.delete('/notifications/:id', requireAuth, async (req, res) => {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) {
+    return res.status(400).json({ ok: false, message: 'Invalid notification ID.' });
+  }
+
+  try {
+    const result = await run(
+      'DELETE FROM notifications WHERE id = ? AND userId = ?',
+      [req.params.id, req.session.userId]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ ok: false, message: 'Notification not found.' });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[notifications] delete error:', err.message);
+    res.status(500).json({ ok: false, message: 'Failed to delete notification.' });
+  }
+});
+
+router.delete('/notifications', requireAuth, async (req, res) => {
+  try {
+    const result = await run(
+      'DELETE FROM notifications WHERE userId = ?',
+      [req.session.userId]
+    );
+    res.json({ ok: true, deleted: result.affectedRows });
+  } catch (err) {
+    console.error('[notifications] clear-all error:', err.message);
+    res.status(500).json({ ok: false, message: 'Failed to delete notifications.' });
   }
 });
 
