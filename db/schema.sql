@@ -21,7 +21,7 @@
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `direct_messages` (
+CREATE TABLE IF NOT EXISTS `direct_messages` (
   `id` varchar(36) NOT NULL,
   `senderId` varchar(36) DEFAULT NULL,
   `recipientId` varchar(36) DEFAULT NULL,
@@ -40,7 +40,7 @@ CREATE TABLE `direct_messages` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `ethics` (
+CREATE TABLE IF NOT EXISTS `ethics` (
   `id` varchar(36) NOT NULL,
   `submitterId` varchar(36) DEFAULT NULL,
   `submitterName` varchar(160) DEFAULT NULL,
@@ -71,7 +71,7 @@ CREATE TABLE `ethics` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `event_abstracts` (
+CREATE TABLE IF NOT EXISTS `event_abstracts` (
   `id` varchar(36) NOT NULL,
   `eventId` varchar(36) DEFAULT NULL,
   `userId` varchar(36) DEFAULT NULL,
@@ -93,7 +93,7 @@ CREATE TABLE `event_abstracts` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `event_registrations` (
+CREATE TABLE IF NOT EXISTS `event_registrations` (
   `id` varchar(36) NOT NULL,
   `eventId` varchar(36) DEFAULT NULL,
   `userId` varchar(36) DEFAULT NULL,
@@ -118,7 +118,7 @@ CREATE TABLE `event_registrations` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `events_module` (
+CREATE TABLE IF NOT EXISTS `events_module` (
   `id` varchar(36) NOT NULL,
   `title` varchar(255) DEFAULT NULL,
   `theme` varchar(255) DEFAULT NULL,
@@ -142,7 +142,7 @@ CREATE TABLE `events_module` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `innovation_extension` (
+CREATE TABLE IF NOT EXISTS `innovation_extension` (
   `id` varchar(36) NOT NULL,
   `projectType` varchar(60) DEFAULT NULL,
   `title` varchar(255) DEFAULT NULL,
@@ -173,7 +173,7 @@ CREATE TABLE `innovation_extension` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `inquiries` (
+CREATE TABLE IF NOT EXISTS `inquiries` (
   `id` bigint(20) NOT NULL AUTO_INCREMENT,
   `name` varchar(160) DEFAULT NULL,
   `email` varchar(160) DEFAULT NULL,
@@ -190,7 +190,7 @@ CREATE TABLE `inquiries` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `notifications` (
+CREATE TABLE IF NOT EXISTS `notifications` (
   `id` varchar(36) NOT NULL,
   `userId` varchar(36) DEFAULT NULL,
   `action` varchar(80) DEFAULT NULL,
@@ -210,7 +210,7 @@ CREATE TABLE `notifications` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `publications` (
+CREATE TABLE IF NOT EXISTS `publications` (
   `id` varchar(36) NOT NULL,
   `title` varchar(255) DEFAULT NULL,
   `authors` varchar(255) DEFAULT NULL,
@@ -245,7 +245,7 @@ CREATE TABLE `publications` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `repository` (
+CREATE TABLE IF NOT EXISTS `repository` (
   `id` varchar(36) NOT NULL,
   `sourceSubmissionId` varchar(36) DEFAULT NULL,
   `title` varchar(255) DEFAULT NULL,
@@ -273,7 +273,7 @@ CREATE TABLE `repository` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `researchers` (
+CREATE TABLE IF NOT EXISTS `researchers` (
   `id` varchar(36) NOT NULL,
   `type` varchar(40) DEFAULT NULL,
   `fullName` varchar(160) DEFAULT NULL,
@@ -305,7 +305,7 @@ CREATE TABLE `researchers` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `submissions` (
+CREATE TABLE IF NOT EXISTS `submissions` (
   `id` varchar(36) NOT NULL,
   `submitterId` varchar(36) DEFAULT NULL,
   `submitterName` varchar(160) DEFAULT NULL,
@@ -338,7 +338,7 @@ CREATE TABLE `submissions` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `system_logs` (
+CREATE TABLE IF NOT EXISTS `system_logs` (
   `id` varchar(36) NOT NULL,
   `action` varchar(80) DEFAULT NULL,
   `details` text DEFAULT NULL,
@@ -356,7 +356,7 @@ CREATE TABLE `system_logs` (
 
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!40101 SET character_set_client = utf8 */;
-CREATE TABLE `users` (
+CREATE TABLE IF NOT EXISTS `users` (
   `id` varchar(36) NOT NULL,
   `username` varchar(80) NOT NULL,
   `email` varchar(160) NOT NULL,

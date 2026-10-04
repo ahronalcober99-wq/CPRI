@@ -10,6 +10,11 @@ Tables: `users`, `submissions`, `repository`, `publications`, `researchers`,
 `innovation_extension`, `inquiries`, `notifications`, `direct_messages`,
 `system_logs`.
 
+`server/init-db.sql` is the canonical schema. The API applies it automatically
+on every boot to the database named by `DB_NAME` (every statement is
+`CREATE TABLE IF NOT EXISTS`, so it is safe to run every deploy). The commands
+below are for doing it by hand.
+
 ## Create the tables on a hosted MySQL
 
 ```bash

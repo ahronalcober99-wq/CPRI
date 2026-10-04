@@ -124,17 +124,17 @@ gitignored; `.env.example` contains placeholders only.
 | `PORT` | HTTP port (default 3000; hosts usually inject their own) |
 | `SESSION_SECRET` | Signs session cookies — long random string in production |
 | `CORS_ORIGINS` | Comma-separated front-end origins allowed to call the API with cookies |
-| `TRUST_PROXY` | `1` when behind a reverse proxy that terminates TLS |
+| `TRUST_PROXY` | Optional hop-count override; `trust proxy` is already `1` by default so Render's X-Forwarded-* headers are honoured |
 | `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` | Verification / reset emails via Brevo |
 | `MAIL_FROM_NAME` | Optional name shown in the password-reset email content |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Continue with Google" (optional) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstrap admin account |
 
-> **Rotate the Gmail app password.** It was committed in `.env.example` in the
-> public repository (commit `37e1fca`). It is replaced with a placeholder as of
-> `dd3e74c`, but the old value is still in history and must be treated as
-> compromised: Google Account → Security → App passwords → revoke and generate
-> a new one, then put it in `.env` only.
+> **Revoke the old Gmail app password.** It was committed in `.env.example` in
+> the public repository (commit `37e1fca`) and is still in history, so treat it
+> as compromised: Google Account → Security → App passwords → revoke it. The
+> app no longer uses Gmail at all — verification and reset emails go out through
+> Brevo using `BREVO_API_KEY` / `BREVO_SENDER_EMAIL`.
 
 ## 7. GitHub Pages configuration
 
@@ -192,7 +192,7 @@ docker run -p 3000:3000 \
   laptop is not reachable from the internet).
 
 **Render blueprint.** `render.yaml` is committed: Render → New → Blueprint →
-this repository. It prompts for `DB_*`, `ADMIN_*`, `GMAIL_*` and `GOOGLE_*`
+this repository. It prompts for `DB_*`, `ADMIN_*`, `BREVO_*` and `GOOGLE_*`
 (`sync: false`), generates `SESSION_SECRET`, and presets `CORS_ORIGINS` and
 `TRUST_PROXY=1`.
 
