@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS publications (
   journalOrConference VARCHAR(255), publicationDate VARCHAR(40),
   volume VARCHAR(40), issue VARCHAR(40), pages VARCHAR(40), doi VARCHAR(160),
   publicationLink VARCHAR(255), indexingStatus VARCHAR(120), pubType VARCHAR(60),
-  status VARCHAR(40), authorType VARCHAR(40), department VARCHAR(160),
+  status VARCHAR(40), featured TINYINT NOT NULL DEFAULT 0, authorType VARCHAR(40), department VARCHAR(160),
   schoolYear VARCHAR(40), proofDocuments JSON, submitterId VARCHAR(36),
   submitterName VARCHAR(160), createdAt DATETIME, updatedAt DATETIME,
   sourceSubmissionId VARCHAR(36),

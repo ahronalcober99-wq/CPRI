@@ -114,6 +114,13 @@
                   <input type="text" id="f-sy" name="schoolYear" placeholder="e.g. 2025-2026">
                 </div>
               </div>
+              <div id="featured-group" class="form-group" style="display:none;margin-top:16px;">
+                <label>
+                  <input type="checkbox" id="f-featured" name="featured">
+                  Feature on homepage
+                </label>
+                <p class="form-note">Only published publications can be featured, with up to six featured items at a time.</p>
+              </div>
               <div style="margin-top:18px;">
                 <button type="submit" class="btn btn-primary">Save Publication</button>
               </div>
@@ -165,7 +172,10 @@
     const notLogged = document.getElementById('not-logged');
     const editSection = document.getElementById('edit-section');
     const proofList = document.getElementById('proof-list');
+    const featuredGroup = document.getElementById('featured-group');
+    const featuredInput = document.getElementById('f-featured');
     let editId = null;
+    let canFeature = false;
 
     function showMsg(type, text) {
       message.className = 'form-message ' + type;
@@ -176,6 +186,8 @@
       const meRes = await fetch('/api/auth/me');
       if (!meRes.ok) { notLogged.style.display = 'block'; return; }
       const { user } = await meRes.json();
+      canFeature = ['admin', 'cpri_staff'].includes(user.role);
+      if (canFeature) featuredGroup.style.display = 'block';
 
       const params = new URLSearchParams(location.search);
       editId = params.get('edit');
@@ -194,6 +206,7 @@
             const el = document.getElementById(elId);
             if (el && p[key] !== undefined) el.value = p[key];
           }
+          if (canFeature) featuredInput.checked = p.featured === true || Number(p.featured) === 1;
           editSection.style.display = 'block';
           loadProofs(p);
         }
@@ -217,6 +230,7 @@
     document.getElementById('pub-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.target).entries());
+      if (canFeature) fd.featured = featuredInput.checked;
       const res = await fetch('/api/publications' + (editId ? '/' + editId : ''), {
         method: editId ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -230,6 +244,7 @@
         editSection.style.display = 'block';
       }
       e.target.reset();
+      if (canFeature) featuredInput.checked = out.publication.featured === true || Number(out.publication.featured) === 1;
     });
 
     document.getElementById('proof-form').addEventListener('submit', async (e) => {

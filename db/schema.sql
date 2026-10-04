@@ -224,6 +224,7 @@ CREATE TABLE IF NOT EXISTS `publications` (
   `indexingStatus` varchar(120) DEFAULT NULL,
   `pubType` varchar(60) DEFAULT NULL,
   `status` varchar(40) DEFAULT NULL,
+  `featured` tinyint NOT NULL DEFAULT 0,
   `authorType` varchar(40) DEFAULT NULL,
   `department` varchar(160) DEFAULT NULL,
   `schoolYear` varchar(40) DEFAULT NULL,

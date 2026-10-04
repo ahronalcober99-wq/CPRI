@@ -64,23 +64,25 @@
           <p class="section-sub text-center mx-auto">Browse peer-reviewed studies, policy briefs, and applied programs across our priority themes.</p>
         </div>
 
-        <div class="research-toolbar reveal-up glass" id="researchToolbar" style="border-radius:var(--radius);padding:18px 20px;margin-bottom:26px;display:flex;flex-wrap:wrap;gap:14px;align-items:center;">
-          <div class="input-group" style="flex:1;min-width:260px;">
-            <span class="input-group-text" style="background:transparent;border:none;"><i class="bi bi-search"></i></span>
-            <input type="search" id="researchSearch" class="form-control" style="border:none;background:transparent;box-shadow:none;" placeholder="Search publications, topics, authors…">
-          </div>
-          <div class="research-filters d-flex flex-wrap gap-2" id="researchFilters">
-            <button class="btn btn-soft btn-sm active" data-cat="all">All</button>
-            <button class="btn btn-soft btn-sm" data-cat="ai">AI Research</button>
-            <button class="btn btn-soft btn-sm" data-cat="policy">Policy Studies</button>
-            <button class="btn btn-soft btn-sm" data-cat="health">Healthcare</button>
-            <button class="btn btn-soft btn-sm" data-cat="edu">Education</button>
-            <button class="btn btn-soft btn-sm" data-cat="climate">Climate</button>
-            <button class="btn btn-soft btn-sm" data-cat="gov">Governance</button>
+        <div class="publication-controls reveal-up">
+          <p class="publication-counts" id="publication-counts">Loading publication counts...</p>
+          <div class="publication-control-actions">
+            <div class="publication-filters" id="publication-filters" role="group" aria-label="Filter publications by author type">
+              <button class="btn btn-primary btn-sm" type="button" data-publication-filter="all" aria-pressed="true">All</button>
+              <button class="btn btn-soft btn-sm" type="button" data-publication-filter="faculty" aria-pressed="false">Faculty</button>
+              <button class="btn btn-soft btn-sm" type="button" data-publication-filter="student" aria-pressed="false">Student</button>
+            </div>
+            <a class="publication-view-all" id="publication-view-all" href="publications.html">View all publications</a>
           </div>
         </div>
 
-        <div class="row g-4" id="research-cards"></div>
+        <p class="publication-status" id="publication-status" role="status" aria-live="polite"></p>
+        <p class="publication-empty" id="publication-empty" hidden>No featured research yet</p>
+        <div class="publication-error" id="publication-error" role="alert" hidden>
+          <span id="publication-error-message">Couldn't load research right now.</span>
+          <button class="btn btn-primary btn-sm" id="publication-retry" type="button">Retry</button>
+        </div>
+        <div class="publication-grid" id="publication-grid" aria-busy="true"></div>
       </div>
     </section>
 
@@ -194,15 +196,204 @@
   <script src="https://cdn.jsdelivr.net/npm/countup.js@2.8.0/dist/countUp.umd.js"></script>
   <script src="assets/js/main.js"></script>
   <script>
+    (() => {
+      const grid = document.getElementById('publication-grid');
+      const status = document.getElementById('publication-status');
+      const empty = document.getElementById('publication-empty');
+      const error = document.getElementById('publication-error');
+      const retry = document.getElementById('publication-retry');
+      const countsLine = document.getElementById('publication-counts');
+      const viewAll = document.getElementById('publication-view-all');
+      const filters = document.getElementById('publication-filters');
+      const endpoint = '/api/publications/featured?limit=6';
+      let publications = [];
+      let activeFilter = 'all';
+
+      function makeSkeletonCard() {
+        const card = document.createElement('article');
+        card.className = 'publication-card publication-skeleton-card';
+        card.setAttribute('aria-hidden', 'true');
+        const badge = document.createElement('div');
+        badge.className = 'skeleton publication-skeleton-badge';
+        const title = document.createElement('div');
+        title.className = 'skeleton publication-skeleton-title';
+        const line = document.createElement('div');
+        line.className = 'skeleton publication-skeleton-line';
+        const shortLine = document.createElement('div');
+        shortLine.className = 'skeleton publication-skeleton-line publication-skeleton-line-short';
+        card.append(badge, title, line, shortLine);
+        return card;
+      }
+
+      function showSkeletons() {
+        const skeletons = document.createDocumentFragment();
+        for (let index = 0; index < 3; index += 1) skeletons.append(makeSkeletonCard());
+        grid.replaceChildren(skeletons);
+        grid.setAttribute('aria-busy', 'true');
+      }
+
+      function displayText(value) {
+        return value === null || value === undefined ? '' : String(value);
+      }
+
+      function makeBadge(label, kind) {
+        const badge = document.createElement('span');
+        badge.className = 'publication-badge' + (kind ? ' publication-badge-' + kind : '');
+        badge.textContent = label;
+        return badge;
+      }
+
+      function detailsHref(item) {
+        if (typeof item.link === 'string' && item.link.trim()) {
+          try {
+            const rawLink = item.link.trim();
+            const resolvedLink = rawLink.startsWith('/api/publications/')
+              ? CPRI.apiUrl(rawLink)
+              : rawLink;
+            const url = new URL(resolvedLink, location.href);
+            if (['http:', 'https:'].includes(url.protocol) && !url.username && !url.password) {
+              return { href: url.href, external: true };
+            }
+          } catch {
+            // Invalid or relative links use the local publication page instead.
+          }
+        }
+        return { href: 'publications.html#' + encodeURIComponent(displayText(item.id)), external: false };
+      }
+
+      function makePublicationCard(item) {
+        const card = document.createElement('article');
+        card.className = 'publication-card';
+
+        const badges = document.createElement('div');
+        badges.className = 'publication-badges';
+        const type = displayText(item.type);
+        const typeKey = type.toLowerCase();
+        const level = displayText(item.level);
+        if (type) {
+          const typeLabel = typeKey === 'faculty' ? 'Faculty' : typeKey === 'student' ? 'Student' : type;
+          const typeKind = ['faculty', 'student'].includes(typeKey) ? typeKey : 'other';
+          badges.append(makeBadge(typeLabel, typeKind));
+        }
+        if (level) {
+          const levelLabel = ['local', 'national', 'international'].includes(level.toLowerCase())
+            ? level.charAt(0).toUpperCase() + level.slice(1).toLowerCase()
+            : level;
+          badges.append(makeBadge(levelLabel, 'level'));
+        }
+
+        const title = document.createElement('h3');
+        title.className = 'publication-title';
+        title.textContent = displayText(item.title);
+
+        const venue = document.createElement('p');
+        venue.className = 'publication-venue';
+        venue.textContent = displayText(item.venue);
+
+        const authors = document.createElement('p');
+        authors.className = 'publication-authors';
+        authors.textContent = displayText(item.authors);
+
+        const footer = document.createElement('div');
+        footer.className = 'publication-card-footer';
+        const year = document.createElement('span');
+        year.className = 'publication-year';
+        year.textContent = displayText(item.year);
+
+        const details = document.createElement('a');
+        details.className = 'publication-details';
+        details.textContent = 'View details';
+        const destination = detailsHref(item);
+        details.setAttribute('href', destination.href);
+        if (destination.external) {
+          details.setAttribute('target', '_blank');
+          details.setAttribute('rel', 'noopener noreferrer');
+        }
+        footer.append(year, details);
+        card.append(badges, title, venue, authors, footer);
+        return card;
+      }
+
+      function renderPublications() {
+        const visible = activeFilter === 'all'
+          ? publications
+          : publications.filter(item => displayText(item.type).toLowerCase() === activeFilter);
+        const cards = document.createDocumentFragment();
+        visible.forEach(item => cards.append(makePublicationCard(item)));
+        grid.replaceChildren(cards);
+        grid.setAttribute('aria-busy', 'false');
+        status.textContent = visible.length ? '' : 'No publications match this filter.';
+      }
+
+      function validResponse(data) {
+        return data && Array.isArray(data.items) &&
+          data.items.every(item => item && (typeof item.id === 'string' || typeof item.id === 'number')) &&
+          data.counts && ['total', 'faculty', 'student'].every(key =>
+            Number.isSafeInteger(data.counts[key]) && data.counts[key] >= 0);
+      }
+
+      async function loadFeaturedPublications() {
+        showSkeletons();
+        status.textContent = 'Loading publications...';
+        empty.hidden = true;
+        error.hidden = true;
+        let wakeUpTimer;
+        wakeUpTimer = window.setTimeout(() => {
+          status.textContent = 'Waking up the server, this can take a moment...';
+        }, 5000);
+
+        try {
+          const { res, data } = await CPRI.apiFetch(endpoint);
+          if (!res.ok || !validResponse(data)) throw new Error('Invalid featured publications response');
+
+          publications = data.items;
+          const { total, faculty, student } = data.counts;
+          countsLine.textContent = `${total} published publications · ${faculty} faculty · ${student} student`;
+          viewAll.textContent = `View all ${total} publications`;
+          viewAll.setAttribute('href', 'publications.html');
+          if (publications.length === 0) {
+            grid.replaceChildren();
+            grid.setAttribute('aria-busy', 'false');
+            status.textContent = '';
+            empty.hidden = false;
+            return;
+          }
+          renderPublications();
+        } catch {
+          grid.replaceChildren();
+          grid.setAttribute('aria-busy', 'false');
+          status.textContent = '';
+          countsLine.textContent = 'Publication counts unavailable.';
+          viewAll.textContent = 'View all publications';
+          document.getElementById('publication-error-message').textContent = "Couldn't load research right now.";
+          error.hidden = false;
+        } finally {
+          window.clearTimeout(wakeUpTimer);
+        }
+      }
+
+      filters.addEventListener('click', event => {
+        const button = event.target.closest('button[data-publication-filter]');
+        if (!button) return;
+        activeFilter = button.dataset.publicationFilter;
+        filters.querySelectorAll('button[data-publication-filter]').forEach(filterButton => {
+          const selected = filterButton === button;
+          filterButton.setAttribute('aria-pressed', String(selected));
+          filterButton.classList.toggle('btn-primary', selected);
+          filterButton.classList.toggle('btn-soft', !selected);
+        });
+        if (publications.length) renderPublications();
+      });
+      retry.addEventListener('click', loadFeaturedPublications);
+      loadFeaturedPublications();
+    })();
+
     (async () => {
       // Build dynamic content for the homepage
-      const [research, publications, events, researchers] = await Promise.all([
-        CPRI.fetchJson('/api/research'),
-        CPRI.fetchJson('/api/publications'),
+      const [events, researchers] = await Promise.all([
         CPRI.fetchJson('/api/events'),
         CPRI.fetchJson('/api/researchers')
       ]);
-      CPRI.buildResearch(research, publications);
       CPRI.buildResearchers(researchers);
       CPRI.buildStats();
       CPRI.buildEvents(events);
@@ -215,4 +406,3 @@
   </script>
 </body>
 </html>
-

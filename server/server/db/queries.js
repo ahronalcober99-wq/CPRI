@@ -72,3 +72,48 @@ export async function update(table, id, obj) {
 export async function remove(table, id) {
   await pool.query(`DELETE FROM ${table} WHERE id = ?`, [id]);
 }
+
+export async function runTransaction(transactionPool, callback) {
+  const connection = await transactionPool.getConnection();
+  let operationError;
+
+  try {
+    await connection.beginTransaction();
+    const transaction = {
+      async all(sql, params = []) {
+        const [rows] = await connection.query(sql, toDbParams(params));
+        return rows.map(parseRow);
+      },
+      async get(sql, params = []) {
+        const [rows] = await connection.query(sql, toDbParams(params));
+        return parseRow(rows[0] || null);
+      },
+      async run(sql, params = []) {
+        const [result] = await connection.query(sql, toDbParams(params));
+        return result;
+      }
+    };
+
+    const result = await callback(transaction);
+    await connection.commit();
+    return result;
+  } catch (error) {
+    operationError = error;
+    try {
+      await connection.rollback();
+    } catch {
+      // Keep the original operation error.
+    }
+    throw error;
+  } finally {
+    try {
+      connection.release();
+    } catch (releaseError) {
+      if (!operationError) throw releaseError;
+    }
+  }
+}
+
+export async function withTransaction(callback) {
+  return runTransaction(pool, callback);
+}
