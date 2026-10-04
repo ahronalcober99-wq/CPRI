@@ -1,7 +1,17 @@
+function normalizeEnvValue(value) {
+  let normalized = String(value || '').trim();
+  if (normalized.length >= 2 &&
+      ((normalized.startsWith('"') && normalized.endsWith('"')) ||
+       (normalized.startsWith("'") && normalized.endsWith("'")))) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+  return normalized;
+}
+
 function configuration(env) {
-  const baseUrl = String(env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
-  const serviceKey = String(env.SUPABASE_SERVICE_KEY || '').trim();
-  const bucket = String(env.SUPABASE_BUCKET || '').trim();
+  const baseUrl = normalizeEnvValue(env.SUPABASE_URL).replace(/\/+$/, '');
+  const serviceKey = normalizeEnvValue(env.SUPABASE_SERVICE_KEY);
+  const bucket = normalizeEnvValue(env.SUPABASE_BUCKET);
   const missing = [];
   if (!baseUrl) missing.push('SUPABASE_URL');
   if (!serviceKey) missing.push('SUPABASE_SERVICE_KEY');
@@ -24,8 +34,11 @@ function configuration(env) {
 }
 
 function encodePath(path) {
-  const segments = String(path || '').split('/');
-  if (!path || segments.some(segment => !segment || segment === '.' || segment === '..')) {
+  const objectPath = String(path || '');
+  const segments = objectPath.split('/');
+  if (!objectPath || objectPath.startsWith('/') || segments.some(segment =>
+    !segment || segment === '.' || segment === '..' || !/^[A-Za-z0-9._-]+$/.test(segment)
+  )) {
     throw new Error('Storage path is invalid.');
   }
   return segments.map(encodeURIComponent).join('/');
@@ -37,8 +50,7 @@ async function responseError(response, operation) {
 }
 
 export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } = {}) {
-  async function request(path, init, operation) {
-    const config = configuration(env);
+  async function request(config, path, init) {
     const response = await fetchImpl(`${config.baseUrl}/storage/v1/${path}`, {
       ...init,
       headers: {
@@ -47,25 +59,71 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
         ...(init?.headers || {})
       }
     });
-    return { config, response, operation };
+    return response;
+  }
+
+  async function logStartupConfiguration(logger = console) {
+    const config = (() => {
+      try { return configuration(env); }
+      catch { return null; }
+    })();
+    let host = '(not configured)';
+    if (config) {
+      try { host = new URL(config.baseUrl).host; }
+      catch { host = '(invalid URL)'; }
+    }
+    const serviceKey = normalizeEnvValue(env.SUPABASE_SERVICE_KEY);
+    logger.log('[storage] SUPABASE_URL host:', host);
+    logger.log('[storage] bucket:', config?.bucket || '(not configured)');
+    logger.log(`[storage] SUPABASE_SERVICE_KEY set: ${Boolean(serviceKey)} (length ${serviceKey.length})`);
+  }
+
+  async function checkBucket() {
+    const config = configuration(env);
+    const response = await request(
+      config,
+      `bucket/${encodeURIComponent(config.bucket)}`,
+      { method: 'GET' }
+    );
+    if (response.ok) return { ok: true };
+    const body = await response.text();
+    throw new Error(`HTTP ${response.status}: ${body || response.statusText || 'Unknown error'}`);
+  }
+
+  async function verifyBucketAtStartup(logger = console) {
+    await logStartupConfiguration(logger);
+    try {
+      await checkBucket();
+      logger.log('[storage] bucket OK');
+    } catch (error) {
+      logger.error('[storage] bucket check failed:', error.message);
+    }
   }
 
   async function uploadObject({ path, buffer, contentType }) {
     if (!Buffer.isBuffer(buffer)) throw new Error('Storage upload requires a file buffer.');
     const encodedPath = encodePath(path);
-    const { response } = await request(
-      `object/${encodeURIComponent(String(env.SUPABASE_BUCKET || '').trim())}/${encodedPath}`,
+    const config = configuration(env);
+    const response = await request(
+      config,
+      `object/${encodeURIComponent(config.bucket)}/${encodedPath}`,
       {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           'Content-Type': contentType,
           'x-upsert': 'false'
         },
         body: buffer
-      },
-      'upload'
+      }
     );
-    await responseError(response, 'upload');
+    if (!response.ok) {
+      const body = await response.text();
+      const safeBody = body.split(config.serviceKey).join('[redacted]');
+      throw new Error(
+        `Supabase Storage upload failed with HTTP ${response.status} ` +
+        `(bucket "${config.bucket}", path "${path}"): ${safeBody || response.statusText || 'Unknown error'}`
+      );
+    }
     return { path };
   }
 
@@ -74,14 +132,15 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
       throw new Error('Signed URL expiry must be from 1 to 60 seconds.');
     }
     const encodedPath = encodePath(path);
-    const { config, response } = await request(
-      `object/sign/${encodeURIComponent(String(env.SUPABASE_BUCKET || '').trim())}/${encodedPath}`,
+    const config = configuration(env);
+    const response = await request(
+      config,
+      `object/sign/${encodeURIComponent(config.bucket)}/${encodedPath}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ expiresIn, download: String(downloadName || 'download') })
-      },
-      'sign'
+      }
     );
     await responseError(response, 'sign');
     const body = await response.json();
@@ -93,10 +152,11 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
 
   async function objectExists(path) {
     const encodedPath = encodePath(path);
-    const { response } = await request(
-      `object/${encodeURIComponent(String(env.SUPABASE_BUCKET || '').trim())}/${encodedPath}`,
-      { method: 'HEAD' },
-      'check'
+    const config = configuration(env);
+    const response = await request(
+      config,
+      `object/${encodeURIComponent(config.bucket)}/${encodedPath}`,
+      { method: 'HEAD' }
     );
     if (response.status === 404) return false;
     await responseError(response, 'check');
@@ -105,19 +165,25 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
 
   async function deleteObjects(paths) {
     if (!Array.isArray(paths) || paths.length === 0) return;
-    const { response } = await request(
-      `object/${encodeURIComponent(String(env.SUPABASE_BUCKET || '').trim())}`,
+    const config = configuration(env);
+    const safePaths = paths.map(path => {
+      const objectPath = String(path);
+      encodePath(objectPath);
+      return objectPath;
+    });
+    const response = await request(
+      config,
+      `object/${encodeURIComponent(config.bucket)}`,
       {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prefixes: paths.map(path => String(path)) })
-      },
-      'delete'
+        body: JSON.stringify({ prefixes: safePaths })
+      }
     );
     await responseError(response, 'delete');
   }
 
-  return { uploadObject, createSignedDownloadUrl, objectExists, deleteObjects };
+  return { uploadObject, createSignedDownloadUrl, objectExists, deleteObjects, checkBucket, verifyBucketAtStartup };
 }
 
 export const supabaseStorage = createSupabaseStorage();

@@ -24,6 +24,7 @@ import { adminInsightsRouter } from './admin-insights.js';
 import { reportsRouter } from './reports.js';
 import { notificationsRouter, ensureNotificationsTable } from './notifications.js';
 import { messagesRouter, ensureMessagesTable } from './messages.js';
+import { supabaseStorage } from './storage/supabase-storage.js';
 import { testConnection, explainDbError, connectionOptions } from './db.js';
 import { insert, all, get } from './server/db/queries.js';
 
@@ -516,6 +517,7 @@ try {
 }
 
 const server = app.listen(PORT, async () => {
+  void supabaseStorage.verifyBucketAtStartup();
   let dbUp = true;
   try {
     await testConnection();
