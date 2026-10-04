@@ -289,7 +289,8 @@ test('featured endpoint validates limits and returns the public response shape w
     assert.deepEqual(countQuery.params, ['faculty', 'student', 'published']);
     assert.match(itemQuery.sql, /WHERE status = \?/);
     assert.deepEqual(itemQuery.params, ['published', 6]);
-    assert.match(itemQuery.sql, /ORDER BY featured DESC, LEFT\(publicationDate, 4\) DESC, createdAt DESC/);
+    assert.match(itemQuery.sql, /ORDER BY publicationDate DESC, createdAt DESC/);
+    assert.doesNotMatch(itemQuery.sql, /\bfeatured\b/);
     assert.ok(queries.every(query => !query.sql.includes('p1')));
     assert.deepEqual(Object.keys((await getJson(`${api.url}/featured`)).body.items[0]), [
       'id', 'title', 'authors', 'venue', 'year', 'type', 'level', 'link'
@@ -312,6 +313,71 @@ test('featured endpoint validates limits and returns the public response shape w
     assert.deepEqual(queries.filter(query => query.kind === 'items').map(query => query.params.at(-1)), [
       6, 1, 12
     ]);
+  } finally {
+    await api.close();
+  }
+});
+
+test('featured endpoint does not depend on homepage-only or optional publication columns', async () => {
+  const queries = [];
+  const api = await startFeaturedApi({
+    getQuery: async () => ({ total: 1, faculty: 1, student: 0 }),
+    allQuery: async (sql, params) => {
+      queries.push({ sql, params });
+      assert.doesNotMatch(sql, /\b(featured|publicationLink|proofDocuments)\b/);
+      return [{
+        id: 'p2',
+        title: 'Recent study',
+        authors: 'B. Author',
+        venue: 'Research Journal',
+        year: '2026',
+        authorType: 'faculty',
+        pubType: 'local_journal',
+        doi: '10.1234/recent-study'
+      }];
+    }
+  });
+
+  try {
+    assert.deepEqual(await getJson(`${api.url}/featured?limit=4`), {
+      status: 200,
+      body: {
+        items: [{
+          id: 'p2',
+          title: 'Recent study',
+          authors: 'B. Author',
+          venue: 'Research Journal',
+          year: '2026',
+          type: 'faculty',
+          level: 'local',
+          link: 'https://doi.org/10.1234/recent-study'
+        }],
+        counts: { total: 1, faculty: 1, student: 0 }
+      }
+    });
+    const itemQuery = queries.find(query => /LIMIT \?/.test(query.sql));
+    assert.deepEqual(itemQuery.params, ['published', 4]);
+    assert.match(itemQuery.sql, /ORDER BY publicationDate DESC, createdAt DESC/);
+  } finally {
+    await api.close();
+  }
+});
+
+test('featured endpoint logs unexpected database errors before returning a server error', async () => {
+  const errors = [];
+  const databaseError = Object.assign(new Error('connection unavailable'), { code: 'ECONNREFUSED' });
+  const api = await startFeaturedApi({
+    logger: { error: (...args) => errors.push(args) },
+    getQuery: async () => { throw databaseError; },
+    allQuery: async () => []
+  });
+
+  try {
+    assert.deepEqual(await getJson(`${api.url}/featured`), {
+      status: 500,
+      body: { error: databaseError.message }
+    });
+    assert.ok(errors.some(args => args.includes(databaseError.message)));
   } finally {
     await api.close();
   }

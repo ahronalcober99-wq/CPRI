@@ -58,7 +58,7 @@ function mapItem(row) {
   };
 }
 
-function createRouter({ allQuery, getQuery, now, cache }) {
+function createRouter({ allQuery, getQuery, now, cache, logger = console }) {
   const router = Router();
   routerCaches.set(router, cache);
 
@@ -90,11 +90,10 @@ function createRouter({ allQuery, getQuery, now, cache }) {
         ),
         allQuery(
           `SELECT id, title, authors, journalOrConference AS venue,
-                  LEFT(publicationDate, 4) AS year, authorType, pubType,
-                  publicationLink, doi, proofDocuments
+                  LEFT(publicationDate, 4) AS year, authorType, pubType, doi
            FROM publications
            WHERE status = ?
-           ORDER BY featured DESC, LEFT(publicationDate, 4) DESC, createdAt DESC
+           ORDER BY publicationDate DESC, createdAt DESC
            LIMIT ?`,
           ['published', limit]
         )
@@ -110,6 +109,7 @@ function createRouter({ allQuery, getQuery, now, cache }) {
       cache.set(limit, { expiresAt: now() + CACHE_TTL_MS, body });
       return res.json(body);
     } catch (error) {
+      logger.error('[publications] featured endpoint failed:', error.code || 'unknown database error', error.message || error);
       return next(error);
     }
   });
@@ -117,8 +117,8 @@ function createRouter({ allQuery, getQuery, now, cache }) {
   return router;
 }
 
-export function createFeaturedPublicationsRouter({ allQuery, getQuery, now = Date.now }) {
-  return createRouter({ allQuery, getQuery, now, cache: new Map() });
+export function createFeaturedPublicationsRouter({ allQuery, getQuery, now = Date.now, logger = console }) {
+  return createRouter({ allQuery, getQuery, now, logger, cache: new Map() });
 }
 
 export const featuredPublicationsRouter = createRouter({
