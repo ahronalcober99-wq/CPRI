@@ -60,13 +60,9 @@
   mysql -u root cpri < backups/<timestamp>/cpri.sql
   # then copy backups/<timestamp>/data/*.json back into server/data/
   ```
-- **Mail (fixed):** BOTH verification codes and password reset links send through
-  the Gmail transporter (`GMAIL_USER` + `GMAIL_APP_PASSWORD`). The old
-  SMTP_HOST-based transporter was removed — `sendResetEmail()` in
-  `server/lib/mail.js` never throws (so `/api/auth/forgot` keeps its
-  always-return-success privacy behavior) and prints a `[DEV] Password reset
-  link...` fallback to the server console if Gmail is unavailable, so resets are
-  always recoverable in dev.
+- **Mail:** Verification codes and password reset links use Brevo's HTTPS API.
+  Set `BREVO_API_KEY` and `BREVO_SENDER_EMAIL` in the hosting environment.
+  Delivery failures do not print verification codes or reset links.
 - **Google (Gmail) sign-in:** "Continue with Google" / "Sign up with Google"
   buttons on `login.html`/`register.html` run a standard OAuth 2.0 flow in
   `server/auth.js` (`/api/auth/google` + `/api/auth/google/callback`). Requires

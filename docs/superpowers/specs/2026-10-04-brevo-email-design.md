@@ -22,8 +22,8 @@ works from Render's free tier without exposing verification codes in logs.
 - Update the registration UI to handle unsuccessful HTTP responses and
   `{ ok: false }` errors, restore the send button after failure, and abort the
   request after 60 seconds.
-- Update the standalone mail test utilities to use Brevo and remove Nodemailer
-  from the dependency manifest and lockfile.
+- Update the standalone mail test utilities to use Brevo and remove the unused
+  SMTP dependency from the dependency manifest and lockfile.
 
 ## Error handling
 
@@ -37,8 +37,9 @@ send-code button.
 ## Validation
 
 Check the edited JavaScript for syntax errors, run available targeted project
-checks, and search for remaining Gmail SMTP/Nodemailer code and any
-verification-code logging. Confirm the lockfile no longer declares Nodemailer.
+checks, and search for remaining retired mail transport code and any
+verification-code logging. Confirm the lockfile no longer declares the retired
+dependency.
 
 ## Deployment diagnosis follow-up
 

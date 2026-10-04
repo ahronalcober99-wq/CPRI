@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the app's Gmail SMTP email paths with Brevo HTTPS delivery, safely report verification-send failures, and avoid logging verification codes.
+**Goal:** Use Brevo HTTPS delivery for app email, report verification-send failures, and avoid logging verification codes.
 
-**Architecture:** Keep the current mail module as the provider boundary and use Node 18+ `fetch` with an abort timeout to send Brevo email. The auth route retains code generation and expiry, deletes a pending code if delivery fails, and the registration page uses the existing API transport with a 60-second abort signal. Port the existing standalone mail probes to Brevo, then remove Nodemailer from both dependency manifests.
+**Architecture:** Keep the current mail module as the provider boundary and use Node 18+ `fetch` with an abort timeout to send Brevo email. The auth route retains code generation and expiry, deletes a pending code if delivery fails, and the registration page uses the existing API transport with a 60-second abort signal. Port the existing standalone mail probes to Brevo, then remove the unused SMTP dependency from both manifests.
 
 **Tech Stack:** Node.js >=18, Express, native `fetch`/`AbortController`, Brevo SMTP API, browser `fetch`.
 
@@ -33,7 +33,7 @@
 
 - [x] **Step 1: Replace the Gmail transport in `server/lib/mail.js`**
 
-Remove the Nodemailer import, transporter and Gmail configuration helpers, startup SMTP verification, and both Gmail DEV fallbacks. Add a private `sendBrevoEmail(to, subject, htmlContent)` helper that POSTs JSON to `https://api.brevo.com/v3/smtp/email`, sets the three required headers (`accept`, `content-type`, `api-key`), uses `sender: { name: 'CPRI', email: process.env.BREVO_SENDER_EMAIL }`, and aborts after 10 seconds. Throw `Error(\`Brevo ${res.status}: ${await res.text()}\`)` for non-2xx responses and always clear the timer.
+The mail module uses a private `sendBrevoEmail(to, subject, htmlContent)` helper that POSTs JSON to `https://api.brevo.com/v3/smtp/email`, sets the three required headers (`accept`, `content-type`, `api-key`), uses `sender: { name: 'CPRI', email: process.env.BREVO_SENDER_EMAIL }`, and aborts after 10 seconds. Throw `Error(\`Brevo ${res.status}: ${await res.text()}\`)` for non-2xx responses and always clear the timer.
 
 Keep the verification email content exactly: subject `Your CPRI verification code` and HTML `<p>Your verification code is <b>${code}</b>.</p><p>It expires in 10 minutes.</p>`. Log only `[mail] verification email sent to` and the recipient after a successful response. Have `sendResetEmail` build its existing reset URL and content, send with `sendBrevoEmail`, catch delivery failures to log the error message without the reset URL, and resolve normally so the forgot-password route still returns its generic response.
 
@@ -45,14 +45,14 @@ Remove the attempt/stored-code logs and the `verify-code` missing/mismatch diagn
 
 - [x] **Step 3: Update startup mail diagnostics**
 
-In `server/server.js`, replace Gmail configuration checks and DEV fallback output with:
+In `server/server.js`, retain only boolean configuration-presence output:
 
 ```js
 console.log('[mail] BREVO_API_KEY set:', Boolean(process.env.BREVO_API_KEY));
 console.log('[mail] BREVO_SENDER_EMAIL set:', Boolean(process.env.BREVO_SENDER_EMAIL));
 ```
 
-Remove the `verifyGmailTransporter` import and startup SMTP check.
+Do not run an SMTP startup check.
 
 - [x] **Step 4: Update email setup and registration documentation**
 
@@ -62,7 +62,7 @@ In `.env.example`, replace Gmail SMTP placeholders and instructions with `BREVO_
 
 Run `node --check server/lib/mail.js`, `node --check server/auth.js`, and `node --check server/server.js`. Confirm code generation and `CODE_TTL_MS` were not altered.
 
-### Task 2: Port email test utilities and remove Nodemailer
+### Task 2: Port email test utilities and remove unused dependency
 
 **Files:**
 - Modify: `test-email.js`
@@ -81,13 +81,13 @@ Replace the Gmail SMTP verification/send flow in `test-email.js` with a single n
 
 Apply the same Brevo request and error behavior in `test-email.cjs`. Use the Node 18+ global `fetch`; default the recipient to `BREVO_SENDER_EMAIL` and do not require a package.
 
-- [x] **Step 3: Remove Nodemailer dependency**
+- [x] **Step 3: Remove unused mail dependency**
 
-Remove `"nodemailer"` from `package.json` and remove its root dependency declaration and `node_modules/nodemailer` package entry from `package-lock.json`. Do not regenerate unrelated lockfile sections.
+Keep `package.json` and `package-lock.json` free of the removed SMTP dependency. Do not regenerate unrelated lockfile sections.
 
 - [x] **Step 4: Check test utility syntax and dependency metadata**
 
-Run `node --check test-email.js` and `node --check test-email.cjs`. Search both manifests and all runtime/test utilities for Nodemailer imports and Gmail SMTP credentials.
+Run `node --check test-email.js` and `node --check test-email.cjs`. Search both manifests and all runtime/test utilities for obsolete mail provider imports and credentials.
 
 ### Task 3: Make the register flow report errors and time out
 
@@ -130,7 +130,7 @@ Run `node --check` on each modified JavaScript file. Extract and parse the inlin
 
 - [x] **Step 2: Search for remaining unsafe or stale email paths**
 
-Search the project for `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `nodemailer`, Gmail SMTP setup, `DEV fallback`, and verification-code log messages. Confirm no match remains in active mail code or the test utilities.
+Search the project for obsolete SMTP configuration, packages, fallback logging, and verification-code log messages. Confirm no match remains in active mail code or the test utilities.
 
 - [x] **Step 3: Review the final diff**
 
