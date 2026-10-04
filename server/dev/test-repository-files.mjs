@@ -277,7 +277,7 @@ test('repository download reports legacy, missing, and failed storage objects sa
   });
   try {
     assert.deepEqual(await requestJson(`${errorApi.url}/error/file`, { user: 'owner' }), {
-      status: 500,
+      status: 502,
       body: { ok: false, message: 'Could not prepare the file download. Please try again.' }
     });
   } finally {

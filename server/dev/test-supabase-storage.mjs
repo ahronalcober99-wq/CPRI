@@ -85,7 +85,7 @@ test('creates signed URLs with a bounded expiry and original download name', asy
     env,
     fetchImpl: async (url, init) => {
       request = { url, init };
-      return response(200, { signedURL: '/storage/v1/object/sign/private-files/a/file.pdf?token=short-lived' });
+      return response(200, { signedURL: '/object/sign/private-files/a/file.pdf?token=short-lived' });
     }
   });
 
@@ -94,13 +94,59 @@ test('creates signed URLs with a bounded expiry and original download name', asy
     downloadName: 'Original paper.pdf',
     expiresIn: 60
   });
-  assert.equal(url, 'https://project.example.test/storage/v1/object/sign/private-files/a/file.pdf?token=short-lived');
+  assert.equal(
+    url,
+    'https://project.example.test/storage/v1/object/sign/private-files/a/file.pdf?token=short-lived&download=Original+paper.pdf'
+  );
   assert.equal(request.init.method, 'POST');
   assert.deepEqual(JSON.parse(request.init.body), { expiresIn: 60, download: 'Original paper.pdf' });
   assert.equal(url.includes(env.SUPABASE_SERVICE_KEY), false);
   await assert.rejects(
     storage.createSignedDownloadUrl({ path: 'a/file.pdf', downloadName: 'file.pdf', expiresIn: 61 }),
     /expiry must be from 1 to 60 seconds/
+  );
+});
+
+test('normalizes all signed URL response forms without duplicating the Storage prefix', async () => {
+  const cases = [
+    {
+      signedURL: '/object/sign/private-files/a%20folder/file.pdf?token=relative',
+      expected: 'https://project.example.test/storage/v1/object/sign/private-files/a%20folder/file.pdf?token=relative&download=Report+%26+Results.pdf'
+    },
+    {
+      signedUrl: 'https://project.example.test/storage/v1/object/sign/private-files/a/file.pdf?token=absolute',
+      expected: 'https://project.example.test/storage/v1/object/sign/private-files/a/file.pdf?token=absolute&download=Report+%26+Results.pdf'
+    },
+    {
+      signedURL: '/storage/v1/object/sign/private-files/a/file.pdf?token=full-path',
+      expected: 'https://project.example.test/storage/v1/object/sign/private-files/a/file.pdf?token=full-path&download=Report+%26+Results.pdf'
+    }
+  ];
+
+  for (const { signedURL, signedUrl, expected } of cases) {
+    const storage = createSupabaseStorage({
+      env,
+      fetchImpl: async () => response(200, { signedURL, signedUrl })
+    });
+    assert.equal(await storage.createSignedDownloadUrl({
+      path: 'a/file.pdf',
+      downloadName: 'Report & Results.pdf'
+    }), expected);
+  }
+});
+
+test('signed URL API failures include upstream status and response body without credentials', async () => {
+  const storage = createSupabaseStorage({
+    env,
+    fetchImpl: async () => response(502, {}, `Storage error; ${env.SUPABASE_SERVICE_KEY}`)
+  });
+
+  await assert.rejects(
+    storage.createSignedDownloadUrl({ path: 'a/file.pdf', downloadName: 'file.pdf' }),
+    error => error.message.includes('HTTP 502') &&
+      error.message.includes('Storage error') &&
+      error.message.includes('[redacted]') &&
+      !error.message.includes(env.SUPABASE_SERVICE_KEY)
   );
 });
 

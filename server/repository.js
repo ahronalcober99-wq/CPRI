@@ -203,7 +203,7 @@ router.get('/:id/file', async (req, res) => {
     return res.json({ ok: true, url });
   } catch (error) {
     console.error('[repository] signed file download failed:', error.message);
-    return res.status(500).json({ ok: false, message: 'Could not prepare the file download. Please try again.' });
+    return res.status(502).json({ ok: false, message: 'Could not prepare the file download. Please try again.' });
   }
 });
 

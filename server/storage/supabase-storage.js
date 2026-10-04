@@ -44,9 +44,14 @@ function encodePath(path) {
   return segments.map(encodeURIComponent).join('/');
 }
 
-async function responseError(response, operation) {
+async function responseError(response, operation, serviceKey) {
   if (response.ok) return;
-  throw new Error(`Supabase Storage ${operation} failed with HTTP ${response.status}.`);
+  const body = await response.text();
+  const safeBody = serviceKey ? body.split(serviceKey).join('[redacted]') : body;
+  throw new Error(
+    `Supabase Storage ${operation} failed with HTTP ${response.status}: ` +
+    `${safeBody || response.statusText || 'Unknown error'}`
+  );
 }
 
 export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } = {}) {
@@ -60,6 +65,24 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
       }
     });
     return response;
+  }
+
+  function signedDownloadUrl(rawSignedUrl, config, downloadName) {
+    if (typeof rawSignedUrl !== 'string' || !rawSignedUrl.trim()) {
+      throw new Error('Supabase Storage did not return a signed URL.');
+    }
+    const returnedUrl = rawSignedUrl.trim();
+    let url;
+    if (/^https?:\/\//i.test(returnedUrl)) {
+      url = new URL(returnedUrl);
+    } else if (returnedUrl.includes('/storage/v1')) {
+      url = new URL(returnedUrl, `${config.baseUrl}/`);
+    } else {
+      const relativePath = returnedUrl.startsWith('/') ? returnedUrl : `/${returnedUrl}`;
+      url = new URL(`${config.baseUrl}/storage/v1${relativePath}`);
+    }
+    url.searchParams.set('download', String(downloadName || 'download'));
+    return url.href;
   }
 
   async function logStartupConfiguration(logger = console) {
@@ -142,12 +165,9 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
         body: JSON.stringify({ expiresIn, download: String(downloadName || 'download') })
       }
     );
-    await responseError(response, 'sign');
+    await responseError(response, 'sign', config.serviceKey);
     const body = await response.json();
-    if (typeof body.signedURL !== 'string' || !body.signedURL) {
-      throw new Error('Supabase Storage did not return a signed URL.');
-    }
-    return new URL(body.signedURL, config.baseUrl).href;
+    return signedDownloadUrl(body.signedURL || body.signedUrl, config, downloadName);
   }
 
   async function objectExists(path) {
@@ -159,7 +179,7 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
       { method: 'HEAD' }
     );
     if (response.status === 404) return false;
-    await responseError(response, 'check');
+    await responseError(response, 'check', config.serviceKey);
     return true;
   }
 
@@ -180,7 +200,7 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
         body: JSON.stringify({ prefixes: safePaths })
       }
     );
-    await responseError(response, 'delete');
+    await responseError(response, 'delete', config.serviceKey);
   }
 
   return { uploadObject, createSignedDownloadUrl, objectExists, deleteObjects, checkBucket, verifyBucketAtStartup };

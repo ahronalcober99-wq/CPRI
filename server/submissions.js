@@ -441,7 +441,7 @@ router.get('/:id/file', requireAuth, async (req, res) => {
     return res.redirect(302, signedUrl);
   } catch (error) {
     console.error('[storage] submission download failed:', error.message);
-    return res.status(500).json({ ok: false, message: 'Could not prepare the file download. Please try again.' });
+    return res.status(502).json({ ok: false, message: 'Could not prepare the file download. Please try again.' });
   }
 });
 // ---------- Revisions Side-by-Side Comparison ----------
