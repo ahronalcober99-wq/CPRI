@@ -125,7 +125,8 @@ gitignored; `.env.example` contains placeholders only.
 | `SESSION_SECRET` | Signs session cookies — long random string in production |
 | `CORS_ORIGINS` | Comma-separated front-end origins allowed to call the API with cookies |
 | `TRUST_PROXY` | `1` when behind a reverse proxy that terminates TLS |
-| `GMAIL_USER`, `GMAIL_APP_PASSWORD`, `MAIL_FROM_NAME` | Verification / reset emails |
+| `BREVO_API_KEY`, `BREVO_SENDER_EMAIL` | Verification / reset emails via Brevo |
+| `MAIL_FROM_NAME` | Optional name shown in the password-reset email content |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Continue with Google" (optional) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstrap admin account |
 
@@ -236,12 +237,14 @@ the API is reachable). Submit valid credentials → redirect to
 ## 10. How to test registration
 
 Registration is two-step by design: request a code, then register with it.
+Set `BREVO_API_KEY` and `BREVO_SENDER_EMAIL` in the server environment first;
+the sender address must be verified in Brevo. A successful code request sends
+the email and returns `{ "ok": true, "message": "Code sent! Check your inbox (also check spam)." }`.
 
 ```bash
 curl -X POST http://localhost:3000/api/auth/send-verification-code \
   -H "Content-Type: application/json" -d '{"email":"you@example.com"}'
-# the 6-digit code is printed in the SERVER CONSOLE:
-#   [auth] Stored verification code for you@example.com: 123456
+# Check the recipient's inbox (and spam folder) for the verification email.
 
 curl -X POST http://localhost:3000/api/auth/verify-code \
   -H "Content-Type: application/json" -d '{"email":"you@example.com","code":"123456"}'

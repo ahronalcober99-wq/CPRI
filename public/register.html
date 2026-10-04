@@ -230,14 +230,17 @@
     // API base and turns a non-JSON reply (the static GitHub Pages copy answers
     // /api/* with a 404 HTML page) into a readable message instead of
     // `Unexpected token '<', "<html> <he"... is not valid JSON`.
-    async function postJSON(url, payload) {
+    async function postJSON(url, payload, signal) {
       try {
         const { res, data } = await CPRI.apiFetch(url, {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload), signal
         });
         return { res, out: data || {} };
       } catch (err) {
+        if (signal && signal.aborted) {
+          return { res: { ok: false, status: 0 }, out: { error: 'The request timed out. Please try again.' } };
+        }
         return { res: { ok: false, status: 0 }, out: { error: err.message } };
       }
     }
@@ -256,15 +259,16 @@
       sendCodeBtn.disabled = true;
       sendCodeBtn.textContent = 'Sending…';
       setVerifyMsg('', '');
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000);
       try {
-        const { res, out } = await postJSON('/api/auth/send-verification-code', { email });
-        console.log('[register] send-code response:', res.status, out);
-        if (!out || out.success !== true) {
-          throw new Error((out && out.error) || (out && out.detail) || 'Failed to send code.');
+        const { res, out } = await postJSON('/api/auth/send-verification-code', { email }, controller.signal);
+        if (!res || res.status !== 200 || !out || out.ok !== true) {
+          throw new Error((out && (out.message || out.error)) || 'Failed to send code.');
         }
         verifyRow.style.display = 'block';
         verifyCodeInput.focus();
-        setVerifyMsg('success', 'Code sent! Check your inbox (also check spam).');
+        setVerifyMsg('success', out.message || 'Code sent! Check your inbox (also check spam).');
         startCooldown(60);
       } catch (err) {
         if (err instanceof TypeError) {
@@ -274,6 +278,8 @@
         }
         sendCodeBtn.disabled = false;
         sendCodeBtn.textContent = 'Send Verification Code';
+      } finally {
+        clearTimeout(timeout);
       }
     });
 

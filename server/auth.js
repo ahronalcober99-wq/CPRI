@@ -6,7 +6,7 @@ import { dirname, join, basename } from 'path';
 import { randomBytes, randomUUID } from 'crypto';
 import { promises as fs, existsSync } from 'fs';
 import { spawn } from 'child_process';
-import { sendResetEmail, sendVerificationCode } from './lib/mail.js';
+import { sendResetEmail, sendVerificationEmail } from './lib/mail.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { notify } from './notifications.js';
 import { addLog } from './audit.js';
@@ -240,7 +240,6 @@ function requireRole(...roles) {
 router.post('/send-verification-code', async (req, res) => {
   cleanExpiredCodes();
   const email = normalizeEmail(req.body?.email);
-  console.log('📩 Attempting to send verification code to:', email || '(no email)');
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: 'A valid email is required.' });
@@ -258,22 +257,16 @@ router.post('/send-verification-code', async (req, res) => {
 
   const code = randomSixDigitCode();
   codeStore.set(email, { code, expiresAt: Date.now() + CODE_TTL_MS, verified: false });
-  console.log(`[auth] Stored verification code for ${email}: ${code} (expires in 10 min)`);
 
   try {
-    // BLOCKING — resolves only after Gmail SMTP accepts the message
-    await sendVerificationCode(email, code);
+    await sendVerificationEmail(email, code);
   } catch (err) {
-    // Log the FULL error object so Gmail's "Invalid login" / "Application-specific
-    // password required" / quota / blocked errors surface verbatim.
-    console.error('❌ Send failed for', email, ':', err);
-    return res.status(500).json({
-      error: 'Failed to send the verification email. Please try again.',
-      detail: process.env.NODE_ENV === 'production' ? undefined : (err && (err.response || err.message || String(err)))
-    });
+    codeStore.delete(email);
+    console.error('[mail] send failed:', err.message);
+    return res.status(500).json({ ok: false, message: 'Could not send the email. Please try again.' });
   }
 
-  res.json({ success: true, message: 'Verification code sent.' });
+  res.json({ ok: true, message: 'Code sent! Check your inbox (also check spam).' });
 });
 
 router.post('/verify-code', async (req, res) => {
@@ -288,7 +281,6 @@ router.post('/verify-code', async (req, res) => {
 
   const entry = codeStore.get(email);
   if (!entry) {
-    console.warn(`[auth] verify-code: no code stored for ${email} (submitted code was '${code}')`);
     return res.status(400).json({ error: 'No verification code has been sent for this email.' });
   }
   if (entry.expiresAt < Date.now()) {
@@ -300,9 +292,6 @@ router.post('/verify-code', async (req, res) => {
     return res.json({ verified: true, message: 'Email already verified.' });
   }
   if (String(entry.code) !== code) {
-    console.warn(
-      `[auth] verify-code MISMATCH for ${email}: stored='${String(entry.code)}' submitted='${code}' (both types: ${typeof entry.code} vs ${typeof code})`
-    );
     return res.status(400).json({ error: 'Invalid code.' });
   }
 
@@ -1028,4 +1017,3 @@ async function initAuth() {
 }
 
 export { router as authRouter, initAuth, requireAuth, requireAdmin, requireRole, readUsers };
-

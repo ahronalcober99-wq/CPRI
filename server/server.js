@@ -22,7 +22,7 @@ import { adminInsightsRouter } from './admin-insights.js';
 import { reportsRouter } from './reports.js';
 import { notificationsRouter, ensureNotificationsTable } from './notifications.js';
 import { messagesRouter, ensureMessagesTable } from './messages.js';
-import { testConnection, explainDbError } from './db.js';
+import { testConnection, explainDbError, connectionOptions } from './db.js';
 import { insert, all, get } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -114,6 +114,9 @@ const CROSS_SITE = CORS_ORIGINS.length > 0;
 
 const app = express();
 
+// Render (and every other hosting proxy) sets X-Forwarded-For/-Proto. Without
+// this, express-rate-limit answers ERR_ERL_UNEXPECTED_X_FORWARDED_FOR and the
+// session cookie never looks Secure. One trusted hop = the platform's proxy.
 app.set('trust proxy', 1);
 
 // Security HTTP headers
@@ -148,11 +151,11 @@ app.use('/api/auth/forgot', authLimiter);
 app.use('/api/contact', authLimiter);
 
 // Hosting platforms (Render, Railway, Fly, nginx, the cloudflared share tunnel)
-// terminate TLS and forward X-Forwarded-Proto, so Express must be told to trust
-// that header or it never sees the request as secure — and a session cookie
-// marked Secure is then either omitted (express-session) or rejected by the
-// browser. Set TRUST_PROXY=1 (or a hop count) on those hosts; leave it unset
-// when the API is exposed directly, since the header is otherwise spoofable.
+// terminate TLS and forward X-Forwarded-For / X-Forwarded-Proto. `trust proxy`
+// is set to 1 right after `express()` above, so those headers are honoured:
+// express-rate-limit no longer rejects requests with
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR, and the session cookie is marked Secure.
+// TRUST_PROXY may override the hop count for other topologies.
 const TRUST_PROXY = (process.env.TRUST_PROXY || '').trim();
 const TRUST_PROXY_ENABLED = TRUST_PROXY !== '' && TRUST_PROXY !== '0' && TRUST_PROXY.toLowerCase() !== 'false';
 if (TRUST_PROXY_ENABLED) {
@@ -166,9 +169,6 @@ if (CROSS_SITE) {
     console.warn('[cors] CORS_ORIGINS=* reflects any origin; combined with credentialed requests that lets any website act as a signed-in user. List exact origins instead.');
   }
   console.log('[cors] cross-origin front end allowed for:', CORS_ORIGINS.join(', '));
-  if (!TRUST_PROXY_ENABLED) {
-    console.warn('[cors] TRUST_PROXY is not set. Behind a TLS-terminating host the request never looks secure, so the session cookie will be sent without the Secure flag and browsers will reject the SameSite=None cookie — sign-in then silently fails cross-site. Set TRUST_PROXY=1 on such hosts.');
-  }
   app.use((req, res, next) => {
     const origin = req.headers.origin;
     const allowed = Boolean(origin) && (CORS_ORIGINS.includes('*') || CORS_ORIGINS.includes(origin));
@@ -444,37 +444,71 @@ app.use((err, req, res, next) => {
 
 
 // ---- Schema auto-setup (idempotent) --------------------------------------
-const SCHEMA_SQL_PATH = join(__dirname, '..', 'db', 'schema.sql');
-const POOL_FOR_SCHEMA = mysql.createPool({
-  host: process.env.DB_HOST || (process.env.NODE_ENV === 'production' ? null : 'localhost'),
-  port: Number(process.env.DB_PORT || (process.env.NODE_ENV === 'production' ? null : 3306)),
-  user: process.env.DB_USER || (process.env.NODE_ENV === 'production' ? null : 'root'),
-  password: process.env.DB_PASSWORD ?? (process.env.NODE_ENV === 'production' ? null : ''),
-  database: process.env.DB_NAME || (process.env.NODE_ENV === 'production' ? null : 'cpri'),
-  ssl: process.env.DB_HOST && process.env.DB_HOST.toLowerCase() !== 'localhost'
-    ? { rejectUnauthorized: true }
-    : false,
-  waitForConnections: true,
-  connectionLimit: 1
-});
+// server/init-db.sql creates every table the API queries, with
+// CREATE TABLE IF NOT EXISTS, so applying it on every boot is safe. It is run
+// against the database named by DB_NAME — never a hardcoded name — and the
+// CREATE DATABASE / USE statements are generated from DB_NAME here. (A
+// hardcoded `USE cpri` would point the tables at the wrong database whenever
+// DB_NAME differs.)
+const INIT_SQL_PATH = join(__dirname, 'init-db.sql');
+
 async function loadSchema() {
-  let schema;
+  let raw;
   try {
-    schema = await fs.readFile(SCHEMA_SQL_PATH, 'utf8');
+    raw = await fs.readFile(INIT_SQL_PATH, 'utf8');
   } catch (err) {
-    console.error('[schema] could not read ' + SCHEMA_SQL_PATH + ': ' + err.message);
+    console.error('[schema] could not read ' + INIT_SQL_PATH + ': ' + err.message);
     return;
   }
-  await POOL_FOR_SCHEMA.query(schema, { multiStatement: true });
-  console.log('[schema] ready.');
+
+  const dbName = connectionOptions.database;
+  if (!dbName) {
+    console.error('[schema] DB_NAME is not set, so there is no database to create tables in.');
+    return;
+  }
+  const quoted = '`' + String(dbName).replace(/`/g, '``') + '`';
+  // Drop any database directives the file carries, then add ones that target
+  // this deployment's DB_NAME. The rest of the file is executed verbatim with
+  // multipleStatements enabled.
+  const body = raw
+    .replace(/^\s*CREATE\s+DATABASE\b[^;]*;\s*/gim, '')
+    .replace(/^\s*USE\b[^;]*;\s*/gim, '');
+  const sql = `CREATE DATABASE IF NOT EXISTS ${quoted} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\n`
+    + `USE ${quoted};\n`
+    + body;
+
+  let conn;
+  try {
+    conn = await mysql.createConnection({ ...connectionOptions, multipleStatements: true });
+  } catch (err) {
+    if (err && err.code === 'ER_BAD_DB_ERROR') {
+      // First run against a host where the database has not been created yet:
+      // connect without selecting a database, create it from DB_NAME, then
+      // apply the schema there.
+      console.warn(`[schema] database "${dbName}" does not exist yet — creating it.`);
+      const withoutDatabase = { ...connectionOptions };
+      delete withoutDatabase.database;
+      conn = await mysql.createConnection({ ...withoutDatabase, multipleStatements: true });
+    } else {
+      throw err;
+    }
+  }
+
+  try {
+    await conn.query(sql);
+    console.log('[schema] ready.');
+  } finally {
+    await conn.end().catch(() => {});
+  }
 }
+
 try {
-  await loadSchema().catch((err) => {
-    console.error('[schema] initialising database failed:', err.message);
-    console.error('[schema] Check DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME');
-  });
+  await loadSchema();
 } catch (err) {
-  console.error('[schema] schema run threw:', err.message);
+  console.error('[schema] initialising database failed:', err.message);
+  const hint = explainDbError(err);
+  if (hint) console.error('[schema] ' + hint.replace(/\n/g, '\n[schema] '));
+  console.error('[schema] Check DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME.');
 }
 
 const server = app.listen(PORT, async () => {
@@ -502,21 +536,8 @@ const server = app.listen(PORT, async () => {
   await ensureMessagesTable().catch(err => console.error('[messages] table ensure failed:', err.message));
   await ensureEventsSchema().catch(err => console.error('[events] schema ensure failed:', err.message));
 
-  // Startup diagnostics for the email verification flow
-  // (booleans only — never print the actual password)
-  const hasUser = Boolean(process.env.GMAIL_USER);
-  const hasPass = Boolean(process.env.GMAIL_APP_PASSWORD);
-  console.log('[mail] GMAIL_USER set:', hasUser);
-  console.log('[mail] GMAIL_APP_PASSWORD set:', hasPass);
-  if (!hasUser || !hasPass) {
-    console.log('[mail] Gmail not fully configured — verification codes will be logged to the server console (DEV fallback) instead of emailed.');
-  }
-  try {
-    const { verifyGmailTransporter } = await import('./lib/mail.js');
-    await verifyGmailTransporter();
-  } catch (err) {
-    console.error('[mail] Gmail SMTP auth check failed:', err && (err.response || err.message || err));
-  }
+  console.log('[mail] BREVO_API_KEY set:', Boolean(process.env.BREVO_API_KEY));
+  console.log('[mail] BREVO_SENDER_EMAIL set:', Boolean(process.env.BREVO_SENDER_EMAIL));
 
   console.log(`CPRI public website running at http://localhost:${PORT}`);
   if (!dbUp) {
