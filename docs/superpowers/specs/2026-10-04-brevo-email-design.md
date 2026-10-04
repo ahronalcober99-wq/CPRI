@@ -39,3 +39,14 @@ send-code button.
 Check the edited JavaScript for syntax errors, run available targeted project
 checks, and search for remaining Gmail SMTP/Nodemailer code and any
 verification-code logging. Confirm the lockfile no longer declares Nodemailer.
+
+## Deployment diagnosis follow-up
+
+The active mailer, verification route, startup checks, and registration page
+already use Brevo. The remaining mismatch is deployment provenance: identify
+which remote branch Render builds and confirm that it contains the active
+implementation before pushing. Remove obsolete checked-in server snapshots
+and retired mail configuration references so they cannot be mistaken for
+runtime source. Reconcile local packages with the lockfile and verify that
+project files outside dependencies contain no retired SMTP configuration or
+fallback markers. Never include local environment values in output or commits.
