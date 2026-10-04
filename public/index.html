@@ -243,14 +243,8 @@
         return badge;
       }
 
-      function detailsHref(item) {
-        const doi = displayText(item.DOI).trim()
-          .replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '')
-          .replace(/^doi:\s*/i, '')
-          .replace(/^\/+/, '');
-        if (!doi) return { href: 'publications.html', external: false };
-        const doiPath = doi.split('/').map(encodeURIComponent).join('/');
-        return { href: 'https://doi.org/' + doiPath, external: true };
+      function publicationDetailHref(item) {
+        return 'publication-detail.html?id=' + encodeURIComponent(String(item.id));
       }
 
       function makePublicationCard(item) {
@@ -269,8 +263,9 @@
         }
         if (publicationType) badges.append(makeBadge(publicationType, 'level'));
 
-        const title = document.createElement('h3');
-        title.className = 'publication-title';
+        const title = document.createElement('a');
+        title.className = 'publication-title publication-title-link';
+        title.href = publicationDetailHref(item);
         title.textContent = displayText(item.title);
 
         const venue = document.createElement('p');
@@ -292,12 +287,7 @@
         const details = document.createElement('a');
         details.className = 'publication-details';
         details.textContent = 'View details';
-        const destination = detailsHref(item);
-        details.setAttribute('href', destination.href);
-        if (destination.external) {
-          details.setAttribute('target', '_blank');
-          details.setAttribute('rel', 'noopener noreferrer');
-        }
+        details.href = publicationDetailHref(item);
         footer.append(yearLabel, details);
         card.append(badges, title, venue, authors, footer);
         return card;

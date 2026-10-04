@@ -56,6 +56,9 @@ async function caller(req) {
 function canEdit(me) {
   return !!me && STAFF_ROLES.includes(me.role);
 }
+function isAdministrator(me) {
+  return !!me && me.role === 'admin' && me.status === 'active';
+}
 function isOwner(me, pub) {
   return !!me && pub.submitterId === me.id;
 }
@@ -170,10 +173,34 @@ export function createPublicationsRouter(dependencies = {}) {
   });
 
   router.get('/:id', async (req, res) => {
+    const me = req.session?.userId ? await resolveCaller(req) : null;
+    const isAdmin = isAdministrator(me);
     const p = await query.get('SELECT * FROM publications WHERE id = ?', [req.params.id]);
-    if (!p) return res.status(404).json({ error: 'Publication not found.' });
+    if (!p || (p.status !== 'published' && !isAdmin)) {
+      return res.status(404).json({ error: 'Publication not found.' });
+    }
+
+    const publication = isAdmin ? p : {
+      id: p.id,
+      title: p.title,
+      authors: p.authors,
+      journalOrConference: p.journalOrConference,
+      publicationDate: p.publicationDate,
+      volume: p.volume,
+      issue: p.issue,
+      pages: p.pages,
+      doi: p.doi,
+      publicationLink: p.publicationLink,
+      indexingStatus: p.indexingStatus,
+      pubType: p.pubType,
+      status: p.status,
+      authorType: p.authorType,
+      department: p.department,
+      schoolYear: p.schoolYear
+    };
+
     res.json({
-      publication: p,
+      publication,
       pubTypeLabel: PUB_TYPES[p.pubType] || p.pubType,
       statusLabel: PUB_STATUS[p.status] || p.status,
       authorTypeLabel: AUTHOR_TYPES[p.authorType] || p.authorType
@@ -256,7 +283,11 @@ export function createPublicationsRouter(dependencies = {}) {
     res.status(201).json({ message: 'Proof documents uploaded.', proofDocuments: proofs });
   });
 
-  router.get('/:id/file/:filename', async (req, res) => {
+  router.get('/:id/file/:filename', authenticate, async (req, res) => {
+    const me = await resolveCaller(req);
+    if (!me) return res.status(401).json({ error: 'Not authenticated.' });
+    if (!isAdministrator(me)) return res.status(403).json({ error: 'Admin access required.' });
+
     const p = await query.get('SELECT * FROM publications WHERE id = ?', [req.params.id]);
     if (!p) return res.status(404).json({ error: 'Publication not found.' });
 
@@ -269,9 +300,11 @@ export function createPublicationsRouter(dependencies = {}) {
 
   router.patch('/:id', authenticate, async (req, res) => {
     const me = await resolveCaller(req);
+    if (!me) return res.status(401).json({ error: 'Not authenticated.' });
+    if (!isAdministrator(me)) return res.status(403).json({ error: 'Admin access required.' });
+
     const p = await query.get('SELECT * FROM publications WHERE id = ?', [req.params.id]);
     if (!p) return res.status(404).json({ error: 'Publication not found.' });
-    if (!canManage(me, p)) return res.status(403).json({ error: 'You are not allowed to edit this publication.' });
 
     const b = req.body || {};
     const hasFeatured = Object.prototype.hasOwnProperty.call(b, 'featured');
@@ -301,9 +334,11 @@ export function createPublicationsRouter(dependencies = {}) {
 
   router.delete('/:id', authenticate, async (req, res) => {
     const me = await resolveCaller(req);
+    if (!me) return res.status(401).json({ error: 'Not authenticated.' });
+    if (!isAdministrator(me)) return res.status(403).json({ error: 'Admin access required.' });
+
     const p = await query.get('SELECT * FROM publications WHERE id = ?', [req.params.id]);
     if (!p) return res.status(404).json({ error: 'Publication not found.' });
-    if (!canManage(me, p)) return res.status(403).json({ error: 'You are not allowed to delete this publication.' });
 
     await query.remove('publications', req.params.id);
     invalidateCache();

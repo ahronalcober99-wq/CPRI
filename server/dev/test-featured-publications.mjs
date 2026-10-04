@@ -34,6 +34,11 @@ async function getJson(url) {
   return { status: response.status, body: await response.json() };
 }
 
+async function getJsonWithHeaders(url, headers) {
+  const response = await fetch(url, { headers });
+  return { status: response.status, body: await response.json() };
+}
+
 async function requestJson(url, method, body, headers = {}) {
   const response = await fetch(url, {
     method,
@@ -46,6 +51,11 @@ async function requestJson(url, method, body, headers = {}) {
 async function startManagementApi(router) {
   const app = express();
   app.use(express.json());
+  app.use((req, res, next) => {
+    const userId = req.get('x-test-user-id');
+    if (userId) req.session = { userId };
+    next();
+  });
   app.use('/api/publications', router);
   app.use((error, req, res, next) => {
     res.status(500).json({ error: error.message });
@@ -595,7 +605,140 @@ test('serialized transactions prevent concurrent updates from exceeding six feat
   }
 });
 
-test('publication routes reject owner feature attempts with HTTP 403', async () => {
+test('publication detail is public-safe, hides unpublished records, and grants full data only to admins', async () => {
+  const record = publication('pub-detail', {
+    title: 'Public paper',
+    volume: '12',
+    doi: '10.1234/public',
+    submitterId: 'private-user-id',
+    submitterEmail: 'private@example.org',
+    submitterName: 'Private Submitter',
+    sourceSubmissionId: 'private-submission-id',
+    proofDocuments: [{ filename: 'private/path.pdf' }]
+  });
+  let status = 'published';
+  const router = createPublicationsRouter({
+    requireAuth(req, res, next) {
+      const userId = req.get('x-test-user-id');
+      if (userId) req.session = { userId };
+      next();
+    },
+    caller: async req => ({
+      admin: { id: 'admin', role: 'admin', status: 'active' },
+      member: { id: 'member', role: 'cpri_staff' }
+    })[req.session?.userId] || null,
+    get: async () => ({ ...record, status }),
+    invalidateCache() {}
+  });
+  const api = await startManagementApi(router);
+
+  try {
+    const publicResponse = await getJson(`${api.url}/pub-detail`);
+    assert.equal(publicResponse.status, 200);
+    assert.equal(publicResponse.body.publication.title, 'Public paper');
+    assert.equal(publicResponse.body.publication.doi, '10.1234/public');
+    for (const privateField of ['submitterId', 'submitterEmail', 'submitterName', 'sourceSubmissionId', 'proofDocuments']) {
+      assert.equal(Object.hasOwn(publicResponse.body.publication, privateField), false);
+    }
+
+    status = 'submitted';
+    assert.deepEqual(await getJson(`${api.url}/pub-detail`), {
+      status: 404,
+      body: { error: 'Publication not found.' }
+    });
+    const adminResponse = await getJsonWithHeaders(`${api.url}/pub-detail`, { 'x-test-user-id': 'admin' });
+    assert.equal(adminResponse.status, 200);
+    assert.equal(adminResponse.body.publication.submitterId, 'private-user-id');
+    assert.deepEqual(await getJson(`${api.url}/missing-publication`), {
+      status: 404,
+      body: { error: 'Publication not found.' }
+    });
+  } finally {
+    await api.close();
+  }
+});
+
+test('publication PATCH and DELETE require an authenticated administrator', async () => {
+  const record = publication('pub-managed');
+  const mutations = [];
+  const router = createPublicationsRouter({
+    requireAuth(req, res, next) {
+      const userId = req.get('x-test-user-id');
+      if (!userId) return res.status(401).json({ error: 'Not authenticated.' });
+      req.session = { userId };
+      next();
+    },
+    caller: async req => ({
+      admin: { id: 'admin', role: 'admin', status: 'active' },
+      member: { id: 'member', role: 'cpri_staff' }
+    })[req.session.userId] || null,
+    get: async () => record,
+    featureService: {
+      async update(id, changes) {
+        mutations.push({ type: 'update', id, changes });
+        return { ok: true, publication: { ...record, ...changes } };
+      }
+    },
+    remove: async (table, id) => mutations.push({ type: 'delete', table, id }),
+    invalidateCache() {}
+  });
+  const api = await startManagementApi(router);
+
+  try {
+    for (const method of ['PATCH', 'DELETE']) {
+      assert.equal((await requestJson(`${api.url}/pub-managed`, method, {})).status, 401);
+      assert.equal((await requestJson(`${api.url}/pub-managed`, method, {}, {
+        'x-test-user-id': 'member'
+      })).status, 403);
+    }
+    assert.equal(mutations.length, 0);
+
+    assert.equal((await requestJson(`${api.url}/pub-managed`, 'PATCH', {
+      status: 'published',
+      pubType: 'national_journal'
+    }, { 'x-test-user-id': 'admin' })).status, 200);
+    assert.equal((await requestJson(`${api.url}/pub-managed`, 'DELETE', {}, {
+      'x-test-user-id': 'admin'
+    })).status, 200);
+    assert.deepEqual(mutations.map(mutation => mutation.type), ['update', 'delete']);
+  } finally {
+    await api.close();
+  }
+});
+
+test('publication proof downloads require an authenticated administrator', async () => {
+  let databaseReads = 0;
+  const router = createPublicationsRouter({
+    requireAuth(req, res, next) {
+      const userId = req.get('x-test-user-id');
+      if (!userId) return res.status(401).json({ error: 'Not authenticated.' });
+      req.session = { userId };
+      next();
+    },
+    caller: async req => ({
+      admin: { id: 'admin', role: 'admin', status: 'active' },
+      staff: { id: 'staff', role: 'cpri_staff', status: 'active' }
+    })[req.session.userId] || null,
+    get: async () => {
+      databaseReads++;
+      return publication('pub-file', {
+        proofDocuments: [{ filename: 'proof.pdf', originalName: 'proof.pdf' }]
+      });
+    }
+  });
+  const api = await startManagementApi(router);
+
+  try {
+    const path = `${api.url}/pub-file/file/proof.pdf`;
+    assert.equal((await getJson(path)).status, 401);
+    assert.equal((await getJsonWithHeaders(path, { 'x-test-user-id': 'staff' })).status, 403);
+    assert.equal(databaseReads, 0);
+  } finally {
+    await api.close();
+  }
+});
+
+test('publication routes reject owner feature attempts and non-admin edits with HTTP 403', async () => {
   const store = fakeFeatureTransactions([publication('pub-1')]);
   const router = createPublicationsRouter({
     requireAuth(req, res, next) {
@@ -625,7 +768,7 @@ test('publication routes reject owner feature attempts with HTTP 403', async () 
     });
     assert.deepEqual(await requestJson(`${api.url}/pub-1`, 'PATCH', { featured: true }), {
       status: 403,
-      body: { error: 'Only staff can feature publications.' }
+      body: { error: 'Admin access required.' }
     });
     assert.equal(store.calls.length, 0);
   } finally {
@@ -633,7 +776,7 @@ test('publication routes reject owner feature attempts with HTTP 403', async () 
   }
 });
 
-test('staff mutations map the cap response and invalidate the featured cache on success', async () => {
+test('admin mutations map the cap response and invalidate the featured cache on success', async () => {
   const initial = Array.from({ length: 7 }, (_, index) => publication(`pub-${index + 1}`, {
     featured: index < 6 ? 1 : 0
   }));
@@ -641,10 +784,10 @@ test('staff mutations map the cap response and invalidate the featured cache on 
   let invalidations = 0;
   const router = createPublicationsRouter({
     requireAuth(req, res, next) {
-      req.session = { userId: 'staff' };
+      req.session = { userId: 'admin' };
       next();
     },
-    caller: async () => ({ id: 'staff', role: 'cpri_staff', username: 'staff' }),
+    caller: async () => ({ id: 'admin', role: 'admin', status: 'active', username: 'admin' }),
     get: async (sql, params) => store.records.get(params[0]) || null,
     remove: async (table, id) => store.records.delete(id),
     withTransaction: store.withTransaction,

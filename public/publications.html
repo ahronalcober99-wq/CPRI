@@ -117,7 +117,7 @@
     const dashboard = document.getElementById('dashboard');
     const breakdown = document.getElementById('breakdown');
     const recordsEl = document.getElementById('records');
-    let isStaff = false;
+    let isAdmin = false;
 
     function showMsg(type, text) {
       message.className = 'form-message ' + type;
@@ -193,13 +193,12 @@
         <div class="card" style="margin-bottom:16px;">
           <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;">
             <div style="flex:1;min-width:240px;">
-              <h3 style="margin:0 0 6px;"><a href="publication-detail.html?id=${p.id}">${escapeHtml(p.title)}</a></h3>
+              <h3 style="margin:0 0 6px;"><a href="publication-detail.html?id=${encodeURIComponent(String(p.id))}">${escapeHtml(p.title)}</a></h3>
               <div class="meta">${escapeHtml(p.authors)} · ${escapeHtml(p.journalOrConference)} · ${p.pubTypeLabel} · ${p.statusLabel}</div>
               <div class="meta" style="margin-top:4px;">${p.publicationDate} · Vol. ${p.volume || '—'} Issue ${p.issue || '—'} pp. ${p.pages || '—'} · ${p.authorTypeLabel}</div>
-              ${p.doi ? `<div class="meta" style="margin-top:4px;">DOI: ${escapeHtml(p.doi)}</div>` : ''}
               ${p.sourceSubmissionId ? '<div class="meta" style="margin-top:6px;color:var(--cpri-secondary);"><i class="bi bi-magic"></i> Auto-added from an approved research submission</div>' : ''}
             </div>
-            ${isStaff && p.sourceSubmissionId ? `
+            ${isAdmin && p.sourceSubmissionId ? `
               <button type="button" class="btn btn-outline btn-sm remove-pub" data-id="${p.id}" data-title="${escapeHtml(p.title)}" style="border-color:#b23b32;color:#b23b32;white-space:nowrap;" aria-label="Remove ${escapeHtml(p.title)} from Publications">
                 <i class="bi bi-x-circle"></i> Remove from Publications
               </button>` : ''}
@@ -236,14 +235,14 @@
 
     (async () => {
       // Resolve the viewer's role before rendering so auto-added publications
-      // show the staff-only "Remove from Publications" action on first paint.
+      // show the admin-only "Remove from Publications" action on first paint.
       const meRes = await fetch('/api/auth/me');
       if (meRes.ok) {
         const { user } = await meRes.json();
         if (['admin', 'cpri_staff'].includes(user.role)) {
-          isStaff = true;
           document.getElementById('admin-panel').style.display = 'block';
         }
+        isAdmin = user.role === 'admin' && user.status === 'active';
       }
       await loadStats();
       await load();
