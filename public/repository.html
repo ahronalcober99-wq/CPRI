@@ -119,18 +119,32 @@
     }
 
     async function load() {
-      const res = await fetch('/api/repository' + (buildQuery() ? '?' + buildQuery() : ''));
-      const { records } = await res.json();
+      const query = buildQuery();
+      let res;
+      let data;
+      try {
+        ({ res, data } = await CPRI.apiFetch('/api/repository' + (query ? '?' + query : '')));
+      } catch (error) {
+        message.className = 'form-message error';
+        message.textContent = error.message || 'Could not load repository records.';
+        return;
+      }
+      if (!res.ok) {
+        message.className = 'form-message error';
+        message.textContent = data?.error || 'Could not load repository records.';
+        return;
+      }
+      const records = Array.isArray(data?.records) ? data.records : [];
+      const escape = value => CPRI.escapeHtml(String(value ?? ''));
       if (!records.length) {
         recordsEl.innerHTML = '<p class="empty-state">No research records found.</p>';
         return;
       }
       recordsEl.innerHTML = records.map(r => `
         <div class="card" style="margin-bottom:16px;">
-          <h3 style="margin:0 0 6px;"><a href="repository-detail.html?id=${r.id}">${r.title}</a></h3>
-          <div class="meta">${r.authors} · ${r.department} · ${r.categoryLabel} · ${r.yearCompleted}</div>
-          <p style="margin:8px 0;">${r.abstract ? r.abstract.slice(0, 200) + (r.abstract.length > 200 ? '…' : '') : ''}</p>
-          <div><span class="badge">${ACCESS_BADGE[r.accessLevel] || r.accessLevel}</span> ${r.fileAvailable ? '<span class="form-note">📄 File available</span>' : ''}</div>
+          <h3 style="margin:0 0 6px;"><a href="repository-detail.html?id=${escape(encodeURIComponent(String(r.id)))}">${escape(r.title)}</a></h3>
+          <div class="meta">${escape(r.authors)} · ${escape(r.department)} · ${escape(r.categoryLabel)} · ${escape(r.yearCompleted)}</div>
+          <div><span class="badge">${escape(ACCESS_BADGE[r.accessLevel] || r.accessLevel)}</span> <span class="badge">${escape(r.status)}</span> ${r.fileAvailable ? '<span class="form-note">File available</span>' : ''}</div>
         </div>`).join('');
     }
 
@@ -142,9 +156,9 @@
 
     // Role-aware admin panel
     (async () => {
-      const meRes = await fetch('/api/auth/me');
+      const { res: meRes, data } = await CPRI.apiFetch('/api/auth/me');
       if (meRes.ok) {
-        const { user } = await meRes.json();
+        const { user } = data;
         if (['admin', 'cpri_staff'].includes(user.role)) {
           document.getElementById('admin-panel').style.display = 'block';
         }
@@ -154,10 +168,9 @@
     document.getElementById('publish-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = Object.fromEntries(new FormData(e.target).entries());
-      const res = await fetch('/api/repository', {
+      const { res, data: out } = await CPRI.apiFetch('/api/repository', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fd)
       });
-      const out = await res.json();
       if (!res.ok) { message.className = 'form-message error'; message.textContent = out.error; return; }
       message.className = 'form-message success';
       message.textContent = out.message;

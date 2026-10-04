@@ -1,17 +1,16 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
-import { fileURLToPath } from 'url';
-import { dirname, join, extname } from 'path';
-import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { addLog } from './audit.js';
 import { notify } from './notifications.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const SUB_UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'submissions');
+import { supabaseStorage } from './storage/supabase-storage.js';
+import {
+  createSubmissionFileStore,
+  MAX_SUBMISSION_FILE_BYTES,
+  validateSubmissionUploadFile
+} from './storage/submission-files.js';
 
 const router = Router();
 
@@ -56,6 +55,42 @@ const REVIEW_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer'];
 // Roles that see the full submission list + stats (advisers supervise student
 // work, so they see all; they still cannot change statuses — that's REVIEW_ROLES).
 const VIEW_ALL_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer', 'adviser'];
+const { storeUploadedFiles, rollback: cleanupUploadedFiles } = createSubmissionFileStore();
+
+function createUploadMiddleware() {
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_SUBMISSION_FILE_BYTES, files: FILE_FIELDS.length + 10 },
+    fileFilter(req, file, callback) {
+      if (!validateSubmissionUploadFile(file)) {
+        const error = new Error('Only PDF, DOC, and DOCX files are allowed.');
+        error.code = 'INVALID_FILE_TYPE';
+        return callback(error);
+      }
+      callback(null, true);
+    }
+  });
+  return upload.fields([
+    ...FILE_FIELDS.map(field => ({ name: field.key, maxCount: 1 })),
+    { name: 'additional', maxCount: 10 }
+  ]);
+}
+
+function handleUploadErrors(uploadMiddleware) {
+  return (req, res, next) => {
+    uploadMiddleware(req, res, error => {
+      if (!error) return next();
+      const message = error.code === 'LIMIT_FILE_SIZE'
+        ? 'Each file must be 15 MB or smaller.'
+        : error.code === 'INVALID_FILE_TYPE'
+          ? error.message
+          : error instanceof multer.MulterError
+            ? 'The upload contains too many files or fields.'
+            : 'The upload could not be processed.';
+      return res.status(400).json({ ok: false, message });
+    });
+  };
+}
 
 async function caller(req) {
   const users = await readUsers();
@@ -66,29 +101,14 @@ function canAccess(me, sub) {
   return !me || me.id === sub.submitterId || REVIEW_ROLES.includes(me.role);
 }
 
-// ---------- File upload config ----------
-const storage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    const dir = join(SUB_UPLOAD_DIR, req._subId);
-    try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
-    catch (err) { cb(err); }
-  },
-  filename: (req, file, cb) => {
-    const safe = file.fieldname.replace(/[^a-z0-9]/gi, '_');
-    cb(null, `${safe}-${Date.now()}${extname(file.originalname)}`);
-  }
-});
-const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } }); // 15 MB
-const uploadFields = upload.fields([
-  ...FILE_FIELDS.map(f => ({ name: f.key, maxCount: 1 })),
-  { name: 'additional', maxCount: 10 }
-]);
+// ---------- Private file upload config ----------
+const uploadFields = createUploadMiddleware();
 
 // ---------- Create submission ----------
 router.post('/', requireAuth, (req, res, next) => {
   req._subId = randomUUID();
   next();
-}, uploadFields, async (req, res) => {
+}, handleUploadErrors(uploadFields), async (req, res) => {
   const me = await caller(req);
   if (!me || !SUBMIT_ROLES.includes(me.role)) {
     return res.status(403).json({ error: 'Your role is not allowed to submit research.' });
@@ -107,20 +127,17 @@ router.post('/', requireAuth, (req, res, next) => {
     }
   }
 
-  const files = {};
-  for (const f of FILE_FIELDS) {
-    if (req.files[f.key] && req.files[f.key][0]) {
-      files[f.key] = {
-        filename: req.files[f.key][0].filename,
-        originalName: req.files[f.key][0].originalname
-      };
+  let storedFiles;
+  try {
+    storedFiles = await storeUploadedFiles(req.files, `submissions/${req._subId}`);
+  } catch (error) {
+    if (error.code === 'INVALID_FILE_CONTENT') {
+      return res.status(400).json({ ok: false, message: error.message });
     }
+    console.error('[storage] submission upload failed:', error.message);
+    return res.status(500).json({ ok: false, message: 'Could not save uploaded files. Please try again.' });
   }
-  const additionalDocs = (req.files.additional || []).map(file => ({
-    id: randomUUID(),
-    filename: file.filename,
-    originalName: file.originalname
-  }));
+  const { files, additionalDocs, uploadedPaths } = storedFiles;
 
   const now = new Date().toISOString();
   const sub = {
@@ -147,7 +164,13 @@ router.post('/', requireAuth, (req, res, next) => {
     updatedAt: now
   };
 
-  await insert('submissions', sub);
+  try {
+    await insert('submissions', sub);
+  } catch (error) {
+    await cleanupUploadedFiles(uploadedPaths, error);
+    console.error('[submissions] could not save submission after file upload:', error.message);
+    return res.status(500).json({ ok: false, message: 'Could not save your submission. Please try again.' });
+  }
   res.status(201).json({ message: 'Research submitted successfully.', submission: sub });
 });
 
@@ -396,11 +419,30 @@ router.get('/:id/file', requireAuth, async (req, res) => {
     const files = fileSet.files || {};
     meta = files[key];
   }
-  if (!meta) return res.status(404).json({ error: 'File not found.' });
+  if (!meta || !meta.storage_path) {
+    return res.status(404).json({
+      ok: false,
+      message: 'The file is no longer available. Please ask the author to upload it again.'
+    });
+  }
 
-  const folder = (version && Number(version) > 1) ? join(SUB_UPLOAD_DIR, sub.id, 'v' + version) : join(SUB_UPLOAD_DIR, sub.id);
-  const p = join(folder, meta.filename);
-  res.download(p, meta.originalName);
+  try {
+    if (!await supabaseStorage.objectExists(meta.storage_path)) {
+      return res.status(404).json({
+        ok: false,
+        message: 'The file is no longer available. Please ask the author to upload it again.'
+      });
+    }
+    const signedUrl = await supabaseStorage.createSignedDownloadUrl({
+      path: meta.storage_path,
+      downloadName: meta.original_name || 'download',
+      expiresIn: 60
+    });
+    return res.redirect(302, signedUrl);
+  } catch (error) {
+    console.error('[storage] submission download failed:', error.message);
+    return res.status(500).json({ ok: false, message: 'Could not prepare the file download. Please try again.' });
+  }
 });
 // ---------- Revisions Side-by-Side Comparison ----------
 router.get('/:id/revisions/compare', requireAuth, async (req, res) => {
@@ -479,24 +521,7 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
 });
 
 // ---------- Revision upload (researcher only) ----------
-const uploadRevision = multer({
-  storage: multer.diskStorage({
-    destination: async (req, file, cb) => {
-      const dir = join(SUB_UPLOAD_DIR, req._subId, 'v' + req._version);
-      try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
-      catch (err) { cb(err); }
-    },
-    filename: (req, file, cb) => {
-      const safe = file.fieldname.replace(/[^a-z0-9]/gi, '_');
-      cb(null, `${safe}-${Date.now()}${extname(file.originalname)}`);
-    }
-  }),
-  limits: { fileSize: 15 * 1024 * 1024 }
-});
-const revisionFields = uploadRevision.fields([
-  ...FILE_FIELDS.map(f => ({ name: f.key, maxCount: 1 })),
-  { name: 'additional', maxCount: 10 }
-]);
+const revisionFields = createUploadMiddleware();
 
 router.post('/:id/revisions', requireAuth, async (req, res, next) => {
   const me = await caller(req);
@@ -507,19 +532,24 @@ router.post('/:id/revisions', requireAuth, async (req, res, next) => {
   req._version = (sub.versions || []).length + 1;
   req._sub = sub;
   next();
-}, revisionFields, async (req, res) => {
+}, handleUploadErrors(revisionFields), async (req, res) => {
   if (!req.files || !req.files.manuscript) {
     return res.status(400).json({ error: 'A revised manuscript file is required.' });
   }
-  const files = {};
-  for (const f of FILE_FIELDS) {
-    if (req.files[f.key] && req.files[f.key][0]) {
-      files[f.key] = { filename: req.files[f.key][0].filename, originalName: req.files[f.key][0].originalname };
+  let storedFiles;
+  try {
+    storedFiles = await storeUploadedFiles(
+      req.files,
+      `submissions/${req._subId}/revisions/${req._version}`
+    );
+  } catch (error) {
+    if (error.code === 'INVALID_FILE_CONTENT') {
+      return res.status(400).json({ ok: false, message: error.message });
     }
+    console.error('[storage] revision upload failed:', error.message);
+    return res.status(500).json({ ok: false, message: 'Could not save revised files. Please try again.' });
   }
-  const additionalDocs = (req.files.additional || []).map(file => ({
-    id: randomUUID(), filename: file.filename, originalName: file.originalname
-  }));
+  const { files, additionalDocs, uploadedPaths } = storedFiles;
   const me = await caller(req);
   const now = new Date().toISOString();
   const note = req.body.note ? String(req.body.note).trim() : '';
@@ -543,14 +573,20 @@ router.post('/:id/revisions', requireAuth, async (req, res, next) => {
     note: 'Revised manuscript resubmitted (v' + req._version + ')'
   });
 
-  await update('submissions', sub.id, {
-    files: JSON.stringify(files),
-    additionalDocs: JSON.stringify(additionalDocs),
-    versions: JSON.stringify(versions),
-    status: 'under_initial_checking',
-    statusHistory: JSON.stringify(statusHistory),
-    updatedAt: now
-  });
+  try {
+    await update('submissions', sub.id, {
+      files: JSON.stringify(files),
+      additionalDocs: JSON.stringify(additionalDocs),
+      versions: JSON.stringify(versions),
+      status: 'under_initial_checking',
+      statusHistory: JSON.stringify(statusHistory),
+      updatedAt: now
+    });
+  } catch (error) {
+    await cleanupUploadedFiles(uploadedPaths);
+    console.error('[submissions] could not save revision after file upload:', error.message);
+    return res.status(500).json({ ok: false, message: 'Could not save your revision. Please try again.' });
+  }
 
   await addLog(
     'submission_revision',
@@ -563,4 +599,3 @@ router.post('/:id/revisions', requireAuth, async (req, res, next) => {
 });
 
 export { router as submissionsRouter, STATUS_LABELS, RESEARCH_TYPES, FILE_FIELDS, COMMENT_TYPE_LABELS };
-

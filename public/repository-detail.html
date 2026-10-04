@@ -93,15 +93,44 @@
   <script>
     const message = document.getElementById('message');
     const detail = document.getElementById('detail');
-    const params = new URLSearchParams(location.search);
-    const id = params.get('id');
+    const id = new URLSearchParams(location.search).get('id');
 
     function showMsg(type, text){ message.className = 'form-message ' + type; message.textContent = text; }
+    function showNotFound() {
+      showMsg('error', 'Research record not found. ');
+      const back = document.createElement('a');
+      back.href = 'repository.html';
+      back.textContent = 'Back to repository';
+      message.append(back);
+    }
 
     (async () => {
-      const detailRes = await fetch('/api/repository/' + id);
-      if (!detailRes.ok) { showMsg('error', (await detailRes.json()).error || 'Not found.'); return; }
-      const { record: r, categoryLabel, accessLabel, canView, canDownload } = await detailRes.json();
+      if (!id) {
+        showNotFound();
+        return;
+      }
+      let detailRes;
+      let detailData;
+      try {
+        ({ res: detailRes, data: detailData } = await CPRI.apiFetch('/api/repository/' + encodeURIComponent(id)));
+      } catch (error) {
+        showMsg('error', error.message || 'Could not load this research record.');
+        return;
+      }
+      if (!detailRes.ok || !detailData?.record) {
+        showNotFound();
+        return;
+      }
+      const { record: r, categoryLabel, accessLabel, canDownload } = detailData;
+      let currentUser = null;
+      let isLoggedOut = false;
+      try {
+        const { res, data } = await CPRI.apiFetch('/api/auth/me');
+        if (res.ok) currentUser = data?.user || null;
+        else isLoggedOut = res.status === 401;
+      } catch (error) {
+        console.error('[repository] could not check current user:', error.message);
+      }
       detail.style.display = 'block';
       document.getElementById('rec-title').textContent = r.title;
       document.getElementById('d-authors').textContent = r.authors;
@@ -119,15 +148,63 @@
       document.getElementById('c-inst').textContent = (r.citation && r.citation.institutional) || '—';
 
       const fa = document.getElementById('file-action');
+      const note = document.createElement('p');
+      note.className = 'form-note';
       if (!r.fileAvailable) {
-        fa.innerHTML = '<p class="form-note">No full-text file for this record.</p>';
+        note.textContent = 'No full-text file for this record.';
+        fa.append(note);
       } else if (r.accessLevel === 'public_abstract') {
-        fa.innerHTML = '<p class="form-note">Full text is restricted; only the abstract is public.</p>';
+        note.textContent = 'Full text is restricted; only the abstract is public.';
+        fa.append(note);
       } else if (canDownload) {
         const label = r.accessLevel === 'viewable' ? 'View Full Text' : 'Download Full Text';
-        fa.innerHTML = `<a class="btn btn-primary" href="/api/repository/${r.id}/file">${label}</a>`;
+        const button = document.createElement('button');
+        button.className = 'btn btn-primary';
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', async () => {
+          button.disabled = true;
+          button.textContent = 'Preparing download...';
+          showMsg('', '');
+          try {
+            const { res, data } = await CPRI.apiFetch(
+              '/api/repository/' + encodeURIComponent(String(r.id)) + '/file'
+            );
+            if (res.status === 401) {
+              const next = location.pathname + location.search + location.hash;
+              location.href = 'login.html?next=' + encodeURIComponent(next);
+              return;
+            }
+            if (res.status === 404) {
+              showMsg('error', data?.message || 'The file is no longer available.');
+              return;
+            }
+            if (res.status === 403) {
+              showMsg('error', data?.error || data?.message || 'You do not have access to this file.');
+              return;
+            }
+            if (!res.ok || typeof data?.url !== 'string') {
+              throw new Error('Download could not be prepared.');
+            }
+            location.assign(data.url);
+          } catch {
+            showMsg('error', 'Couldn’t download the file. Try again.');
+          } finally {
+            button.disabled = false;
+            button.textContent = label;
+          }
+        });
+        fa.append(button);
+      } else if (isLoggedOut) {
+        const login = document.createElement('a');
+        const next = location.pathname + location.search + location.hash;
+        login.href = 'login.html?next=' + encodeURIComponent(next);
+        login.className = 'btn btn-navy';
+        login.textContent = 'Log in to access the full text';
+        fa.append(login);
       } else {
-        fa.innerHTML = '<p class="form-note">Login required to access the full text.</p><a class="btn btn-navy" href="login.html">Log in</a>';
+        note.textContent = 'Your account does not have access to the full text.';
+        fa.append(note);
       }
 
       // Copy buttons
@@ -140,30 +217,32 @@
       });
 
       // Admin management
-      const meRes = await fetch('/api/auth/me');
-      if (meRes.ok) {
-        const { user } = await meRes.json();
-        if (['admin', 'cpri_staff'].includes(user.role)) {
-          const ae = document.getElementById('admin-edit');
-          ae.style.display = 'block';
-          document.getElementById('e-access').value = r.accessLevel;
-          document.getElementById('save-access').addEventListener('click', async () => {
-            const res = await fetch('/api/repository/' + r.id, {
+      if (currentUser && ['admin', 'cpri_staff'].includes(currentUser.role)) {
+        const ae = document.getElementById('admin-edit');
+        ae.style.display = 'block';
+        document.getElementById('e-access').value = r.accessLevel;
+        document.getElementById('save-access').addEventListener('click', async () => {
+          try {
+            const { res, data: out } = await CPRI.apiFetch('/api/repository/' + encodeURIComponent(String(r.id)), {
               method: 'PATCH', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ accessLevel: document.getElementById('e-access').value })
             });
-            const out = await res.json();
-            if (!res.ok) return showMsg('error', out.error);
+            if (!res.ok) return showMsg('error', out?.error || 'Could not update the access level.');
             showMsg('success', 'Access level updated.');
-          });
-          document.getElementById('delete-rec').addEventListener('click', async () => {
-            if (!confirm('Delete this record from the repository?')) return;
-            const res = await fetch('/api/repository/' + r.id, { method: 'DELETE' });
-            const out = await res.json();
-            if (!res.ok) return showMsg('error', out.error);
+          } catch (error) {
+            showMsg('error', error.message || 'Could not update the access level.');
+          }
+        });
+        document.getElementById('delete-rec').addEventListener('click', async () => {
+          if (!confirm('Delete this record from the repository?')) return;
+          try {
+            const { res, data: out } = await CPRI.apiFetch('/api/repository/' + encodeURIComponent(String(r.id)), { method: 'DELETE' });
+            if (!res.ok) return showMsg('error', out?.error || 'Could not delete this record.');
             location.href = 'repository.html';
-          });
-        }
+          } catch (error) {
+            showMsg('error', error.message || 'Could not delete this record.');
+          }
+        });
       }
     })();
   </script>
