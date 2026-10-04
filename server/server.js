@@ -10,6 +10,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { authRouter, initAuth } from './auth.js';
+import { usernameRouter } from './username.js';
 import { submissionsRouter } from './submissions.js';
 import { repositoryRouter } from './repository.js';
 import { publicationsRouter } from './publications.js';
@@ -214,6 +215,7 @@ app.use(session({
 }));
 
 app.use('/api/auth', authRouter);
+app.use('/api/username', usernameRouter);
 app.use('/api/submissions', submissionsRouter);
 app.use('/api/repository', repositoryRouter);
 app.use('/api/publications', publicationsRouter);

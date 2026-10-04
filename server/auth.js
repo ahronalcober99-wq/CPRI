@@ -10,6 +10,7 @@ import { sendResetEmail, sendVerificationEmail } from './lib/mail.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { notify } from './notifications.js';
 import { addLog } from './audit.js';
+import { normalizeUsername, validateUsername } from './utils/username.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -306,6 +307,11 @@ router.post('/register', async (req, res) => {
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'Username, email and password are required.' });
   }
+  const usernameValidation = validateUsername(username);
+  if (!usernameValidation.valid) {
+    return res.status(400).json({ error: usernameValidation.message });
+  }
+  const normalizedUsername = normalizeUsername(username);
   if (!SELF_REGISTER_ROLES.includes(role)) {
     return res.status(400).json({ error: 'Invalid role. Choose Faculty Researcher, Student Researcher, Adviser, or Ethics Reviewer.' });
   }
@@ -322,15 +328,19 @@ router.post('/register', async (req, res) => {
     });
   }
 
-  // Check for existing username or email
-  const existing = await get(
-    'SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)',
-    [String(username).toLowerCase(), String(email).toLowerCase()]
+  const existingUsername = await get(
+    'SELECT id FROM users WHERE LOWER(username) = ?',
+    [normalizedUsername]
   );
-  if (existing) {
-    if (existing.username && existing.username.toLowerCase() === String(username).toLowerCase()) {
-      return res.status(409).json({ error: 'Username already taken.' });
-    }
+  if (existingUsername) {
+    return res.status(409).json({ error: 'That username is already taken. Try another.' });
+  }
+  const normalizedEmail = String(email).trim().toLowerCase();
+  const existingEmail = await get(
+    'SELECT id FROM users WHERE LOWER(email) = ?',
+    [normalizedEmail]
+  );
+  if (existingEmail) {
     return res.status(409).json({ error: 'Email already registered.' });
   }
 
@@ -338,7 +348,7 @@ router.post('/register', async (req, res) => {
   const needsApproval = ROLE_META[role]?.approvable;
   const user = {
     id: randomUUID(),
-    username: String(username).trim(),
+    username: normalizedUsername,
     email: String(email).trim(),
     fullName: fullName ? String(fullName).trim() : '',
     role,
@@ -354,7 +364,27 @@ router.post('/register', async (req, res) => {
     resetTokenExpiry: null,
     createdAt: new Date().toISOString()
   };
-  await insert('users', user);
+  try {
+    await insert('users', user);
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      const duplicateUsername = await get(
+        'SELECT id FROM users WHERE LOWER(username) = ?',
+        [normalizedUsername]
+      );
+      if (duplicateUsername) {
+        return res.status(409).json({ error: 'That username is already taken. Try another.' });
+      }
+      const duplicateEmail = await get(
+        'SELECT id FROM users WHERE LOWER(email) = ?',
+        [normalizedEmail]
+      );
+      if (duplicateEmail) {
+        return res.status(409).json({ error: 'Email already registered.' });
+      }
+    }
+    throw error;
+  }
 
   if (needsApproval) {
     return res.status(202).json({

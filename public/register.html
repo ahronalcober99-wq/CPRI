@@ -6,6 +6,78 @@
   <title>Register | CPRI Account</title>
   <link rel="stylesheet" href="assets/css/styles.css">
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+  <style>
+    #register-form { --username-error: var(--danger, #dc2626); }
+    [data-theme="dark"] #register-form { --username-error: #FCA5A5; }
+    #register-form .username-status {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 1.35em;
+      margin-top: 7px;
+      color: var(--cpri-muted);
+      font-size: .86rem;
+    }
+    #register-form .username-status[data-state="checking"]::before {
+      width: 13px;
+      height: 13px;
+      border: 2px solid var(--cpri-border);
+      border-top-color: var(--cpri-accent);
+      border-radius: 50%;
+      content: "";
+      animation: username-spin .7s linear infinite;
+    }
+    #register-form .username-status[data-state="available"] { color: var(--cpri-success); }
+    #register-form .username-status[data-state="available"]::before { content: "✓"; font-weight: 700; }
+    #register-form .username-status[data-state="invalid"],
+    #register-form .username-status[data-state="taken"] { color: var(--username-error); }
+    #register-form .username-status[data-state="invalid"]::before,
+    #register-form .username-status[data-state="taken"]::before { content: "!"; font-weight: 700; }
+    #register-form .username-status[data-state="network"]::before { content: "ⓘ"; color: var(--cpri-accent); }
+    #register-form #username.username-input--checking { border-color: var(--cpri-accent); }
+    #register-form #username.username-input--available { border-color: var(--cpri-success); }
+    #register-form #username.username-input--invalid,
+    #register-form #username.username-input--taken { border-color: var(--username-error); }
+    #register-form .username-rules {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 14px;
+      margin: 7px 0 0;
+      padding: 0;
+      color: var(--cpri-muted);
+      font-size: .78rem;
+      list-style: none;
+    }
+    #register-form .username-rules li::before { content: "○"; margin-right: 5px; }
+    #register-form .username-rules li[data-met="true"] { color: var(--cpri-success); }
+    #register-form .username-rules li[data-met="true"]::before { content: "✓"; }
+    #register-form .username-suggestions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 8px;
+    }
+    #register-form .username-suggestions[hidden] { display: none; }
+    #register-form .username-suggestion {
+      padding: 4px 10px;
+      border: 1px solid var(--cpri-border);
+      border-radius: 999px;
+      background: var(--cpri-card);
+      color: var(--cpri-accent);
+      font: inherit;
+      font-size: .82rem;
+      cursor: pointer;
+    }
+    #register-form .username-suggestion:hover,
+    #register-form .username-suggestion:focus-visible {
+      border-color: var(--cpri-accent);
+      outline-color: var(--cpri-accent);
+    }
+    @keyframes username-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      #register-form .username-status[data-state="checking"]::before { animation-duration: 1.8s; }
+    }
+  </style>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -29,7 +101,14 @@
           </div>
           <div class="form-group">
             <label for="username">Username *</label>
-            <input type="text" id="username" name="username" required>
+            <input type="text" id="username" name="username" required autocomplete="username" aria-describedby="username-status username-rules">
+            <div class="username-status" id="username-status" data-state="idle" aria-live="polite">Choose a username to check availability.</div>
+            <ul class="username-rules" id="username-rules" aria-label="Username requirements">
+              <li data-username-rule="length">4 to 20 characters</li>
+              <li data-username-rule="characters">Letters, numbers, dot, underscore</li>
+              <li data-username-rule="start">Starts with a letter</li>
+            </ul>
+            <div class="username-suggestions" id="username-suggestions" role="group" aria-label="Available username suggestions" hidden></div>
           </div>
           <div class="form-group">
             <label for="email">Email *</label>
@@ -117,9 +196,198 @@
     const verifyCodeInput = document.getElementById('verify-code');
     const verifyBtn = document.getElementById('verify-btn');
     const roleSelect = document.getElementById('role');
+    const usernameInput = document.getElementById('username');
+    const fullNameInput = document.getElementById('fullName');
+    const usernameStatus = document.getElementById('username-status');
+    const usernameSuggestions = document.getElementById('username-suggestions');
+    const usernameRules = [...document.querySelectorAll('[data-username-rule]')];
 
     let verified = false;
     let sendCooldownUntil = 0;
+    let usernameState = 'idle';
+    let usernameStateValue = '';
+    let usernameRequestId = 0;
+    let usernameController = null;
+    let usernameDebounce = null;
+    let usernameCheckPromise = Promise.resolve();
+    let registrationInProgress = false;
+
+    function normalizeUsername(value) {
+      return String(value ?? '').trim().toLowerCase();
+    }
+
+    function validateUsername(value) {
+      const username = normalizeUsername(value);
+      const invalid = (reason, text) => ({ valid: false, username, reason, message: text });
+      if (username.length < 4) return invalid('too_short', 'Username must be at least 4 characters.');
+      if (username.length > 20) return invalid('too_long', 'Username must be no more than 20 characters.');
+      if (!/^[a-z]/.test(username)) return invalid('start', 'Username must start with a letter.');
+      if (!/^[a-z0-9._]+$/.test(username)) return invalid('characters', 'Use only letters, numbers, dot and underscore.');
+      if (/\.\./.test(username)) return invalid('repeated_dot', 'Username cannot contain consecutive dots.');
+      if (/__/.test(username)) return invalid('repeated_underscore', 'Username cannot contain consecutive underscores.');
+      return { valid: true, username };
+    }
+
+    function updateUsernameRules(value) {
+      const normalized = normalizeUsername(value);
+      const rules = {
+        length: normalized.length >= 4 && normalized.length <= 20,
+        characters: /^[a-z0-9._]*$/.test(normalized),
+        start: /^[a-z]/.test(normalized)
+      };
+      usernameRules.forEach(rule => {
+        rule.dataset.met = String(rules[rule.dataset.usernameRule]);
+      });
+    }
+
+    function showUsernameState(state, value, text, suggestions = []) {
+      usernameState = state;
+      usernameStateValue = value;
+      usernameStatus.dataset.state = state;
+      usernameStatus.textContent = text;
+      usernameInput.classList.remove(
+        'username-input--checking', 'username-input--available',
+        'username-input--invalid', 'username-input--taken'
+      );
+      if (['checking', 'available', 'invalid', 'taken'].includes(state)) {
+        usernameInput.classList.add('username-input--' + state);
+      }
+      usernameInput.setAttribute('aria-invalid', String(state === 'invalid' || state === 'taken'));
+      usernameSuggestions.replaceChildren();
+      usernameSuggestions.hidden = suggestions.length === 0;
+      suggestions.forEach(candidate => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'username-suggestion';
+        chip.textContent = candidate;
+        chip.setAttribute('aria-label', 'Use username ' + candidate);
+        chip.addEventListener('click', () => {
+          usernameInput.value = candidate;
+          usernameInput.dispatchEvent(new Event('input', { bubbles: true }));
+          usernameInput.focus();
+        });
+        usernameSuggestions.append(chip);
+      });
+    }
+
+    async function checkUsername(requestId, username, forceTaken = false, preserveTaken = false) {
+      const controller = new AbortController();
+      usernameController = controller;
+      let timedOut = false;
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, 15000);
+
+      const params = new URLSearchParams({ username });
+      const fullName = fullNameInput.value.trim();
+      if (fullName) params.set('fullName', fullName);
+      if (!preserveTaken) showUsernameState('checking', username, 'Checking...');
+
+      try {
+        const { res, data } = await CPRI.apiFetch('/api/username/check?' + params.toString(), {
+          method: 'GET',
+          credentials: 'include',
+          signal: controller.signal
+        });
+        if (requestId !== usernameRequestId) return;
+        if (!res.ok || !data) throw new Error('Username check failed.');
+        if (data.available === true && !forceTaken) {
+          showUsernameState('available', username, username + ' is available');
+        } else if (data.reason === 'invalid') {
+          showUsernameState('invalid', username, data.message || 'Please check this username.');
+        } else {
+          showUsernameState(
+            'taken',
+            username,
+            'That username is already taken. Try one of these:',
+            Array.isArray(data.suggestions) ? data.suggestions : []
+          );
+        }
+      } catch {
+        if (requestId === usernameRequestId && !preserveTaken) {
+          showUsernameState(
+            'network',
+            username,
+            "Couldn't check right now. We'll check again when you submit."
+          );
+        }
+      } finally {
+        clearTimeout(timeout);
+        if (usernameController === controller) usernameController = null;
+        if (timedOut && requestId === usernameRequestId && usernameState === 'checking' && !preserveTaken) {
+          showUsernameState(
+            'network',
+            username,
+            "Couldn't check right now. We'll check again when you submit."
+          );
+        }
+      }
+    }
+
+    function queueUsernameCheck() {
+      clearTimeout(usernameDebounce);
+      usernameDebounce = null;
+      if (usernameController) usernameController.abort();
+      const requestId = ++usernameRequestId;
+      const validation = validateUsername(usernameInput.value);
+      updateUsernameRules(usernameInput.value);
+      if (!validation.valid) {
+        showUsernameState('invalid', validation.username, validation.message);
+        usernameCheckPromise = Promise.resolve();
+        return;
+      }
+      showUsernameState('checking', validation.username, 'Checking...');
+      usernameCheckPromise = new Promise(resolve => {
+        usernameDebounce = setTimeout(() => {
+          usernameDebounce = null;
+          resolve(checkUsername(requestId, validation.username));
+        }, 500);
+      });
+    }
+
+    function resetUsernameAvailability() {
+      clearTimeout(usernameDebounce);
+      usernameDebounce = null;
+      if (usernameController) usernameController.abort();
+      ++usernameRequestId;
+      updateUsernameRules(usernameInput.value);
+      showUsernameState('idle', '', 'Choose a username to check availability.');
+    }
+
+    async function ensureUsernameChecked() {
+      while (true) {
+        const validation = validateUsername(usernameInput.value);
+        updateUsernameRules(usernameInput.value);
+        if (!validation.valid) {
+          showUsernameState('invalid', validation.username, validation.message);
+          return 'invalid';
+        }
+
+        let requestId = usernameRequestId;
+        if (usernameDebounce) {
+          clearTimeout(usernameDebounce);
+          usernameDebounce = null;
+          usernameCheckPromise = checkUsername(requestId, validation.username);
+        } else if (usernameStateValue !== validation.username ||
+                   !['checking', 'available', 'taken', 'network'].includes(usernameState)) {
+          if (usernameController) usernameController.abort();
+          requestId = ++usernameRequestId;
+          usernameCheckPromise = checkUsername(requestId, validation.username);
+        }
+
+        if (usernameState === 'checking') await usernameCheckPromise;
+        if (requestId !== usernameRequestId) continue;
+        return usernameState;
+      }
+    }
+
+    usernameInput.addEventListener('input', queueUsernameCheck);
+    fullNameInput.addEventListener('input', () => {
+      if (usernameState === 'taken' && validateUsername(usernameInput.value).valid) {
+        queueUsernameCheck();
+      }
+    });
 
     // Show a message when Google bounces the visitor back with an error
     // (cancel, disabled, pending, server failure) — mirrors login.html.
@@ -414,34 +682,83 @@
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (registrationInProgress) return;
       message.className = 'form-message';
+      message.textContent = '';
       if (!verified) {
         message.className = 'form-message error';
         message.textContent = 'Please verify your email before registering.';
         return;
       }
-      const data = Object.fromEntries(new FormData(form).entries());
-      if (data.password !== data.confirm) {
+      const initialData = Object.fromEntries(new FormData(form).entries());
+      if (initialData.password !== initialData.confirm) {
         message.className = 'form-message error';
         message.textContent = 'Passwords do not match.';
         return;
       }
-      btn.disabled = true; btn.textContent = 'Registering…';
+
+      registrationInProgress = true;
+      btn.disabled = true;
+      btn.textContent = 'Checking username…';
       try {
+        const usernameResult = await ensureUsernameChecked();
+        if (usernameResult === 'invalid' || usernameResult === 'taken') {
+          message.className = 'form-message error';
+          message.textContent = usernameStatus.textContent;
+          usernameInput.focus();
+          return;
+        }
+        if (!verified) {
+          message.className = 'form-message error';
+          message.textContent = 'Please verify your email before registering.';
+          return;
+        }
+
+        const data = Object.fromEntries(new FormData(form).entries());
+        const usernameValidation = validateUsername(data.username);
+        if (!usernameValidation.valid) {
+          showUsernameState('invalid', usernameValidation.username, usernameValidation.message);
+          message.className = 'form-message error';
+          message.textContent = usernameValidation.message;
+          usernameInput.focus();
+          return;
+        }
+        if (data.password !== data.confirm) {
+          message.className = 'form-message error';
+          message.textContent = 'Passwords do not match.';
+          return;
+        }
+        data.username = usernameValidation.username;
+        btn.textContent = 'Registering…';
         const { res, data: out } = await CPRI.apiFetch('/api/auth/register', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
+        if (res.status === 409 && /username.*taken|taken.*username/i.test((out && out.error) || '') &&
+            normalizeUsername(usernameInput.value) === data.username) {
+          if (usernameController) usernameController.abort();
+          clearTimeout(usernameDebounce);
+          usernameDebounce = null;
+          const requestId = ++usernameRequestId;
+          showUsernameState('taken', data.username, 'That username is already taken. Try one of these:');
+          usernameCheckPromise = checkUsername(requestId, data.username, true, true);
+          await usernameCheckPromise;
+        }
         if (!res.ok) throw new Error((out && out.error) || 'Registration failed');
         message.className = 'form-message success';
         message.textContent = out.message + (res.status === 202 ? '' : ' Redirecting to login…');
         if (res.status !== 202) setTimeout(() => (window.location.href = 'login.html'), 1200);
-        else form.reset();
-        btn.disabled = false; btn.textContent = 'Register';
+        else {
+          form.reset();
+          resetUsernameAvailability();
+        }
       } catch (err) {
         message.className = 'form-message error';
         message.textContent = err.message;
-        btn.disabled = false; btn.textContent = 'Register';
+      } finally {
+        registrationInProgress = false;
+        btn.disabled = !verified;
+        btn.textContent = 'Register';
       }
     });
   </script>
