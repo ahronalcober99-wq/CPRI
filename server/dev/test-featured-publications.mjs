@@ -658,7 +658,7 @@ test('publication detail is public-safe, hides unpublished records, and grants f
   }
 });
 
-test('publication PATCH and DELETE require an authenticated administrator', async () => {
+test('publication PATCH requires admin and DELETE allows active publication managers', async () => {
   const record = publication('pub-managed');
   const mutations = [];
   const router = createPublicationsRouter({
@@ -670,7 +670,7 @@ test('publication PATCH and DELETE require an authenticated administrator', asyn
     },
     caller: async req => ({
       admin: { id: 'admin', role: 'admin', status: 'active' },
-      member: { id: 'member', role: 'cpri_staff' }
+      member: { id: 'member', role: 'cpri_staff', status: 'active' }
     })[req.session.userId] || null,
     get: async () => record,
     featureService: {
@@ -685,13 +685,15 @@ test('publication PATCH and DELETE require an authenticated administrator', asyn
   const api = await startManagementApi(router);
 
   try {
-    for (const method of ['PATCH', 'DELETE']) {
-      assert.equal((await requestJson(`${api.url}/pub-managed`, method, {})).status, 401);
-      assert.equal((await requestJson(`${api.url}/pub-managed`, method, {}, {
-        'x-test-user-id': 'member'
-      })).status, 403);
-    }
-    assert.equal(mutations.length, 0);
+    assert.equal((await requestJson(`${api.url}/pub-managed`, 'PATCH', {})).status, 401);
+    assert.equal((await requestJson(`${api.url}/pub-managed`, 'DELETE', {})).status, 401);
+    assert.equal((await requestJson(`${api.url}/pub-managed`, 'PATCH', {}, {
+      'x-test-user-id': 'member'
+    })).status, 403);
+    assert.equal((await requestJson(`${api.url}/pub-managed`, 'DELETE', {}, {
+      'x-test-user-id': 'member'
+    })).status, 200);
+    assert.deepEqual(mutations.map(mutation => mutation.type), ['delete']);
 
     assert.equal((await requestJson(`${api.url}/pub-managed`, 'PATCH', {
       status: 'published',
@@ -700,7 +702,7 @@ test('publication PATCH and DELETE require an authenticated administrator', asyn
     assert.equal((await requestJson(`${api.url}/pub-managed`, 'DELETE', {}, {
       'x-test-user-id': 'admin'
     })).status, 200);
-    assert.deepEqual(mutations.map(mutation => mutation.type), ['update', 'delete']);
+    assert.deepEqual(mutations.map(mutation => mutation.type), ['delete', 'update', 'delete']);
   } finally {
     await api.close();
   }
@@ -771,6 +773,64 @@ test('publication routes reject owner feature attempts and non-admin edits with 
       body: { error: 'Admin access required.' }
     });
     assert.equal(store.calls.length, 0);
+  } finally {
+    await api.close();
+  }
+});
+
+test('publication deletion removes manual and submission-linked records for active staff only', async () => {
+  const records = new Map([
+    ['manual-pub', publication('manual-pub', { sourceSubmissionId: null })],
+    ['linked-pub', publication('linked-pub', { sourceSubmissionId: 'submission-1' })]
+  ]);
+  const removed = [];
+  const router = createPublicationsRouter({
+    requireAuth(req, res, next) {
+      next();
+    },
+    caller: async req => ({
+      id: req.get('x-test-user-id'),
+      role: req.get('x-test-user-role'),
+      status: req.get('x-test-user-status')
+    }),
+    get: async (sql, params) => records.get(params[0]) || null,
+    remove: async (table, id) => {
+      removed.push({ table, id });
+      records.delete(id);
+    },
+    invalidateCache() {}
+  });
+  const api = await startManagementApi(router);
+
+  try {
+    const manual = await requestJson(`${api.url}/manual-pub`, 'DELETE', {}, {
+      'x-test-user-id': 'staff',
+      'x-test-user-role': 'cpri_staff',
+      'x-test-user-status': 'active'
+    });
+    assert.equal(manual.status, 200);
+    assert.deepEqual(manual.body, { message: 'Publication removed.' });
+    assert.equal(records.has('manual-pub'), false);
+
+    const linked = await requestJson(`${api.url}/linked-pub`, 'DELETE', {}, {
+      'x-test-user-id': 'admin',
+      'x-test-user-role': 'admin',
+      'x-test-user-status': 'active'
+    });
+    assert.equal(linked.status, 200);
+    assert.equal(records.has('linked-pub'), false);
+    assert.deepEqual(removed, [
+      { table: 'publications', id: 'manual-pub' },
+      { table: 'publications', id: 'linked-pub' }
+    ]);
+
+    const inactiveStaff = await requestJson(`${api.url}/missing`, 'DELETE', {}, {
+      'x-test-user-id': 'inactive',
+      'x-test-user-role': 'cpri_staff',
+      'x-test-user-status': 'disabled'
+    });
+    assert.equal(inactiveStaff.status, 403);
+    assert.equal(removed.length, 2);
   } finally {
     await api.close();
   }

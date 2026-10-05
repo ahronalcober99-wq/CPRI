@@ -59,6 +59,9 @@ function canEdit(me) {
 function isAdministrator(me) {
   return !!me && me.role === 'admin' && me.status === 'active';
 }
+function canRemovePublication(me) {
+  return !!me && STAFF_ROLES.includes(me.role) && me.status === 'active';
+}
 function isOwner(me, pub) {
   return !!me && pub.submitterId === me.id;
 }
@@ -335,11 +338,13 @@ export function createPublicationsRouter(dependencies = {}) {
   router.delete('/:id', authenticate, async (req, res) => {
     const me = await resolveCaller(req);
     if (!me) return res.status(401).json({ error: 'Not authenticated.' });
-    if (!isAdministrator(me)) return res.status(403).json({ error: 'Admin access required.' });
+    if (!canRemovePublication(me)) return res.status(403).json({ error: 'Admin or CPRI staff access required.' });
 
     const p = await query.get('SELECT * FROM publications WHERE id = ?', [req.params.id]);
     if (!p) return res.status(404).json({ error: 'Publication not found.' });
 
+    // Remove the publication record itself; it may be manually entered and
+    // have no linked research submission.
     await query.remove('publications', req.params.id);
     invalidateCache();
     res.json({ message: 'Publication removed.' });

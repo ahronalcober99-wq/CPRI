@@ -117,7 +117,7 @@
     const dashboard = document.getElementById('dashboard');
     const breakdown = document.getElementById('breakdown');
     const recordsEl = document.getElementById('records');
-    let isAdmin = false;
+    let canManagePublications = false;
 
     function showMsg(type, text) {
       message.className = 'form-message ' + type;
@@ -198,8 +198,8 @@
               <div class="meta" style="margin-top:4px;">${p.publicationDate} · Vol. ${p.volume || '—'} Issue ${p.issue || '—'} pp. ${p.pages || '—'} · ${p.authorTypeLabel}</div>
               ${p.sourceSubmissionId ? '<div class="meta" style="margin-top:6px;color:var(--cpri-secondary);"><i class="bi bi-magic"></i> Auto-added from an approved research submission</div>' : ''}
             </div>
-            ${isAdmin && p.sourceSubmissionId ? `
-              <button type="button" class="btn btn-outline btn-sm remove-pub" data-id="${p.id}" data-title="${escapeHtml(p.title)}" style="border-color:#b23b32;color:#b23b32;white-space:nowrap;" aria-label="Remove ${escapeHtml(p.title)} from Publications">
+            ${canManagePublications ? `
+              <button type="button" class="btn btn-outline btn-sm remove-pub" data-id="${p.id}" style="border-color:#b23b32;color:#b23b32;white-space:nowrap;" aria-label="Remove ${escapeHtml(p.title)} from Publications">
                 <i class="bi bi-x-circle"></i> Remove from Publications
               </button>` : ''}
           </div>
@@ -209,14 +209,30 @@
         btn.addEventListener('click', async () => {
           // In-page confirm (native confirm() is blocked in sandboxed iframes).
           const ask = window.confirmDialog || ((msg) => Promise.resolve(window.confirm(msg)));
-          const ok = await ask(`Remove "${btn.dataset.title}" from Publications? The research submission and its repository entry stay untouched.`, 'Remove');
+          const ok = await ask('Are you sure you want to remove this publication?', 'Remove');
           if (!ok) return;
-          const res = await fetch('/api/publications/' + btn.dataset.id, { method: 'DELETE' });
-          const out = await res.json();
-          if (!res.ok) return showMsg('error', out.error || 'Could not remove the publication.');
-          showMsg('success', 'Removed from Publications.');
-          loadStats();
-          load();
+          btn.disabled = true;
+          try {
+            const res = await fetch('/api/publications/' + btn.dataset.id, { method: 'DELETE' });
+            const out = await res.json();
+            if (!res.ok) {
+              btn.disabled = false;
+              return showMsg('error', out.error || 'Could not remove the publication.');
+            }
+            btn.closest('.card')?.remove();
+            if (!recordsEl.querySelector('.card')) {
+              recordsEl.innerHTML = '<p class="empty-state">No publications found.</p>';
+            }
+            showMsg('success', 'Removed from Publications.');
+            try {
+              await loadStats();
+            } catch {
+              showMsg('error', 'Removed from Publications, but publication statistics could not be refreshed.');
+            }
+          } catch {
+            btn.disabled = false;
+            showMsg('error', 'Could not remove the publication. Please try again.');
+          }
         });
       });
     }
@@ -234,15 +250,14 @@
     });
 
     (async () => {
-      // Resolve the viewer's role before rendering so auto-added publications
-      // show the admin-only "Remove from Publications" action on first paint.
+      // Resolve the viewer's role before rendering management actions.
       const meRes = await fetch('/api/auth/me');
       if (meRes.ok) {
         const { user } = await meRes.json();
-        if (['admin', 'cpri_staff'].includes(user.role)) {
+        if (['admin', 'cpri_staff'].includes(user.role) && user.status === 'active') {
           document.getElementById('admin-panel').style.display = 'block';
+          canManagePublications = true;
         }
-        isAdmin = user.role === 'admin' && user.status === 'active';
       }
       await loadStats();
       await load();
