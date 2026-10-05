@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
-import { requireAuth, requireRole, readUsers } from './auth.js';
-import { all, get, run, insert, update, remove } from './server/db/queries.js';
+import { requireAuth, requireAdmin, requireRole, readUsers } from './auth.js';
+import { all, get, run, insert, update, remove, withTransaction } from './server/db/queries.js';
 import { addLog } from './audit.js';
 import { notify } from './notifications.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
@@ -253,6 +253,26 @@ router.get('/:id', requireAuth, async (req, res) => {
   if (!sub) return res.status(404).json({ error: 'Submission not found.' });
   if (!canAccess(me, sub)) return res.status(403).json({ error: 'Access denied.' });
   res.json({ submission: sub, statusLabel: STATUS_LABELS[sub.status] || sub.status });
+});
+
+export async function deleteSubmissionAndPublication(submissionId, transaction = withTransaction) {
+  return transaction(async ({ get: transactionGet, run: transactionRun }) => {
+    const submission = await transactionGet('SELECT id FROM submissions WHERE id = ?', [submissionId]);
+    if (!submission) return false;
+
+    await transactionRun('DELETE FROM publications WHERE sourceSubmissionId = ?', [submissionId]);
+    await transactionRun('DELETE FROM submissions WHERE id = ?', [submissionId]);
+    return true;
+  });
+}
+
+// ---------- Delete submission (admins only) ----------
+router.delete('/:id', requireAdmin, async (req, res) => {
+  const deleted = await deleteSubmissionAndPublication(req.params.id);
+  if (!deleted) return res.status(404).json({ error: 'Submission not found.' });
+
+  await addLog('submission_deleted', `Deleted submission "${req.params.id}"`, req);
+  res.json({ message: 'Submission deleted.' });
 });
 
 // ---------- Update status (reviewers/admins) ----------

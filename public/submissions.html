@@ -47,6 +47,7 @@
     const notLogged = document.getElementById('not-logged');
     const submissionsEl = document.getElementById('submissions');
     let isReviewer = false;
+    let isAdmin = false;
 
     const STATUS_LABELS = {
       submitted: 'Submitted', under_initial_checking: 'Under Initial Checking',
@@ -60,6 +61,7 @@
       if (!meRes.ok) { notLogged.style.display = 'block'; return; }
       const { user } = await meRes.json();
       isReviewer = ['admin','cpri_staff','ethics_reviewer'].includes(user.role);
+      isAdmin = user.role === 'admin' && user.status === 'active';
       if (isReviewer) document.getElementById('reviewer-banner').style.display = 'block';
 
       const res = await fetch('/api/submissions');
@@ -80,12 +82,18 @@
               <div style="margin-top:8px;"><span class="badge">${s.statusLabel}</span> <span class="form-note">${new Date(s.createdAt).toLocaleDateString()}</span></div>
             </div>
             ${isReviewer ? statusControl(s) : ''}
+            ${isAdmin ? deleteControl(s) : ''}
           </div>
         </div>`).join('');
 
       if (isReviewer) {
         submissionsEl.querySelectorAll('select.status-select').forEach(sel => {
           sel.addEventListener('change', (e) => updateStatus(e.target.dataset.id, e.target.value));
+        });
+      }
+      if (isAdmin) {
+        submissionsEl.querySelectorAll('button.delete-submission').forEach(btn => {
+          btn.addEventListener('click', () => deleteSubmission(btn));
         });
       }
     })();
@@ -96,6 +104,40 @@
         <label class="form-note">Update status</label>
         <select class="status-select" data-id="${s.id}" style="margin-top:4px;">${opts}</select>
       </div>`;
+    }
+
+    function deleteControl(s) {
+      return `<button type="button" class="btn btn-outline btn-sm delete-submission" data-id="${s.id}">
+        <i class="bi bi-trash"></i> Delete submission
+      </button>`;
+    }
+
+    async function deleteSubmission(button) {
+      const ask = window.confirmDialog || ((text) => Promise.resolve(window.confirm(text)));
+      if (!await ask('Delete this submission? This cannot be undone.', 'Delete')) return;
+
+      button.disabled = true;
+      try {
+        const res = await fetch('/api/submissions/' + encodeURIComponent(button.dataset.id), { method: 'DELETE' });
+        const out = await res.json();
+        if (!res.ok) {
+          button.disabled = false;
+          message.className = 'form-message error';
+          message.textContent = out.error || 'Delete failed';
+          return;
+        }
+
+        button.closest('.card')?.remove();
+        if (!submissionsEl.querySelector('.card')) {
+          submissionsEl.innerHTML = '<p class="empty-state">No submissions found.</p>';
+        }
+        message.className = 'form-message success';
+        message.textContent = 'Submission deleted.';
+      } catch {
+        button.disabled = false;
+        message.className = 'form-message error';
+        message.textContent = 'Could not delete the submission. Please try again.';
+      }
     }
 
     async function updateStatus(id, status) {
