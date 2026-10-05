@@ -1,5 +1,6 @@
 import './load-env.js';
 import 'express-async-errors';
+import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { basename, dirname, join } from 'path';
 import { promises as fs } from 'fs';
@@ -9,7 +10,7 @@ import session from 'express-session';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
-import { authRouter, initAuth } from './auth.js';
+import { authRouter, initAuth, requireAdmin } from './auth.js';
 import { usernameRouter } from './username.js';
 import { submissionsRouter } from './submissions.js';
 import { repositoryRouter } from './repository.js';
@@ -26,7 +27,8 @@ import { notificationsRouter, ensureNotificationsTable } from './notifications.j
 import { messagesRouter, ensureMessagesTable } from './messages.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
 import { testConnection, explainDbError, connectionOptions } from './db.js';
-import { insert, all, get } from './server/db/queries.js';
+import { insert, all, get, withTransaction } from './server/db/queries.js';
+import { deleteEventAcrossStores } from './event-deletion.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -365,6 +367,107 @@ app.get('/api/events', async (req, res) => {
     return true;
   });
   res.json(items.sort((a, b) => new Date(a.date) - new Date(b.date)));
+});
+
+const EVENT_CONTENT_UPLOAD_DIR = join(PUBLIC_DIR, 'assets', 'uploads', 'events');
+const EVENT_MODULE_UPLOAD_DIR = join(PUBLIC_DIR, 'assets', 'uploads', 'events-module');
+
+async function readContentEvents() {
+  let raw;
+  try {
+    raw = await fs.readFile(join(DATA_DIR, 'events.json'), 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+  const events = JSON.parse(raw);
+  if (!Array.isArray(events)) throw new Error('Event content must be a JSON array.');
+  return events;
+}
+
+async function writeContentEvents(events) {
+  const filePath = join(DATA_DIR, 'events.json');
+  const tempPath = `${filePath}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(tempPath, JSON.stringify(events, null, 2) + '\n', 'utf8');
+    await fs.rename(tempPath, filePath);
+  } catch (error) {
+    await fs.rm(tempPath, { force: true }).catch(cleanupError => {
+      console.error('[events] failed to clean temporary event file:', cleanupError.message);
+    });
+    throw error;
+  }
+}
+
+function contentEventPhotoPath(photo) {
+  if (typeof photo !== 'string' || !photo.startsWith('/') || photo.startsWith('//')) return null;
+  let pathname;
+  try {
+    pathname = new URL(photo, 'http://localhost').pathname;
+    pathname = decodeURIComponent(pathname);
+  } catch {
+    return null;
+  }
+  const prefix = '/assets/uploads/events/';
+  if (!pathname.startsWith(prefix)) return null;
+  const filename = pathname.slice(prefix.length);
+  if (!filename || filename.includes('/') || filename.includes('\\') || filename === '.' || filename === '..') return null;
+  return join(EVENT_CONTENT_UPLOAD_DIR, filename);
+}
+
+async function cleanupDeletedEventFiles({ contentEvents, moduleEvents }) {
+  const warnings = [];
+  const photoPaths = new Set();
+  const eventDirectories = new Set();
+
+  for (const event of contentEvents) {
+    const photoPath = contentEventPhotoPath(event.photo);
+    if (photoPath) photoPaths.add(photoPath);
+  }
+  for (const event of moduleEvents) {
+    const id = String(event.id);
+    if (id && id !== '.' && id !== '..' && !id.includes('/') && !id.includes('\\')) {
+      eventDirectories.add(join(EVENT_MODULE_UPLOAD_DIR, id));
+    }
+  }
+
+  for (const path of photoPaths) {
+    try {
+      await fs.unlink(path);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.error('[events] uploaded photo cleanup failed:', error.message);
+        warnings.push('One or more uploaded event files could not be removed.');
+      }
+    }
+  }
+  for (const path of eventDirectories) {
+    try {
+      await fs.rm(path, { recursive: true, force: true });
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.error('[events] uploaded file cleanup failed:', error.message);
+        warnings.push('One or more uploaded event files could not be removed.');
+      }
+    }
+  }
+  return [...new Set(warnings)];
+}
+
+app.delete('/api/events/:id', requireAdmin, async (req, res) => {
+  try {
+    const deleted = await deleteEventAcrossStores(req.params.id, {
+      readContentEvents,
+      writeContentEvents,
+      withTransaction,
+      cleanupFiles: cleanupDeletedEventFiles
+    });
+    if (!deleted) return res.status(404).json({ error: 'Event not found.' });
+    res.json({ message: 'Event deleted.', warnings: deleted.warnings });
+  } catch (error) {
+    console.error(`[events] deletion failed for ${req.params.id}:`, error.message);
+    res.status(500).json({ error: 'Could not delete the event. Please try again.' });
+  }
 });
 
 app.get('/api/research', async (req, res) => {

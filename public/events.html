@@ -22,6 +22,7 @@
 
     <section class="section">
       <div class="container">
+        <div class="form-message" id="event-message" role="status" aria-live="polite"></div>
         <h2 class="section-title">Upcoming Activities</h2>
         <div class="grid grid-3" id="events-upcoming"></div>
       </div>
@@ -48,9 +49,20 @@
   <script>
     (async () => {
       const events = await CPRI.fetchJson('/api/events');
+      let isAdmin = false;
+      try {
+        const meRes = await fetch('/api/auth/me');
+        if (meRes.ok) {
+          const { user } = await meRes.json();
+          isAdmin = user?.role === 'admin' && user.status === 'active';
+        }
+      } catch (error) {
+        console.warn('Could not verify event management access:', error);
+      }
       const up = document.getElementById('events-upcoming');
       const past = document.getElementById('events-past');
       const gallery = document.getElementById('gallery');
+      const message = document.getElementById('event-message');
       if (!events) {
         up.innerHTML = '<p class="empty-state">Unable to load events at this time.</p>';
         return;
@@ -66,7 +78,7 @@
 
       if (gallery) {
         gallery.innerHTML = events.map(e => `
-          <div class="card" style="padding:0;overflow:hidden;">
+          <div class="card event-gallery-card" data-event-id="${CPRI.escapeHtml(String(e.id))}" style="padding:0;overflow:hidden;">
             <div style="height:140px;background:linear-gradient(135deg,#13518f,#2a9d8f);display:grid;place-items:center;color:#fff;font-size:2rem;">📷</div>
             <div style="padding:14px;">
               <h3 style="font-size:1rem;margin:0 0 4px;">${e.title}</h3>
@@ -77,15 +89,57 @@
 
       function eventCard(e) {
         return `
-          <div class="card">
+          <div class="card event-list-card" data-event-id="${CPRI.escapeHtml(String(e.id))}">
             ${e.photo ? `<img src="${CPRI.escapeHtml(e.photo)}" alt="${CPRI.escapeHtml(e.title)}" style="width:100%;height:160px;object-fit:cover;border-radius:10px;margin-bottom:12px;">` : ''}
             <span class="badge">${CPRI.escapeHtml(e.type)}</span>
             <h3>${CPRI.escapeHtml(e.title)}</h3>
             <div class="meta">${CPRI.fmtDate(e.date)}</div>
             <p>${CPRI.escapeHtml(e.description)}</p>
             <p style="color:var(--cpri-gray);font-size:.9rem;">📍 ${CPRI.escapeHtml(e.location)}</p>
+            ${isAdmin ? `<button type="button" class="btn btn-outline btn-sm delete-event" data-id="${CPRI.escapeHtml(String(e.id))}" style="margin-top:auto;border-color:#b23b32;color:#b23b32;white-space:nowrap;align-self:flex-start;" aria-label="Delete ${CPRI.escapeHtml(e.title)}"><i class="bi bi-x-circle"></i> Delete event</button>` : ''}
           </div>`;
       }
+
+      function showMessage(type, text) {
+        message.className = 'form-message ' + type;
+        message.textContent = text;
+      }
+
+      function removeEventFromLists(eventId) {
+        for (const card of document.querySelectorAll('.event-list-card')) {
+          if (card.dataset.eventId === eventId) card.remove();
+        }
+        for (const card of document.querySelectorAll('.event-gallery-card')) {
+          if (card.dataset.eventId === eventId) card.remove();
+        }
+        if (!up.querySelector('.event-list-card')) up.innerHTML = '<p class="empty-state">No upcoming events scheduled.</p>';
+        if (!past.querySelector('.event-list-card')) past.innerHTML = '<p class="empty-state">No past events recorded yet.</p>';
+        if (gallery && !gallery.querySelector('.event-gallery-card')) gallery.innerHTML = '<p class="empty-state">No photos yet.</p>';
+      }
+
+      document.querySelectorAll('.delete-event').forEach(button => {
+        button.addEventListener('click', async () => {
+          const ask = window.confirmDialog || ((text) => Promise.resolve(window.confirm(text)));
+          if (!await ask('Delete this event? This cannot be undone.', 'Delete')) return;
+
+          button.disabled = true;
+          try {
+            const res = await fetch('/api/events/' + encodeURIComponent(button.dataset.id), { method: 'DELETE' });
+            const out = await res.json();
+            if (!res.ok) {
+              button.disabled = false;
+              showMessage('error', out.error || 'Could not delete the event.');
+              return;
+            }
+            removeEventFromLists(button.dataset.id);
+            showMessage(out.warnings?.length ? 'error' : 'success',
+              out.warnings?.length ? 'Event deleted, but some uploaded files could not be removed.' : 'Event deleted.');
+          } catch {
+            button.disabled = false;
+            showMessage('error', 'Could not delete the event. Please try again.');
+          }
+        });
+      });
     })();
   </script>
 </body>

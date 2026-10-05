@@ -1339,6 +1339,7 @@ img { max-width: 100%; display: block; }
 .countdown .cd b { display: block; font-family: var(--font-head); font-size: 1.3rem; color: var(--cpri-secondary); }
 .countdown .cd small { font-size: .66rem; text-transform: uppercase; letter-spacing: .06em; color: var(--cpri-muted); }
 .event-card .e-foot { margin-top: auto; padding-top: 6px; display: flex; gap: 8px; }
+.event-list-card { display: flex; flex-direction: column; }
 
 /* mini calendar */
 .mini-cal { background: var(--cpri-card); border: 1px solid var(--cpri-border); border-radius: var(--radius); padding: 20px; box-shadow: var(--shadow-sm); }
