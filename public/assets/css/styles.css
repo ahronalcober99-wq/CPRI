@@ -373,35 +373,6 @@ img { max-width: 100%; display: block; }
   position: fixed; top: 0; left: 0; height: 3px; width: 0;
   background: var(--grad-brand); z-index: 4000; transition: width .1s linear;
 }
-/* back to top */
-.back-to-top {
-  position: fixed; right: 24px; bottom: 96px; width: 50px; height: 50px;
-  border-radius: 16px; border: none; cursor: pointer; z-index: 1200;
-  background: var(--grad-brand); color: #fff; font-size: 1.2rem;
-  display: grid; place-items: center; box-shadow: var(--shadow-accent);
-  opacity: 0; visibility: hidden; transform: translateY(20px);
-  transition: opacity .3s ease, transform .3s ease, visibility .3s;
-}  .back-to-top.show { opacity: 1; visibility: visible; transform: none; }
-
-  /* floating contact button (replaces the removed AI assistant launcher) */
-  .contact-fab {
-    position: fixed; right: 24px; bottom: 24px; z-index: 1300;
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 12px 18px; border-radius: 999px; text-decoration: none;
-    background: var(--grad-brand); color: #fff; font-weight: 700;
-    font-family: var(--font-head); font-size: .92rem;
-    box-shadow: var(--shadow-accent);
-    transition: transform .22s ease, box-shadow .22s ease;
-  }
-  .contact-fab i { font-size: 1.05rem; }
-  .contact-fab:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(20,184,166,.35); color: #fff; }
-  .contact-fab:active { transform: translateY(-1px); }
-  @media (max-width: 540px) {
-    .contact-fab span { display: none; }
-    .contact-fab { width: 54px; height: 54px; padding: 0; justify-content: center; border-radius: 18px; }
-  }
-
-
 /* page loader */
 .page-loader {
   position: fixed; inset: 0; z-index: 5000; display: grid; place-items: center;
@@ -1414,6 +1385,7 @@ img { max-width: 100%; display: block; }
 .cpri-footer a { color: #c2d0e2; }
 .cpri-footer a:hover { color: #fff; }
 .cpri-footer .f-links li { padding: 7px 0; }
+.cpri-footer .f-links li::before { content: none; }
 .cpri-footer .socials { display: flex; gap: 12px; margin-top: 18px; }
 .cpri-footer .socials a { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; background: rgba(255,255,255,.08); color: #fff; font-size: 1.1rem; transition: background .2s, transform .2s; }
 .cpri-footer .socials a:hover { background: var(--cpri-accent); transform: translateY(-3px); }
@@ -1472,11 +1444,6 @@ img { max-width: 100%; display: block; }
   .bottom-nav { display: flex; }
   .cpri-footer .footer-bottom { padding-bottom: 104px; }
   .cpri-footer .f-grid { grid-template-columns: 1fr !important; gap: 32px; }
-  /* The floating bottom nav owns the bottom edge — lift the contact button
-     above it and mirror the back-to-top button to the left so the two
-     floating buttons never overlap the nav or each other. */
-  .contact-fab { bottom: 124px; }
-  .back-to-top { bottom: 124px; right: auto; left: 24px; }
 }
 /* Tablet & small laptop: collapse the full nav behind the mobile sidebar
    drawer so the navbar row can never overflow horizontally — the full row
@@ -1815,6 +1782,7 @@ img { max-width: 100%; display: block; }
 .feature-list li { padding: 12px 0 12px 32px; position: relative; border-bottom: 1px solid var(--cpri-border); }
 .feature-list li:last-child { border-bottom: none; }
 .feature-list li::before { content: "\2713"; position: absolute; left: 0; top: 12px; color: var(--cpri-accent); font-weight: 800; }
+.cpri-footer .f-links li { padding-left: 0; }
 .grid-3, .grid-4 { grid-template-columns: repeat(3, 1fr); }
 .quick-links { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
 .quick-link { background: var(--cpri-primary); color: #fff; border-radius: var(--radius); padding: 24px; text-align: center; font-weight: 700; box-shadow: var(--shadow-sm); transition: transform .15s, background .2s; display: block; }

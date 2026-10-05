@@ -396,8 +396,6 @@ const CPRI = (() => {
 
   const CHROME = `
     <div class="scroll-progress" id="scrollProgress"></div>
-    <button class="back-to-top" id="backToTop" aria-label="Back to top"><i class="bi bi-arrow-up"></i></button>
-    <a class="contact-fab" href="contact.html" aria-label="Contact us" title="Contact us"><i class="bi bi-envelope"></i><span>Contact us</span></a>
 
     <div class="search-pop" id="searchPop" role="dialog" aria-label="Search">
       <div class="sp-box">
@@ -717,20 +715,16 @@ const CPRI = (() => {
   }
 
   function initChrome(active) {
-    // scroll progress + back to top
     const prog = document.getElementById('scrollProgress');
-    const btt = document.getElementById('backToTop');
-    if (prog || btt) {
+    if (prog) {
       window.addEventListener('scroll', () => {
         const h = document.documentElement.scrollHeight - window.innerHeight;
         const p = h > 0 ? (window.scrollY / h) * 100 : 0;
-        if (prog) prog.style.width = p + '%';
-        if (btt) btt.classList.toggle('show', window.scrollY > 400);
+        prog.style.width = p + '%';
         const hero = document.getElementById('homeHero');
         if (hero) hero.classList.toggle('scrolled', window.scrollY > 140);
       }, { passive: true });
     }
-    if (btt) btt.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 
     // ---- Search popup: live results across research, events, publications,
     // researchers, and the research agenda. Falls back to the static quick
@@ -1178,10 +1172,10 @@ const CPRI = (() => {
   }
 
   // ---- Magnetic buttons ----
-  // Hero CTAs and the contact FAB gently pull toward the cursor.
+  // Hero CTAs gently pull toward the cursor.
   function initMagnetic() {
     if (!window.matchMedia('(hover: hover)').matches) return;
-    document.querySelectorAll('.hero-cta .btn, .contact-fab').forEach(el => {
+    document.querySelectorAll('.hero-cta .btn').forEach(el => {
       el.classList.add('btn-magnetic');
       el.addEventListener('pointermove', (e) => {
         const r = el.getBoundingClientRect();
