@@ -382,13 +382,9 @@ const CPRI = (() => {
             </ul>
           </div>
           <div>
-            <h4>Contact & Newsletter</h4>
+            <h4>Contact</h4>
             <p><i class="bi bi-envelope"></i> cpri@university.edu<br>
                <i class="bi bi-telephone"></i> +63 (2) 8123 4567</p>
-            <form class="f-news" data-newsletter>
-              <input type="email" placeholder="Your email" aria-label="Email" required>
-              <button class="btn btn-accent" type="submit">Subscribe</button>
-            </form>
           </div>
         </div>
         <div class="footer-bottom">
@@ -484,7 +480,6 @@ const CPRI = (() => {
       initReveal();
       initCounters();
       initFaq();
-      initNewsletter();
       initAuthActions();
       applySavedPrefs();
       initPasswordReveal();
@@ -1289,20 +1284,6 @@ const CPRI = (() => {
         const item = btn.parentElement; const ans = item.querySelector('.faq-a');
         const isOpen = item.classList.toggle('open');
         ans.style.maxHeight = isOpen ? ans.scrollHeight + 'px' : '0';
-      });
-    });
-  }
-
-  function initNewsletter() {
-    document.querySelectorAll('[data-newsletter]').forEach(form => {
-      form.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const input = form.querySelector('input'); if (!input.value) return;
-        const btn = form.querySelector('button');
-        const orig = btn.innerHTML; btn.innerHTML = 'Subscribed <i class="bi bi-check-lg"></i>';
-        btn.disabled = true; input.value = '';
-        toast('Subscribed', 'You will receive our next newsletter.', 'envelope-check');
-        setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 2400);
       });
     });
   }
