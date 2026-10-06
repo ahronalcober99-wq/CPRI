@@ -32,9 +32,12 @@ Persist event image metadata using canonical `imageUrl` and `imagePublicId`
 fields. `imageUrl` is the complete HTTPS public URL returned by Supabase;
 `imagePublicId` is the safe object path within the event bucket. Add nullable
 metadata columns to the `events_module` schema and retain the old `photo`
-column only as a compatibility source for existing rows. JSON-backed Admin
-Console events gain the same canonical fields; legacy `photo` values remain
-readable during migration.
+column only as a compatibility source for existing rows. The Express server
+uses its MySQL pool, so fresh databases get these columns in
+`server/init-db.sql`, and the existing-event startup check adds them
+idempotently. The unrelated Netlify migration directory is not the schema path
+used by these event routes. JSON-backed Admin Console events gain the same
+canonical fields; legacy `photo` values remain readable during migration.
 
 Extend the existing Supabase adapter to upload and delete objects from the
 configured event bucket without changing its default private-bucket behavior.
@@ -44,7 +47,8 @@ memory-backed multer so Render's local disk is not part of cover-image
 persistence.
 
 Wire uploads through both database-backed module event create/update routes
-and the Admin Console JSON-backed event photo/create/update flow. When a new
+(including the event-detail admin edit form) and the Admin Console JSON-backed
+event photo/create/update flow. When a new
 image is successfully saved, remove the previous Supabase object by
 `imagePublicId`; if saving fails, clean up the newly uploaded object instead.
 Event deletion also removes the stored object best-effort and logs storage
@@ -83,6 +87,8 @@ public images, so saved URLs do not expire.
 - Test Supabase bucket-specific upload/public URL/delete operations and retain
   private-bucket defaults.
 - Test file type, MIME type, and 5 MB limits for event cover uploads.
+- Test that existing MySQL installations acquire both image columns at boot
+  while the database still permits the previous private-bucket defaults.
 - Test create/update replacement cleanup and delete cleanup for both event
   storage sources.
 - Verify API event responses expose `imageUrl` and no parallel legacy URL

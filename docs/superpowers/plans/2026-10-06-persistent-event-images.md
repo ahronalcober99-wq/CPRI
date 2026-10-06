@@ -6,7 +6,7 @@
 
 **Architecture:** Reuse Supabase Storage with a dedicated public event-image bucket, leaving the existing private bucket as the default for documents. Save the stable public URL and object path on both database-backed module events and JSON-backed Admin Console events, then expose a shared compatibility-aware image URL resolver to the browser.
 
-**Tech Stack:** Node.js 18+, Express, multer, existing Supabase Storage REST adapter, Netlify Drizzle/Postgres migrations, vanilla browser JavaScript, Node's built-in test runner.
+**Tech Stack:** Node.js 18+, Express, multer, existing Supabase Storage REST adapter, MySQL schema initialization, vanilla browser JavaScript, Node's built-in test runner.
 
 ## Global Constraints
 
@@ -25,11 +25,11 @@
 - Modify `server/events-module.js` to persist durable covers for module events and clean up replaced/deleted storage objects.
 - Modify `server/admin-dashboard.js` to persist durable covers for Admin Console JSON events and clean up replacements/deletions.
 - Modify `server/server.js` to return canonical image metadata in merged event feeds and remove storage objects on unified event deletion.
-- Create `netlify/database/migrations/20261006120000_add_event_image_storage/migration.sql` for nullable module-event image metadata.
 - Create `server/event-image-utils.js` for shared server-side validation and legacy metadata normalization.
 - Create `public/assets/js/event-image-utils.js` for shared browser URL resolution and the fixed placeholder.
 - Modify `public/assets/js/main.js` to expose `CPRI.resolveImageUrl(event)` and use it in homepage event cards.
-- Modify `public/index.html`, `public/events.html`, and `public/events-module.html` to load the utility and use the shared resolver and consistent image fallback rendering.
+- Modify `public/index.html`, `public/events.html`, `public/events-module.html`, and `public/admin-dashboard.html` to load/use the resolver or persist the image metadata in the Admin Console.
+- Modify `public/event-detail.html` so authorized module-event edits can upload a replacement cover.
 - Modify `server/dev/test-supabase-storage.mjs` and create `server/dev/test-event-image-helpers.mjs` for regression coverage.
 
 ## Implementation tasks
@@ -100,9 +100,8 @@ git commit -m "feat: support durable event image storage"
 ### Task 2: Persist module-event cover images
 
 **Files:**
-- Create: `netlify/database/migrations/20261006120000_add_event_image_storage/migration.sql`
 - Modify: `server/events-module.js`
-- Modify: `server/init-db.sql` only if local initialization must mirror the deployed schema.
+- Modify: `server/init-db.sql`
 - Test: `server/dev/test-event-image-helpers.mjs`
 
 **Interfaces:**
@@ -131,7 +130,7 @@ Run: `node --test server/dev/test-event-image-helpers.mjs`
 Expected: FAIL because the image validation/storage helpers are not yet
 exported.
 
-- [ ] **Step 3: Implement module upload and migration**
+- [ ] **Step 3: Implement module upload and schema upgrade**
 
 Use multer memory storage on the existing cover-only POST route, use a random
 object path under `events-module/<event-id>/`, upload the buffer to the event
@@ -142,10 +141,12 @@ object after the row update. On a failed row write, remove the newly uploaded
 object and return the repository-standard error response. During reads,
 normalize `imageUrl || photo || ''` to `imageUrl`.
 
-Add nullable `imageurl varchar(1000)` and `imagepublicid varchar(500)` columns
-in the new Drizzle SQL migration using the existing `--> statement-breakpoint`
-format. Keep the legacy `photo` column for back-compatibility. Mirror both
-nullable columns in `server/init-db.sql` for local MySQL initialization.
+Add nullable `imageUrl VARCHAR(1000)` and `imagePublicId VARCHAR(500)` columns
+to the `events_module` definition in `server/init-db.sql`. Make
+`ensureEventsSchema()` run `SHOW COLUMNS FROM events_module` and add each
+missing field with `ALTER TABLE`; this covers existing Render MySQL databases
+because `CREATE TABLE IF NOT EXISTS` does not update an existing table. Keep
+the legacy `photo` column for back-compatibility.
 
 - [ ] **Step 4: Implement module deletion cleanup**
 
@@ -163,7 +164,7 @@ Expected: image validation and current event-deletion safety tests pass.
 - [ ] **Step 6: Commit the module image task**
 
 ```powershell
-git add netlify/database/migrations/20261006120000_add_event_image_storage/migration.sql server/events-module.js server/event-image-utils.js server/init-db.sql server/dev/test-event-image-helpers.mjs
+git add server/events-module.js server/event-image-utils.js server/init-db.sql server/dev/test-event-image-helpers.mjs
 git commit -m "feat: persist event module cover images"
 ```
 
@@ -171,6 +172,7 @@ git commit -m "feat: persist event module cover images"
 
 **Files:**
 - Modify: `server/admin-dashboard.js`
+- Modify: `public/admin-dashboard.html`
 - Modify: `server/server.js`
 - Modify: `server/dev/test-event-deletion.mjs`
 - Test: `server/dev/test-event-image-helpers.mjs`
@@ -232,7 +234,7 @@ cleanup.
 - [ ] **Step 6: Commit Admin Console and API changes**
 
 ```powershell
-git add server/admin-dashboard.js server/server.js server/dev/test-event-deletion.mjs server/dev/test-event-image-helpers.mjs
+git add server/admin-dashboard.js public/admin-dashboard.html server/server.js server/event-deletion.js server/dev/test-event-deletion.mjs server/dev/test-event-image-helpers.mjs
 git commit -m "feat: persist admin event images"
 ```
 
@@ -244,6 +246,8 @@ git commit -m "feat: persist admin event images"
 - Modify: `public/index.html`
 - Modify: `public/events.html`
 - Modify: `public/events-module.html`
+- Modify: `public/event-detail.html`
+- Modify: `public/admin-dashboard.html`
 - Test: `server/dev/test-event-image-helpers.mjs`
 
 **Interfaces:**
@@ -291,7 +295,7 @@ show the placeholder instead of the browser's broken-image icon.
 - [ ] **Step 5: Commit frontend image rendering**
 
 ```powershell
-git add public/assets/js/event-image-utils.js public/assets/js/main.js public/index.html public/events.html public/events-module.html server/dev/test-event-image-helpers.mjs
+git add public/assets/js/event-image-utils.js public/assets/js/main.js public/index.html public/events.html public/events-module.html public/admin-dashboard.html public/event-detail.html server/dev/test-event-image-helpers.mjs
 git commit -m "fix: render persistent event images consistently"
 ```
 

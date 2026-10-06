@@ -45,6 +45,7 @@
   </main>
 
   <div id="site-footer"></div>
+  <script src="assets/js/event-image-utils.js"></script>
   <script src="assets/js/main.js"></script>
   <script>
     (async () => {
@@ -80,7 +81,7 @@
         gallery.innerHTML = events.map(e => `
           <div class="card event-gallery-card" data-event-id="${CPRI.escapeHtml(String(e.id))}" style="padding:0;overflow:hidden;">
             ${isAdmin ? `<button type="button" class="event-gallery-delete" data-id="${CPRI.escapeHtml(String(e.id))}" data-title="${CPRI.escapeHtml(e.title)}" aria-label="Delete '${CPRI.escapeHtml(e.title)}'"><i class="bi bi-trash" aria-hidden="true"></i></button>` : ''}
-            <div style="height:140px;background:linear-gradient(135deg,#13518f,#2a9d8f);display:grid;place-items:center;color:#fff;font-size:2rem;">📷</div>
+            <img src="${CPRI.escapeHtml(CPRI.resolveImageUrl(e) || CPRIEventImages.placeholderDataUrl)}" alt="${CPRI.escapeHtml(e.title)}" loading="lazy" onerror="this.onerror=null;this.src='${CPRIEventImages.placeholderDataUrl}';this.alt='No image available';" style="display:block;width:100%;height:140px;object-fit:cover;">
             <div style="padding:14px;">
               <h3 style="font-size:1rem;margin:0 0 4px;">${CPRI.escapeHtml(e.title)}</h3>
               <div class="meta">${CPRI.escapeHtml(CPRI.fmtDate(e.date))}</div>
@@ -89,9 +90,11 @@
       }
 
       function eventCard(e) {
+        const imageUrl = CPRI.resolveImageUrl(e);
+        const placeholder = CPRIEventImages.placeholderDataUrl;
         return `
           <div class="card event-list-card" data-event-id="${CPRI.escapeHtml(String(e.id))}">
-            ${e.photo ? `<img src="${CPRI.escapeHtml(e.photo)}" alt="${CPRI.escapeHtml(e.title)}" style="width:100%;height:160px;object-fit:cover;border-radius:10px;margin-bottom:12px;">` : ''}
+            <img src="${CPRI.escapeHtml(imageUrl || placeholder)}" alt="${CPRI.escapeHtml(e.title)}" loading="lazy" onerror="this.onerror=null;this.src='${placeholder}';this.alt='No image available';" style="width:100%;height:160px;object-fit:cover;border-radius:10px;margin-bottom:12px;">
             <span class="badge">${CPRI.escapeHtml(e.type)}</span>
             <h3>${CPRI.escapeHtml(e.title)}</h3>
             <div class="meta">${CPRI.fmtDate(e.date)}</div>

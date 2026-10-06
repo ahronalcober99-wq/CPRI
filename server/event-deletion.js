@@ -36,7 +36,7 @@ export async function deleteEventAcrossStores(eventId, {
     deleted = await withTransaction(async tx => {
       const contentEvent = contentEvents.find(event => String(event.id) === String(eventId));
       const moduleEvent = await tx.get(
-        'SELECT id, title, photo FROM events_module WHERE id = ? FOR UPDATE',
+        'SELECT id, title, photo, imagepublicid AS imagePublicId FROM events_module WHERE id = ? FOR UPDATE',
         [eventId]
       );
       if (!contentEvent && !moduleEvent) return null;
@@ -47,7 +47,7 @@ export async function deleteEventAcrossStores(eventId, {
         : contentEvent ? [contentEvent] : [];
       const moduleEvents = titleKey
         ? await tx.all(
-          'SELECT id, title, photo FROM events_module WHERE LOWER(TRIM(title)) = ? FOR UPDATE',
+          'SELECT id, title, photo, imagepublicid AS imagePublicId FROM events_module WHERE LOWER(TRIM(title)) = ? FOR UPDATE',
           [titleKey]
         )
         : moduleEvent ? [moduleEvent] : [];

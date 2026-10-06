@@ -160,7 +160,7 @@
                     </div>
                     <div class="form-group">
                       <label>Photo</label>
-                      <input type="file" id="e-photo" accept="image/*" style="margin-bottom:8px;">
+                      <input type="file" id="e-photo" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" style="margin-bottom:8px;">
                       <div id="e-photo-preview" style="display:none;margin-top:4px;">
                         <img id="e-photo-img" alt="Event photo preview" style="max-width:100%;max-height:120px;border-radius:8px;border:1px solid var(--cpri-border);display:block;">
                         <button type="button" class="btn btn-outline btn-sm" id="e-photo-clear" style="margin-top:6px;border-color:#b23b32;color:#b23b32;">Remove photo</button>
@@ -256,6 +256,7 @@
   </main>
 
   <div id="site-footer"></div>
+  <script src="assets/js/event-image-utils.js"></script>
   <script src="assets/js/main.js"></script>
 
   <!-- In-page confirmation dialog (native confirm() is blocked in sandboxed iframes) -->
@@ -521,6 +522,7 @@
 
     // ---- Events & Featured Research management (JSON-backed content) ----
     let eventPhotoUrl = ''; // public URL of the current event photo ('' = none)
+    let eventPhotoPublicId = '';
     let eventPhotoObjectUrl = null; // blob URL preview of a freshly picked file
 
     function setEventPhotoPreview(url, isObjectUrl) {
@@ -529,7 +531,7 @@
       const wrap = document.getElementById('e-photo-preview');
       if (!img || !wrap) return;
       if (url) {
-        img.src = url;
+        img.src = isObjectUrl ? url : (CPRI.resolveImageUrl({ imageUrl: url }) || url);
         wrap.style.display = 'block';
         if (isObjectUrl) eventPhotoObjectUrl = url;
       } else {
@@ -545,6 +547,7 @@
     document.getElementById('e-photo-clear').addEventListener('click', () => {
       document.getElementById('e-photo').value = '';
       eventPhotoUrl = '';
+      eventPhotoPublicId = '';
       setEventPhotoPreview('');
     });
 
@@ -584,7 +587,8 @@
         document.getElementById('e-location').value = ev.location || '';
         document.getElementById('e-desc').value = ev.description || '';
         document.getElementById('e-photo').value = '';
-        eventPhotoUrl = ev.photo || '';
+        eventPhotoUrl = ev.imageUrl || ev.photo || '';
+        eventPhotoPublicId = ev.imagePublicId || '';
         setEventPhotoPreview(eventPhotoUrl);
         document.getElementById('e-submit').textContent = 'Update Event';
         document.getElementById('e-cancel').style.display = 'inline-block';
@@ -633,7 +637,8 @@
     document.getElementById('event-form').addEventListener('submit', async (e) => {
       e.preventDefault();
       const id = document.getElementById('e-id').value;
-      let photo = eventPhotoUrl || '';
+      let imageUrl = eventPhotoUrl || '';
+      let imagePublicId = eventPhotoPublicId || '';
       const fileInput = document.getElementById('e-photo');
       if (fileInput && fileInput.files.length) {
         const fd = new FormData();
@@ -645,8 +650,10 @@
           setEventPhotoPreview(eventPhotoUrl); // revert preview to the stored photo
           return;
         }
-        photo = upOut.photo;
-        eventPhotoUrl = photo;
+        imageUrl = upOut.imageUrl;
+        imagePublicId = upOut.imagePublicId;
+        eventPhotoUrl = imageUrl;
+        eventPhotoPublicId = imagePublicId;
       }
       const payload = {
         title: document.getElementById('e-title').value,
@@ -654,7 +661,8 @@
         date: document.getElementById('e-date').value,
         location: document.getElementById('e-location').value,
         description: document.getElementById('e-desc').value,
-        photo
+        imageUrl,
+        imagePublicId
       };
       const res = await fetch('/api/admin/content/event' + (id ? '/' + id : ''), { method: id ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       const out = await res.json();
@@ -662,6 +670,9 @@
       showMsg('success', id ? 'Event updated.' : 'Event published — it now appears on the homepage, events page, and calendar.');
       e.target.reset();
       document.getElementById('e-id').value = '';
+      eventPhotoUrl = '';
+      eventPhotoPublicId = '';
+      setEventPhotoPreview('');
       document.getElementById('e-submit').textContent = 'Publish Event';
       document.getElementById('e-cancel').style.display = 'none';
       loadEventsList();
@@ -671,6 +682,7 @@
       document.getElementById('event-form').reset();
       document.getElementById('e-id').value = '';
       eventPhotoUrl = '';
+      eventPhotoPublicId = '';
       setEventPhotoPreview('');
       document.getElementById('e-submit').textContent = 'Publish Event';
       document.getElementById('e-cancel').style.display = 'none';
@@ -797,4 +809,3 @@
   </script>
 </body>
 </html>
-

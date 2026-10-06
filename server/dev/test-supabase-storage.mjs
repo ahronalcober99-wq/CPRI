@@ -180,6 +180,50 @@ test('deletes uploaded objects by storage path', async () => {
   assert.deepEqual(JSON.parse(request.init.body), { prefixes: ['submissions/id/file.pdf'] });
 });
 
+test('uses the configured public event bucket without changing the private default', async () => {
+  const calls = [];
+  const storage = createSupabaseStorage({
+    env: { ...env, SUPABASE_EVENT_BUCKET: 'public-event-images' },
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return response(200);
+    }
+  });
+
+  const path = 'events/id/cover image.webp'.replace(' ', '-');
+  assert.deepEqual(await storage.uploadObject({
+    path,
+    buffer: Buffer.from('image'),
+    contentType: 'image/webp',
+    bucket: 'events'
+  }), { path });
+  assert.equal(
+    calls[0].url,
+    'https://project.example.test/storage/v1/object/public-event-images/events/id/cover-image.webp'
+  );
+  assert.equal(storage.publicObjectUrl({ path, bucket: 'events' }),
+    'https://project.example.test/storage/v1/object/public/public-event-images/events/id/cover-image.webp');
+
+  await storage.deleteObjects([path], { bucket: 'events' });
+  assert.equal(calls[1].url, 'https://project.example.test/storage/v1/object/public-event-images');
+  await storage.deleteObjects(['submissions/id/file.pdf']);
+  assert.equal(calls[2].url, 'https://project.example.test/storage/v1/object/private-files');
+});
+
+test('event bucket configuration is required only for event operations', async () => {
+  const storage = createSupabaseStorage({
+    env,
+    fetchImpl: async () => response(200)
+  });
+
+  assert.throws(
+    () => storage.publicObjectUrl({ path: 'events/id/cover.jpg', bucket: 'events' }),
+    error => error.message.includes('SUPABASE_EVENT_BUCKET') &&
+      !error.message.includes(env.SUPABASE_SERVICE_KEY)
+  );
+  assert.equal(await storage.objectExists('submissions/id/file.pdf'), true);
+});
+
 test('rejects leading slashes, empty/dot segments, spaces, and special characters', async () => {
   const storage = createSupabaseStorage({ env, fetchImpl: async () => response(200) });
   for (const path of ['/leading.pdf', '../private.pdf', 'folder/a b.pdf', 'folder/a#b.pdf', 'folder//file.pdf']) {

@@ -33,6 +33,7 @@ import {
   isValidEventId,
   resolveContentEventPhotoPath
 } from './event-deletion.js';
+import { cleanupEventImages, isEventImageObjectId, normalizeEventImage } from './event-image-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -348,9 +349,12 @@ app.get('/api/events', async (req, res) => {
   }
   // Merge both stores, deduped by title (the seed mirrors the same events in
   // both stores). For this public feed, the content copy wins because it can
-  // carry a hero photo; module-only events still appear.
+  // carry a hero image; module-only events still appear.
   const merged = [
-    ...(Array.isArray(content) ? content : []).map(e => ({ ...e, source: 'content' })),
+    ...(Array.isArray(content) ? content : []).map(e => {
+      const { photo, imageurl, imagepublicid, ...record } = e;
+      return { ...record, ...normalizeEventImage(e), source: 'content' };
+    }),
     ...(Array.isArray(moduleEvents) ? moduleEvents : []).map(e => ({
       id: e.id,
       title: e.title,
@@ -358,7 +362,7 @@ app.get('/api/events', async (req, res) => {
       date: e.dateTime || '',
       location: e.venue || '',
       description: e.description || '',
-      photo: e.photo || '',
+      ...normalizeEventImage(e),
       registrationLink: e.registrationLink || '',
       source: 'module'
     }))
@@ -411,12 +415,15 @@ async function cleanupDeletedEventFiles({ contentEvents, moduleEvents }) {
   const warnings = [];
   const photoPaths = new Set();
   const eventDirectories = new Set();
+  const imageObjectIds = new Set();
 
   for (const event of contentEvents) {
-    const photoPath = contentEventPhotoPath(event.photo);
+    const photoPath = contentEventPhotoPath(event.photo || event.imageUrl);
     if (photoPath) photoPaths.add(photoPath);
+    if (isEventImageObjectId(event.imagePublicId)) imageObjectIds.add(event.imagePublicId);
   }
   for (const event of moduleEvents) {
+    if (isEventImageObjectId(event.imagePublicId)) imageObjectIds.add(event.imagePublicId);
     const id = String(event.id);
     if (id && id !== '.' && id !== '..' && !id.includes('/') && !id.includes('\\')) {
       eventDirectories.add(join(EVENT_MODULE_UPLOAD_DIR, id));
@@ -441,6 +448,15 @@ async function cleanupDeletedEventFiles({ contentEvents, moduleEvents }) {
         console.error('[events] uploaded file cleanup failed:', error.message);
         warnings.push('One or more uploaded event files could not be removed.');
       }
+    }
+  }
+  if (imageObjectIds.size) {
+    const imageCleanupSucceeded = await cleanupEventImages([...imageObjectIds], {
+      storage: supabaseStorage,
+      context: '[events] stored image cleanup failed'
+    });
+    if (!imageCleanupSucceeded) {
+      warnings.push('One or more event images could not be removed from storage.');
     }
   }
   return [...new Set(warnings)];
@@ -615,6 +631,12 @@ try {
   console.error('[schema] Check DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME.');
 }
 
+try {
+  await ensureEventsSchema();
+} catch (err) {
+  console.error('[events] schema ensure failed:', err.message);
+}
+
 const server = app.listen(PORT, async () => {
   void supabaseStorage.verifyBucketAtStartup();
   let dbUp = true;
@@ -639,7 +661,6 @@ const server = app.listen(PORT, async () => {
   await initAuth();
   await ensureNotificationsTable().catch(err => console.error('[notifications] table ensure failed:', err.message));
   await ensureMessagesTable().catch(err => console.error('[messages] table ensure failed:', err.message));
-  await ensureEventsSchema().catch(err => console.error('[events] schema ensure failed:', err.message));
 
   console.log('[mail] BREVO_API_KEY set:', Boolean(process.env.BREVO_API_KEY));
   console.log('[mail] BREVO_SENDER_EMAIL set:', Boolean(process.env.BREVO_SENDER_EMAIL));

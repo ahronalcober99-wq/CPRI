@@ -7,6 +7,8 @@ import { promises as fs } from 'fs';
 import { requireAuth, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { notify } from './notifications.js';
+import { supabaseStorage } from './storage/supabase-storage.js';
+import { cleanupEventImages, MAX_EVENT_IMAGE_SIZE, normalizeEventImage, validateEventImage } from './event-image-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,13 +17,22 @@ const DATA_DIR = join(__dirname, 'data');
 
 const router = Router();
 
-// The schema (including the `photo` column) is managed by the Netlify Database
-// migrations in netlify/database/migrations. Called once at boot.
+// The schema is defined in server/init-db.sql; additive checks here also cover
+// databases that were initialized before event image metadata was introduced.
 export async function ensureEventsSchema() {
   // Sweep leftover temp folders from crashed/interrupted requests.
   try {
     await fs.rm(join(UPLOAD_DIR, '_tmp'), { recursive: true, force: true });
   } catch { /* no-op */ }
+
+  const columns = await all('SHOW COLUMNS FROM events_module');
+  const existing = new Set(columns.map(column => String(column.Field || column.field || '').toLowerCase()));
+  if (!existing.has('imageurl')) {
+    await run('ALTER TABLE events_module ADD COLUMN imageUrl VARCHAR(1000) NULL');
+  }
+  if (!existing.has('imagepublicid')) {
+    await run('ALTER TABLE events_module ADD COLUMN imagePublicId VARCHAR(500) NULL');
+  }
 }
 
 const PARTICIPANT_TYPES = {
@@ -64,24 +75,27 @@ const uploadGallery = upload.fields([
   { name: 'certificate', maxCount: 1 }
 ]);
 
-// Cover-photo upload for the Create Event form. The event id doesn't exist
-// yet at upload time, so files land in a per-request temp folder and are
-// moved into <UPLOAD_DIR>/<eventId>/ once the event row is created.
-const coverStorage = multer.diskStorage({
-  destination: async (req, file, cb) => {
-    const dir = join(UPLOAD_DIR, '_tmp', req._tmpId);
-    try { await fs.mkdir(dir, { recursive: true }); cb(null, dir); }
-    catch (err) { cb(err); }
-  },
-  filename: (req, file, cb) => cb(null, `cover${extname(file.originalname).toLowerCase() || '.jpg'}`)
-});
+// Event cover images stay in memory until they are uploaded to persistent storage.
 const uploadCover = multer({
-  storage: coverStorage,
-  limits: { fileSize: 8 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith('image/'))
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_EVENT_IMAGE_SIZE },
+  fileFilter: (req, file, cb) => {
+    try {
+      validateEventImage(file);
+      cb(null, true);
+    } catch (error) {
+      error.status = 400;
+      cb(error);
+    }
+  }
 }).single('photo');
 
 // ---------- Events ----------
+function eventWithImage(event) {
+  const { photo, imageurl, imagepublicid, ...record } = event;
+  return { ...record, ...normalizeEventImage(event) };
+}
+
 router.get('/', async (req, res) => {
   const q = req.query;
   let sql = 'SELECT * FROM events_module WHERE 1=1';
@@ -120,7 +134,7 @@ router.get('/', async (req, res) => {
       registrationLink: e.registrationLink || '',
       programFlow: '',
       speakers: '',
-      photo: e.photo || '',
+      ...normalizeEventImage(e),
       createdAt: e.createdAt || '',
       source: 'content'
     };
@@ -140,7 +154,7 @@ router.get('/', async (req, res) => {
       registrationLink: e.registrationLink,
       programFlow: e.programFlow,
       speakers: e.speakers,
-      photo: e.photo || '',
+      ...normalizeEventImage(e),
       createdAt: e.createdAt,
       source: 'module'
     })),
@@ -160,52 +174,39 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e) return res.status(404).json({ error: 'Event not found.' });
-  res.json({ event: e });
+  res.json({ event: eventWithImage(e) });
 });
 
-router.post('/', requireAuth, (req, res, next) => {
-  // The event id doesn't exist until the row is created, so the photo lands
-  // in a temp folder keyed by a throwaway id; the handler moves it after insert.
-  req._tmpId = randomUUID();
-  next();
-}, uploadCover, async (req, res) => {
+router.post('/', requireAuth, uploadCover, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
   const b = req.body || {};
   const id = randomUUID();
-  const tmpDir = join(UPLOAD_DIR, '_tmp', req._tmpId);
-  let photo = '';
-
-  // Make sure the temp folder is removed whether validation fails below or the
-  // move above succeeded — no orphaned uploads left behind.
-  async function cleanupTmp() {
-    try {
-      await fs.rm(tmpDir, { recursive: true, force: true });
-    } catch (cleanupErr) {
-      console.error('[events] temp cleanup failed:', cleanupErr.message);
-    }
-  }
 
   const required = ['title', 'theme', 'dateTime', 'venue'];
   for (const f of required) {
-    if (!b[f]) {
-      await cleanupTmp();
-      return res.status(400).json({ error: `Field "${f}" is required.` });
-    }
+    if (!b[f]) return res.status(400).json({ error: `Field "${f}" is required.` });
   }
 
+  let imageUrl = '';
+  let imagePublicId = '';
   try {
     if (req.file) {
-      const dir = join(UPLOAD_DIR, id);
-      await fs.mkdir(dir, { recursive: true });
-      await fs.rename(join(tmpDir, req.file.filename), join(dir, req.file.filename));
-      // Public path, matching what content events use (e.g. /assets/uploads/events/...).
-      photo = `/assets/uploads/events-module/${id}/${req.file.filename}`;
+      const contentType = validateEventImage(req.file);
+      imagePublicId = `events-module/${id}/${randomUUID()}${extname(req.file.originalname).toLowerCase()}`;
+      await supabaseStorage.uploadObject({
+        path: imagePublicId,
+        buffer: req.file.buffer,
+        contentType,
+        bucket: 'events'
+      });
+      imageUrl = supabaseStorage.publicObjectUrl({ path: imagePublicId, bucket: 'events' });
     }
-  } catch (err) {
-    console.error('[events] cover move failed:', err.message);
-    photo = '';
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    console.error('[events] cover upload failed:', error.message);
+    return res.status(500).json({ error: 'Could not store the event cover image.' });
   }
 
   const rec = {
@@ -218,27 +219,40 @@ router.post('/', requireAuth, (req, res, next) => {
     registrationLink: b.registrationLink ? String(b.registrationLink).trim() : '',
     programFlow: b.programFlow ? String(b.programFlow).trim() : '',
     speakers: b.speakers ? String(b.speakers).trim() : '',
-    photo,
+    imageUrl,
+    imagePublicId,
+    photo: '',
     gallery: JSON.stringify([]),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
 
-  await insert('events_module', rec);
-  await cleanupTmp();
-  res.status(201).json({ message: 'Event created.', event: rec });
+  try {
+    await insert('events_module', rec);
+  } catch (error) {
+    await cleanupEventImages([imagePublicId], {
+      storage: supabaseStorage,
+      context: '[events] failed to clean up an image after create failure'
+    });
+    throw error;
+  }
+  res.status(201).json({ message: 'Event created.', event: eventWithImage(rec) });
 });
 
 // Turn multer failures (oversized file, bad content type) into clean 400s
 // instead of the generic 500 the global handler would produce.
 router.use((err, req, res, next) => {
   if (err && (err instanceof multer.MulterError || err.code === 'LIMIT_FILE_SIZE')) {
-    return res.status(400).json({ error: 'Photo upload failed: ' + (err.message || 'invalid file.') });
+    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Photo is too large (max 5 MB).' : err.message || 'invalid file.';
+    return res.status(400).json({ error: 'Photo upload failed: ' + message });
+  }
+  if (err?.status === 400) {
+    return res.status(400).json({ error: err.message });
   }
   next(err);
 });
 
-router.patch('/:id', requireAuth, async (req, res) => {
+router.patch('/:id', requireAuth, uploadCover, async (req, res) => {
   const me = await caller(req);
   if (!me || !canEdit(me)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
 
@@ -247,14 +261,48 @@ router.patch('/:id', requireAuth, async (req, res) => {
 
   const b = req.body || {};
   const changes = {};
-  const editable = ['title', 'theme', 'dateTime', 'venue', 'description', 'registrationLink', 'programFlow', 'speakers', 'photo'];
+  const editable = ['title', 'theme', 'dateTime', 'venue', 'description', 'registrationLink', 'programFlow', 'speakers'];
   for (const f of editable) {
     if (b[f] !== undefined) changes[f] = String(b[f]).trim();
   }
+  let newImagePublicId = '';
+  if (req.file) {
+    try {
+      const contentType = validateEventImage(req.file);
+      newImagePublicId = `events-module/${req.params.id}/${randomUUID()}${extname(req.file.originalname).toLowerCase()}`;
+      await supabaseStorage.uploadObject({
+        path: newImagePublicId,
+        buffer: req.file.buffer,
+        contentType,
+        bucket: 'events'
+      });
+      changes.imageUrl = supabaseStorage.publicObjectUrl({ path: newImagePublicId, bucket: 'events' });
+      changes.imagePublicId = newImagePublicId;
+    } catch (error) {
+      if (error.status === 400) return res.status(400).json({ error: error.message });
+      console.error('[events] cover replacement upload failed:', error.message);
+      return res.status(500).json({ error: 'Could not store the event cover image.' });
+    }
+  }
   changes.updatedAt = new Date().toISOString();
-  await update('events_module', req.params.id, changes);
+  try {
+    await update('events_module', req.params.id, changes);
+  } catch (error) {
+    await cleanupEventImages([newImagePublicId], {
+      storage: supabaseStorage,
+      context: '[events] failed to clean up an image after update failure'
+    });
+    throw error;
+  }
+  const previousImagePublicId = normalizeEventImage(e).imagePublicId;
+  if (newImagePublicId && previousImagePublicId) {
+    await cleanupEventImages([previousImagePublicId], {
+      storage: supabaseStorage,
+      context: '[events] replaced cover cleanup failed'
+    });
+  }
   const updated = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
-  res.json({ message: 'Event updated.', event: updated });
+  res.json({ message: 'Event updated.', event: eventWithImage(updated) });
 });
 
 router.delete('/:id', requireAuth, async (req, res) => {
@@ -264,8 +312,15 @@ router.delete('/:id', requireAuth, async (req, res) => {
   const e = await get('SELECT * FROM events_module WHERE id = ?', [req.params.id]);
   if (!e) return res.status(404).json({ error: 'Event not found.' });
   await remove('events_module', req.params.id);
+  const imagePublicId = normalizeEventImage(e).imagePublicId;
+  await cleanupEventImages([imagePublicId], {
+    storage: supabaseStorage,
+    context: '[events] event cover cleanup failed'
+  });
   // Clean up the event's photo/gallery folder.
-  await fs.rm(join(UPLOAD_DIR, req.params.id), { recursive: true, force: true }).catch(() => {});
+  await fs.rm(join(UPLOAD_DIR, req.params.id), { recursive: true, force: true }).catch(error => {
+    if (error.code !== 'ENOENT') console.error('[events] gallery cleanup failed:', error.message);
+  });
   res.json({ message: 'Event removed.' });
 });
 
@@ -527,4 +582,3 @@ router.get('/:id/gallery/:filename', async (req, res) => {
 });
 
 export { router as eventsModuleRouter, PARTICIPANT_TYPES, ABSTRACT_STATUS, STAFF_ROLES };
-

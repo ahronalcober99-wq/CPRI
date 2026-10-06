@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, extname, join } from 'path';
 import { promises as fs } from 'fs';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
@@ -9,6 +9,8 @@ import { requireAuth, requireAdmin, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { addLog } from './audit.js';
 import { notify } from './notifications.js';
+import { supabaseStorage } from './storage/supabase-storage.js';
+import { cleanupEventImages, MAX_EVENT_IMAGE_SIZE, isEventImageObjectId, normalizeEventImage, validateEventImage } from './event-image-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,8 +32,6 @@ function dayKeyOf(value) {
   const d = toDate(value);
   return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
 }
-const EVENT_UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'events');
-
 const router = Router();
 
 // Roles allowed to post/update/delete announcements. Students and public
@@ -667,36 +667,52 @@ router.delete('/content/announcement/:id', requireRole(...ANNOUNCEMENT_SENDER_RO
 // so an event published here appears immediately on the homepage, events
 // listing, and calendar. Legacy field names (theme/dateTime/venue) are
 // accepted as aliases for type/date/location.
-// Event photo upload — stores images under public/assets/uploads/events and
-// returns the public URL to save into the event's `photo` field.
-const eventPhotoStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    fs.mkdir(EVENT_UPLOAD_DIR, { recursive: true })
-      .then(() => cb(null, EVENT_UPLOAD_DIR))
-      .catch(err => cb(err));
-  },
-  filename: (req, file, cb) => {
-    const safe = file.originalname.replace(/[^a-z0-9.]+/gi, '_').slice(0, 40);
-    cb(null, `event-${Date.now()}-${safe}`);
-  }
-});
 const eventPhotoUpload = multer({
-  storage: eventPhotoStorage,
-  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB
-  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith('image/'))
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_EVENT_IMAGE_SIZE },
+  fileFilter: (req, file, cb) => {
+    try {
+      validateEventImage(file);
+      cb(null, true);
+    } catch (error) {
+      error.status = 400;
+      cb(error);
+    }
+  }
 });
 
 router.post('/content/event/photo', requireAdmin, (req, res) => {
   eventPhotoUpload.single('photo')(req, res, async (err) => {
     if (err) {
-      // Multer failures (oversize, bad multipart, unexpected field) → clean JSON.
-      const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Photo is too large (max 4 MB).' : (err.message || 'Photo upload failed.');
+      const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Photo is too large (max 5 MB).' : (err.message || 'Photo upload failed.');
       return res.status(400).json({ error: msg });
     }
-    if (!req.file) return res.status(400).json({ error: 'No image uploaded (images only, max 4 MB).' });
-    await addLog('content_update', 'Uploaded event photo', req);
-    const photo = `/assets/uploads/events/${req.file.filename}`;
-    res.status(201).json({ message: 'Photo uploaded.', photo });
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded (JPG, JPEG, PNG, or WebP; max 5 MB).' });
+    try {
+      const contentType = validateEventImage(req.file);
+      const imagePublicId = `content-events/${randomUUID()}/${randomUUID()}${extname(req.file.originalname).toLowerCase()}`;
+      await supabaseStorage.uploadObject({
+        path: imagePublicId,
+        buffer: req.file.buffer,
+        contentType,
+        bucket: 'events'
+      });
+      const imageUrl = supabaseStorage.publicObjectUrl({ path: imagePublicId, bucket: 'events' });
+      try {
+        await addLog('content_update', 'Uploaded event photo', req);
+      } catch (error) {
+        await cleanupEventImages([imagePublicId], {
+          storage: supabaseStorage,
+          context: '[admin] failed to clean up an image after upload logging failed'
+        });
+        throw error;
+      }
+      res.status(201).json({ message: 'Photo uploaded.', imageUrl, imagePublicId });
+    } catch (error) {
+      if (error.status === 400) return res.status(400).json({ error: error.message });
+      console.error('[admin] event image upload failed:', error.message);
+      res.status(500).json({ error: 'Could not store the event image.' });
+    }
   });
 });
 
@@ -708,6 +724,13 @@ router.post('/content/event', requireAdmin, async (req, res) => {
   const location = (b.location || b.venue || '').trim();
   if (!title || !date || !location) return res.status(400).json({ error: 'Title, date, and location are required.' });
   const contentEvents = await readContent('events');
+  const image = normalizeEventImage(b);
+  if (image.imagePublicId && !isEventImageObjectId(image.imagePublicId)) {
+    return res.status(400).json({ error: 'Event image reference is invalid.' });
+  }
+  if (image.imagePublicId) {
+    image.imageUrl = supabaseStorage.publicObjectUrl({ path: image.imagePublicId, bucket: 'events' });
+  }
   const event = {
     id: randomUUID(),
     title,
@@ -715,11 +738,19 @@ router.post('/content/event', requireAdmin, async (req, res) => {
     date,
     location,
     description: b.description ? String(b.description).trim() : '',
-    photo: b.photo ? String(b.photo).trim() : '',
+    ...image,
     createdAt: new Date().toISOString()
   };
   contentEvents.push(event);
-  await writeContent('events', contentEvents);
+  try {
+    await writeContent('events', contentEvents);
+  } catch (error) {
+    await cleanupEventImages([image.imagePublicId], {
+      storage: supabaseStorage,
+      context: '[admin] failed to clean up an image after event creation failed'
+    });
+    throw error;
+  }
   res.status(201).json({ message: 'Event created.', event });
 });
 
@@ -730,15 +761,48 @@ router.patch('/content/event/:id', requireAdmin, async (req, res) => {
   const ev = contentEvents.find(e => e.id === req.params.id);
   if (!ev) return res.status(404).json({ error: 'Event not found.' });
   const REQUIRED_EVENT = ['title', 'date', 'location'];
-  for (const f of ['title', 'type', 'date', 'location', 'description', 'photo']) {
+  for (const f of ['title', 'type', 'date', 'location', 'description']) {
     if (b[f] !== undefined) {
       const v = String(b[f]).trim();
       if (REQUIRED_EVENT.includes(f) && !v) return res.status(400).json({ error: 'Title, date, and location cannot be empty.' });
       ev[f] = v;
     }
   }
-  await writeContent('events', contentEvents);
-  res.json({ message: 'Event updated.', event: ev });
+  const hasImageUpdate = b.imageUrl !== undefined || b.imagePublicId !== undefined || b.photo !== undefined;
+  const previousImagePublicId = ev.imagePublicId || '';
+  let newImagePublicId = '';
+  if (hasImageUpdate) {
+    const image = normalizeEventImage(b);
+    if (image.imagePublicId && !isEventImageObjectId(image.imagePublicId)) {
+      return res.status(400).json({ error: 'Event image reference is invalid.' });
+    }
+    if (image.imagePublicId) {
+      image.imageUrl = supabaseStorage.publicObjectUrl({ path: image.imagePublicId, bucket: 'events' });
+      newImagePublicId = image.imagePublicId;
+    }
+    ev.imageUrl = image.imageUrl;
+    ev.imagePublicId = image.imagePublicId;
+    delete ev.photo;
+  }
+  try {
+    await writeContent('events', contentEvents);
+  } catch (error) {
+    if (newImagePublicId && newImagePublicId !== previousImagePublicId) {
+      await cleanupEventImages([newImagePublicId], {
+        storage: supabaseStorage,
+        context: '[admin] failed to clean up an image after event update failed'
+      });
+    }
+    throw error;
+  }
+  if (hasImageUpdate && previousImagePublicId && previousImagePublicId !== ev.imagePublicId) {
+    await cleanupEventImages([previousImagePublicId], {
+      storage: supabaseStorage,
+      context: '[admin] replaced event image cleanup failed'
+    });
+  }
+  const { photo, imageurl, imagepublicid, ...record } = ev;
+  res.json({ message: 'Event updated.', event: { ...record, ...normalizeEventImage(ev) } });
 });
 
 router.delete('/content/event/:id', requireAdmin, async (req, res) => {
@@ -747,6 +811,11 @@ router.delete('/content/event/:id', requireAdmin, async (req, res) => {
   const filtered = contentEvents.filter(e => e.id !== req.params.id);
   if (filtered.length === contentEvents.length) return res.status(404).json({ error: 'Event not found.' });
   await writeContent('events', filtered);
+  const deleted = contentEvents.find(e => e.id === req.params.id);
+  await cleanupEventImages([deleted?.imagePublicId], {
+    storage: supabaseStorage,
+    context: '[admin] event image cleanup failed'
+  });
   res.json({ message: 'Event deleted.' });
 });
 
@@ -902,4 +971,3 @@ router.delete('/users/:id', requireAdmin, async (req, res) => {
 });
 
 export { router as adminDashboardRouter };
-

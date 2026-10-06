@@ -8,14 +8,14 @@ function normalizeEnvValue(value) {
   return normalized;
 }
 
-function configuration(env) {
+function configuration(env, bucketVariable = 'SUPABASE_BUCKET') {
   const baseUrl = normalizeEnvValue(env.SUPABASE_URL).replace(/\/+$/, '');
   const serviceKey = normalizeEnvValue(env.SUPABASE_SERVICE_KEY);
-  const bucket = normalizeEnvValue(env.SUPABASE_BUCKET);
+  const bucket = normalizeEnvValue(env[bucketVariable]);
   const missing = [];
   if (!baseUrl) missing.push('SUPABASE_URL');
   if (!serviceKey) missing.push('SUPABASE_SERVICE_KEY');
-  if (!bucket) missing.push('SUPABASE_BUCKET');
+  if (!bucket) missing.push(bucketVariable);
   if (missing.length) {
     throw new Error(`Supabase Storage is not configured: ${missing.join(', ')}.`);
   }
@@ -31,6 +31,12 @@ function configuration(env) {
   }
 
   return { baseUrl, serviceKey, bucket };
+}
+
+function bucketConfiguration(env, bucket) {
+  if (bucket === undefined || bucket === 'private') return configuration(env);
+  if (bucket === 'events') return configuration(env, 'SUPABASE_EVENT_BUCKET');
+  throw new Error('Storage bucket is invalid.');
 }
 
 function encodePath(path) {
@@ -123,10 +129,10 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
     }
   }
 
-  async function uploadObject({ path, buffer, contentType }) {
+  async function uploadObject({ path, buffer, contentType, bucket }) {
     if (!Buffer.isBuffer(buffer)) throw new Error('Storage upload requires a file buffer.');
     const encodedPath = encodePath(path);
-    const config = configuration(env);
+    const config = bucketConfiguration(env, bucket);
     const response = await request(
       config,
       `object/${encodeURIComponent(config.bucket)}/${encodedPath}`,
@@ -148,6 +154,12 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
       );
     }
     return { path };
+  }
+
+  function publicObjectUrl({ path, bucket }) {
+    const encodedPath = encodePath(path);
+    const config = bucketConfiguration(env, bucket);
+    return `${config.baseUrl}/storage/v1/object/public/${encodeURIComponent(config.bucket)}/${encodedPath}`;
   }
 
   async function createSignedDownloadUrl({ path, downloadName, expiresIn = 60 }) {
@@ -183,9 +195,9 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
     return true;
   }
 
-  async function deleteObjects(paths) {
+  async function deleteObjects(paths, { bucket } = {}) {
     if (!Array.isArray(paths) || paths.length === 0) return;
-    const config = configuration(env);
+    const config = bucketConfiguration(env, bucket);
     const safePaths = paths.map(path => {
       const objectPath = String(path);
       encodePath(objectPath);
@@ -203,7 +215,7 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
     await responseError(response, 'delete', config.serviceKey);
   }
 
-  return { uploadObject, createSignedDownloadUrl, objectExists, deleteObjects, checkBucket, verifyBucketAtStartup };
+  return { uploadObject, publicObjectUrl, createSignedDownloadUrl, objectExists, deleteObjects, checkBucket, verifyBucketAtStartup };
 }
 
 export const supabaseStorage = createSupabaseStorage();

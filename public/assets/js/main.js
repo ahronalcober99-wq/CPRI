@@ -108,6 +108,11 @@ const CPRI = (() => {
     return API_BASE + path;
   }
 
+  function resolveImageUrl(event) {
+    const imageUtils = window.CPRIEventImages;
+    return imageUtils ? imageUtils.resolveImageUrl(event, API_BASE || location.origin) : '';
+  }
+
   // Read a JSON reply without choking on an HTML error page: static hosts answer
   // /api/* with a 404 HTML document, which reached users as
   // `Unexpected token '<', "<html> <he"... is not valid JSON`.
@@ -1987,9 +1992,12 @@ const CPRI = (() => {
       const detailHref = isModule ? 'event-detail.html?id=' + e.id : 'events.html';
       const regHref = isModule ? 'event-registration.html?id=' + e.id : 'events.html';
       const regLabel = isModule ? 'Register' : 'View';
+      const imageUrl = resolveImageUrl(e);
+      const placeholder = window.CPRIEventImages?.placeholderDataUrl || '';
+      const imageSrc = imageUrl ? escapeHtml(imageUrl) : placeholder;
       return `<div class="col-lg-4 col-md-6 reveal-up">
         <article class="event-card">
-          <a class="e-media" href="${detailHref}" style="display:block;">${e.photo ? `<img src="${escapeHtml(e.photo)}" alt="${escapeHtml(e.title)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">` : '<i class="bi bi-calendar-event"></i>'}
+          <a class="e-media" href="${detailHref}" style="display:block;"><img src="${imageSrc}" alt="${escapeHtml(e.title || 'Event image')}" loading="lazy" onerror="this.onerror=null;this.src='${placeholder}';this.alt='No image available';" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;">
             <div class="e-date"><b>${d.getDate()}</b>${d.toLocaleString('en-US',{month:'short'})}</div>
           </a>
           <div class="e-body">
@@ -2294,7 +2302,7 @@ const CPRI = (() => {
   document.addEventListener('DOMContentLoaded', () => { injectLayout(); injectConfirmDialog(); });
 
   return {
-    fetchJson, apiBase, apiUrl, apiFetch, fmtDate, escapeHtml, reveal: initReveal, toast, SITE,
+    fetchJson, apiBase, apiUrl, apiFetch, resolveImageUrl, fmtDate, escapeHtml, reveal: initReveal, toast, SITE,
     buildResearch, buildNews, buildResearchers, buildStats,
     buildEvents,
     buildFaqs, initHeroExtras, loadPublicDashboard, loadHeroStats,

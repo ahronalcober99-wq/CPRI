@@ -98,7 +98,8 @@ CREATE TABLE IF NOT EXISTS researchers (
 CREATE TABLE IF NOT EXISTS events_module (
   id VARCHAR(36) PRIMARY KEY, title VARCHAR(255), theme VARCHAR(255),
   dateTime VARCHAR(40), venue VARCHAR(255), description TEXT, registrationLink VARCHAR(255),
-  programFlow TEXT, speakers TEXT, photo VARCHAR(500) DEFAULT '', gallery JSON, createdAt DATETIME, updatedAt DATETIME
+  programFlow TEXT, speakers TEXT, photo VARCHAR(500) DEFAULT '', imageUrl VARCHAR(1000),
+  imagePublicId VARCHAR(500), gallery JSON, createdAt DATETIME, updatedAt DATETIME
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Event registrations table

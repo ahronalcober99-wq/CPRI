@@ -57,7 +57,7 @@
               </div>
               <div class="form-group" style="margin:0;">
                 <label for="c-photo">Cover Photo</label>
-                <input type="file" id="c-photo" name="photo" accept="image/*">
+                <input type="file" id="c-photo" name="photo" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
                 <small class="form-note" style="display:block;margin-top:4px;">Optional — shown on the event card and homepage. JPG/PNG, max 8 MB.</small>
                 <img id="c-photo-preview" alt="Cover preview" style="display:none;margin-top:10px;max-height:140px;border-radius:12px;border:1px solid var(--cpri-border);">
               </div>
@@ -107,6 +107,7 @@
   </main>
 
   <div id="site-footer"></div>
+  <script src="assets/js/event-image-utils.js"></script>
   <script src="assets/js/main.js"></script>
   <script>
     const message = document.getElementById('message');
@@ -139,9 +140,11 @@
         const eventId = String(e.id || '');
         const safeEventId = escapeHtml(eventId);
         const titleHref = isModule ? 'event-detail.html?id=' + encodeURIComponent(eventId) : 'events.html';
+        const imageUrl = CPRI.resolveImageUrl(e);
+        const imagePlaceholder = CPRIEventImages.placeholderDataUrl;
         return `
         <div class="card event-module-card" data-event-id="${safeEventId}" style="margin-bottom:16px;overflow:hidden;">
-          ${e.photo ? `<a href="${escapeHtml(titleHref)}" style="display:block;"><img src="${escapeHtml(e.photo)}" alt="${escapeHtml(e.title)}" style="width:100%;height:200px;object-fit:cover;display:block;"></a>` : ''}
+          <a href="${escapeHtml(titleHref)}" style="display:block;"><img src="${escapeHtml(imageUrl || imagePlaceholder)}" alt="${escapeHtml(e.title)}" loading="lazy" onerror="this.onerror=null;this.src='${imagePlaceholder}';this.alt='No image available';" style="width:100%;height:200px;object-fit:cover;display:block;"></a>
           <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;padding:18px;">
             <div style="flex:1;min-width:240px;">
               <h3 style="margin:0 0 6px;"><a href="${escapeHtml(titleHref)}">${escapeHtml(e.title)}</a></h3>

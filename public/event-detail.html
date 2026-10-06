@@ -43,35 +43,39 @@
                 <form id="edit-form">
                   <div class="form-group">
                     <label for="e-title">Title</label>
-                    <input type="text" id="e-title" required>
+                    <input type="text" id="e-title" name="title" required>
                   </div>
                   <div class="form-group">
                     <label for="e-theme">Theme</label>
-                    <input type="text" id="e-theme" required>
+                    <input type="text" id="e-theme" name="theme" required>
                   </div>
                   <div class="form-group">
                     <label for="e-datetime">Date and Time</label>
-                    <input type="datetime-local" id="e-datetime" required>
+                    <input type="datetime-local" id="e-datetime" name="dateTime" required>
                   </div>
                   <div class="form-group">
                     <label for="e-venue">Venue / Platform</label>
-                    <input type="text" id="e-venue" required>
+                    <input type="text" id="e-venue" name="venue" required>
                   </div>
                   <div class="form-group">
                     <label for="e-desc">Description</label>
-                    <textarea id="e-desc" rows="4"></textarea>
+                    <textarea id="e-desc" name="description" rows="4"></textarea>
                   </div>
                   <div class="form-group">
                     <label for="e-program">Program Flow</label>
-                    <textarea id="e-program" rows="4"></textarea>
+                    <textarea id="e-program" name="programFlow" rows="4"></textarea>
                   </div>
                   <div class="form-group">
                     <label for="e-speakers">Speakers</label>
-                    <textarea id="e-speakers" rows="3"></textarea>
+                    <textarea id="e-speakers" name="speakers" rows="3"></textarea>
                   </div>
                   <div class="form-group">
                     <label for="e-reg">Registration Link</label>
-                    <input type="url" id="e-reg">
+                    <input type="url" id="e-reg" name="registrationLink">
+                  </div>
+                  <div class="form-group">
+                    <label for="e-cover">Replace cover image (JPG, PNG, or WebP; max 5 MB)</label>
+                    <input type="file" id="e-cover" name="photo" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
                   </div>
                   <button type="submit" class="btn btn-primary">Save Changes</button>
                   <button type="button" class="btn btn-navy" id="delete-btn" style="margin-left:8px;">Delete Event</button>
@@ -164,11 +168,12 @@
 
         document.getElementById('edit-form').addEventListener('submit', async (ev) => {
           ev.preventDefault();
-          const fd = Object.fromEntries(new FormData(ev.target).entries());
-          const dtVal = new Date(fd.dateTime).toISOString().slice(0, 16);
+          const fd = new FormData(ev.target);
+          const dtVal = new Date(fd.get('dateTime')).toISOString().slice(0, 16);
+          fd.set('dateTime', dtVal);
           const patchRes = await fetch('/api/events-module/' + e.id, {
-            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...fd, dateTime: dtVal })
+            method: 'PATCH',
+            body: fd
           });
           const out = await patchRes.json();
           if (!patchRes.ok) return showMsg('error', out.error);

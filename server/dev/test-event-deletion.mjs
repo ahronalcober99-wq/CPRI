@@ -30,7 +30,12 @@ test('deleting a visible content event removes same-title copies and linked modu
     { id: 'content-2', title: 'Different event' }
   ];
   const moduleEvents = [
-    { id: 'module-1', title: 'policy forum', photo: '/module-photo.jpg' },
+    {
+      id: 'module-1',
+      title: 'policy forum',
+      photo: '/module-photo.jpg',
+      imagePublicId: 'events-module/123e4567-e89b-42d3-a456-426614174000/123e4567-e89b-42d3-a456-426614174001.webp'
+    },
     { id: 'module-2', title: 'Policy Forum', photo: '' }
   ];
   const calls = [];
@@ -49,6 +54,7 @@ test('deleting a visible content event removes same-title copies and linked modu
   assert.equal(deleted.title, '  Policy Forum  ');
   assert.deepEqual(deleted.contentEvents.map(event => event.id), ['content-1']);
   assert.deepEqual(deleted.moduleEvents.map(event => event.id), ['module-1', 'module-2']);
+  assert.equal(deleted.moduleEvents[0].imagePublicId, moduleEvents[0].imagePublicId);
   assert.deepEqual(cleaned.contentEvents, deleted.contentEvents);
   assert.deepEqual(cleaned.moduleEvents, deleted.moduleEvents);
   assert.deepEqual(deleted.warnings, []);
@@ -59,6 +65,7 @@ test('deleting a visible content event removes same-title copies and linked modu
   ), true);
   assert.equal(calls.some(call => call.method === 'run' && call.sql.startsWith('DELETE FROM event_abstracts')), true);
   assert.equal(calls.some(call => call.method === 'run' && call.sql.startsWith('DELETE FROM events_module')), true);
+  assert.equal(calls.some(call => call.method === 'get' && call.sql.includes('imagepublicid AS imagePublicId')), true);
 });
 
 test('event ids must be UUIDs', () => {
