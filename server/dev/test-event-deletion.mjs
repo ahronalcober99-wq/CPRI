@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteEventAcrossStores } from '../event-deletion.js';
+import { deleteEventAcrossStores, isValidEventId } from '../event-deletion.js';
 
 function makeTransaction({ moduleEvents = [], calls = [] } = {}) {
   return async callback => callback({
@@ -40,6 +40,8 @@ test('deleting a visible content event removes same-title copies and linked modu
   });
 
   assert.deepEqual(written, [{ id: 'content-2', title: 'Different event' }]);
+  assert.equal(deleted.id, 'content-1');
+  assert.equal(deleted.title, '  Policy Forum  ');
   assert.deepEqual(deleted.contentEvents.map(event => event.id), ['content-1']);
   assert.deepEqual(deleted.moduleEvents.map(event => event.id), ['module-1', 'module-2']);
   assert.deepEqual(cleaned.contentEvents, deleted.contentEvents);
@@ -52,6 +54,12 @@ test('deleting a visible content event removes same-title copies and linked modu
   ), true);
   assert.equal(calls.some(call => call.method === 'run' && call.sql.startsWith('DELETE FROM event_abstracts')), true);
   assert.equal(calls.some(call => call.method === 'run' && call.sql.startsWith('DELETE FROM events_module')), true);
+});
+
+test('event ids must be UUIDs', () => {
+  assert.equal(isValidEventId('8f72ebb2-37e6-4388-ac87-5bf684f6c55c'), true);
+  assert.equal(isValidEventId('not-an-id'), false);
+  assert.equal(isValidEventId('8f72ebb2-37e6-4388-ac87-5bf684f6c55'), false);
 });
 
 test('deleting a module-only event does not change content events', async () => {

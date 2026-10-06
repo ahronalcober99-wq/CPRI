@@ -28,7 +28,7 @@ import { messagesRouter, ensureMessagesTable } from './messages.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
 import { testConnection, explainDbError, connectionOptions } from './db.js';
 import { insert, all, get, withTransaction } from './server/db/queries.js';
-import { deleteEventAcrossStores } from './event-deletion.js';
+import { deleteEventAcrossStores, isValidEventId } from './event-deletion.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -455,6 +455,10 @@ async function cleanupDeletedEventFiles({ contentEvents, moduleEvents }) {
 }
 
 app.delete('/api/events/:id', requireAdmin, async (req, res) => {
+  if (!isValidEventId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid event id.' });
+  }
+
   try {
     const deleted = await deleteEventAcrossStores(req.params.id, {
       readContentEvents,
@@ -463,7 +467,7 @@ app.delete('/api/events/:id', requireAdmin, async (req, res) => {
       cleanupFiles: cleanupDeletedEventFiles
     });
     if (!deleted) return res.status(404).json({ error: 'Event not found.' });
-    res.json({ message: 'Event deleted.', warnings: deleted.warnings });
+    res.json({ message: 'Event deleted.', id: deleted.id, title: deleted.title });
   } catch (error) {
     console.error(`[events] deletion failed for ${req.params.id}:`, error.message);
     res.status(500).json({ error: 'Could not delete the event. Please try again.' });

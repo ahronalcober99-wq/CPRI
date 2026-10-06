@@ -111,6 +111,7 @@
   <script>
     const message = document.getElementById('message');
     const recordsEl = document.getElementById('records');
+    let isAdmin = false;
 
     function showMsg(type, text) {
       message.className = 'form-message ' + type;
@@ -135,17 +136,25 @@
       recordsEl.innerHTML = events.map(e => {
         // Content events (Admin Console) have no module detail/registration page.
         const isModule = e.source !== 'content';
-        const titleHref = isModule ? 'event-detail.html?id=' + e.id : 'events.html';
+        const eventId = String(e.id || '');
+        const safeEventId = escapeHtml(eventId);
+        const titleHref = isModule ? 'event-detail.html?id=' + encodeURIComponent(eventId) : 'events.html';
         return `
-        <div class="card" style="margin-bottom:16px;overflow:hidden;">
-          ${e.photo ? `<a href="${titleHref}" style="display:block;"><img src="${escapeHtml(e.photo)}" alt="${escapeHtml(e.title)}" style="width:100%;height:200px;object-fit:cover;display:block;"></a>` : ''}
+        <div class="card event-module-card" data-event-id="${safeEventId}" style="margin-bottom:16px;overflow:hidden;">
+          ${e.photo ? `<a href="${escapeHtml(titleHref)}" style="display:block;"><img src="${escapeHtml(e.photo)}" alt="${escapeHtml(e.title)}" style="width:100%;height:200px;object-fit:cover;display:block;"></a>` : ''}
           <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;padding:18px;">
             <div style="flex:1;min-width:240px;">
-              <h3 style="margin:0 0 6px;"><a href="${titleHref}">${escapeHtml(e.title)}</a></h3>
-              <div class="meta">${escapeHtml(e.theme || 'Event')} · ${new Date(e.dateTime).toLocaleString()} · ${escapeHtml(e.venue)}${isModule ? '' : ' · <span class="badge" style="font-size:.68rem;">Admin Console</span>'}</div>
+              <h3 style="margin:0 0 6px;"><a href="${escapeHtml(titleHref)}">${escapeHtml(e.title)}</a></h3>
+              <div class="meta event-module-meta">
+                <span class="event-module-info">${escapeHtml(e.theme || 'Event')} · ${new Date(e.dateTime).toLocaleString()} · ${escapeHtml(e.venue)}</span>
+                <span class="event-module-actions">
+                  ${isModule ? '' : '<span class="badge" style="font-size:.68rem;">Admin Console</span>'}
+                  ${isAdmin ? `<button type="button" class="btn btn-outline-dark btn-sm event-module-delete" data-id="${safeEventId}" data-title="${escapeHtml(e.title)}" aria-label="Delete ${escapeHtml(e.title)}"><i class="bi bi-trash"></i> Delete</button>` : ''}
+                </span>
+              </div>
               <p style="margin:8px 0;">${escapeHtml(e.description || '')}</p>
-              ${e.registrationLink ? `<a class="btn btn-primary" href="${escapeHtml(e.registrationLink)}" target="_blank">Register</a>` : ''}
-              ${isModule ? `<a class="btn btn-soft" href="event-detail.html?id=${e.id}" style="margin-left:8px;">Details</a>` : ''}
+              ${e.registrationLink ? `<a class="btn btn-primary" href="${escapeHtml(e.registrationLink)}" target="_blank" rel="noopener noreferrer">Register</a>` : ''}
+              ${isModule ? `<a class="btn btn-soft" href="event-detail.html?id=${encodeURIComponent(eventId)}" style="margin-left:8px;">Details</a>` : ''}
             </div>
           </div>
         </div>`;
@@ -157,6 +166,62 @@
       div.textContent = text;
       return div.innerHTML;
     }
+
+    function restoreDeleteButton(button) {
+      button.disabled = false;
+      button.innerHTML = '<i class="bi bi-trash"></i> Delete';
+    }
+
+    function removeCardAfterFade(card) {
+      return new Promise(resolve => {
+        let timer;
+        const finish = () => {
+          clearTimeout(timer);
+          card.removeEventListener('transitionend', onTransitionEnd);
+          card.remove();
+          resolve();
+        };
+        const onTransitionEnd = event => {
+          if (event.target === card && event.propertyName === 'opacity') finish();
+        };
+        card.addEventListener('transitionend', onTransitionEnd);
+        timer = setTimeout(finish, 350);
+        requestAnimationFrame(() => card.classList.add('is-removing'));
+      });
+    }
+
+    recordsEl.addEventListener('click', async event => {
+      const button = event.target.closest('.event-module-delete');
+      if (!button || button.disabled) return;
+      const confirmation = `Delete '${button.dataset.title}'? This cannot be undone.`;
+      const ask = window.confirmDialog || ((text) => Promise.resolve(window.confirm(text)));
+      if (!await ask(confirmation, 'Delete')) return;
+
+      button.disabled = true;
+      button.textContent = 'Deleting…';
+      try {
+        const response = await fetch('/api/events/' + encodeURIComponent(button.dataset.id), {
+          method: 'DELETE',
+          credentials: 'same-origin'
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          restoreDeleteButton(button);
+          CPRI.toast('Delete failed', escapeHtml(result.error || 'Could not delete the event.'), 'exclamation-triangle');
+          return;
+        }
+
+        const card = button.closest('.event-module-card');
+        if (card) await removeCardAfterFade(card);
+        if (!recordsEl.querySelector('.event-module-card')) {
+          recordsEl.innerHTML = '<p class="empty-state">No events found.</p>';
+        }
+        CPRI.toast('Event deleted', escapeHtml(result.title || button.dataset.title), 'check-circle-fill');
+      } catch {
+        restoreDeleteButton(button);
+        CPRI.toast('Delete failed', escapeHtml('Could not delete the event. Please try again.'), 'exclamation-triangle');
+      }
+    });
 
     document.getElementById('filter-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
     document.getElementById('clear-btn').addEventListener('click', () => {
@@ -218,14 +283,19 @@
     });
 
     (async () => {
-      await load();
-      const meRes = await fetch('/api/auth/me');
-      if (meRes.ok) {
-        const { user } = await meRes.json();
-        if (['admin', 'cpri_staff'].includes(user.role)) {
-          document.getElementById('admin-panel').style.display = 'block';
+      try {
+        const meRes = await fetch('/api/auth/me');
+        if (meRes.ok) {
+          const { user } = await meRes.json();
+          isAdmin = user.role === 'admin' && user.status === 'active';
+          if (['admin', 'cpri_staff'].includes(user.role)) {
+            document.getElementById('admin-panel').style.display = 'block';
+          }
         }
+      } catch (error) {
+        console.warn('Could not verify event management access:', error);
       }
+      await load();
     })();
   </script>
 </body>

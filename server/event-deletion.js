@@ -2,6 +2,11 @@ function normalizeTitle(title) {
   return String(title || '').trim().toLowerCase();
 }
 
+export function isValidEventId(id) {
+  return typeof id === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
 export async function deleteEventAcrossStores(eventId, {
   readContentEvents,
   writeContentEvents,
@@ -49,7 +54,12 @@ export async function deleteEventAcrossStores(eventId, {
         contentWasUpdated = true;
       }
 
-      return { contentEvents: removedContentEvents, moduleEvents };
+      return {
+        id: String(eventId),
+        title: contentEvent?.title || moduleEvent?.title || '',
+        contentEvents: removedContentEvents,
+        moduleEvents
+      };
     });
   } catch (error) {
     if (contentWasUpdated) {
