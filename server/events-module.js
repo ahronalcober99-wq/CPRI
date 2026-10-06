@@ -78,16 +78,7 @@ const uploadGallery = upload.fields([
 // Event cover images stay in memory until they are uploaded to persistent storage.
 const uploadCover = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_EVENT_IMAGE_SIZE },
-  fileFilter: (req, file, cb) => {
-    try {
-      validateEventImage(file);
-      cb(null, true);
-    } catch (error) {
-      error.status = 400;
-      cb(error);
-    }
-  }
+  limits: { fileSize: MAX_EVENT_IMAGE_SIZE }
 }).single('photo');
 
 // ---------- Events ----------
@@ -193,12 +184,12 @@ router.post('/', requireAuth, uploadCover, async (req, res) => {
   let imagePublicId = '';
   try {
     if (req.file) {
-      const contentType = validateEventImage(req.file);
-      imagePublicId = `events-module/${id}/${randomUUID()}${extname(req.file.originalname).toLowerCase()}`;
+      const image = await validateEventImage(req.file);
+      imagePublicId = `events-module/${id}/${randomUUID()}${image.extension}`;
       await supabaseStorage.uploadObject({
         path: imagePublicId,
-        buffer: req.file.buffer,
-        contentType,
+        buffer: image.buffer,
+        contentType: image.contentType,
         bucket: 'events'
       });
       imageUrl = supabaseStorage.publicObjectUrl({ path: imagePublicId, bucket: 'events' });
@@ -268,12 +259,12 @@ router.patch('/:id', requireAuth, uploadCover, async (req, res) => {
   let newImagePublicId = '';
   if (req.file) {
     try {
-      const contentType = validateEventImage(req.file);
-      newImagePublicId = `events-module/${req.params.id}/${randomUUID()}${extname(req.file.originalname).toLowerCase()}`;
+      const image = await validateEventImage(req.file);
+      newImagePublicId = `events-module/${req.params.id}/${randomUUID()}${image.extension}`;
       await supabaseStorage.uploadObject({
         path: newImagePublicId,
-        buffer: req.file.buffer,
-        contentType,
+        buffer: image.buffer,
+        contentType: image.contentType,
         bucket: 'events'
       });
       changes.imageUrl = supabaseStorage.publicObjectUrl({ path: newImagePublicId, bucket: 'events' });

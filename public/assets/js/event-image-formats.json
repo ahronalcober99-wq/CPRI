@@ -1,0 +1,95 @@
+{
+  "maxSizeBytes": 5242880,
+  "formats": [
+    {
+      "id": "jpeg",
+      "labels": ["JPG", "JPEG"],
+      "extensions": [".jpg", ".jpeg"],
+      "signatures": ["jpg", "jpeg"],
+      "mimes": ["image/jpeg"],
+      "outputExtension": ".jpg",
+      "outputMime": "image/jpeg",
+      "preserve": true
+    },
+    {
+      "id": "png",
+      "labels": ["PNG"],
+      "extensions": [".png"],
+      "signatures": ["png"],
+      "mimes": ["image/png"],
+      "outputExtension": ".png",
+      "outputMime": "image/png",
+      "preserve": true
+    },
+    {
+      "id": "webp",
+      "labels": ["WebP"],
+      "extensions": [".webp"],
+      "signatures": ["webp"],
+      "mimes": ["image/webp"],
+      "outputExtension": ".webp",
+      "outputMime": "image/webp",
+      "preserve": true
+    },
+    {
+      "id": "gif",
+      "labels": ["GIF"],
+      "extensions": [".gif"],
+      "signatures": ["gif"],
+      "mimes": ["image/gif"],
+      "outputExtension": ".gif",
+      "outputMime": "image/gif",
+      "preserve": true
+    },
+    {
+      "id": "avif",
+      "labels": ["AVIF"],
+      "extensions": [".avif"],
+      "signatures": ["avif"],
+      "mimes": ["image/avif"],
+      "outputExtension": ".webp",
+      "outputMime": "image/webp",
+      "preserve": false
+    },
+    {
+      "id": "bmp",
+      "labels": ["BMP"],
+      "extensions": [".bmp"],
+      "signatures": ["bmp"],
+      "mimes": ["image/bmp", "image/x-ms-bmp"],
+      "outputExtension": ".webp",
+      "outputMime": "image/webp",
+      "preserve": false
+    },
+    {
+      "id": "tiff",
+      "labels": ["TIFF"],
+      "extensions": [".tif", ".tiff"],
+      "signatures": ["tif", "tiff"],
+      "mimes": ["image/tiff"],
+      "outputExtension": ".webp",
+      "outputMime": "image/webp",
+      "preserve": false
+    },
+    {
+      "id": "heic",
+      "labels": ["HEIC"],
+      "extensions": [".heic"],
+      "signatures": ["heic"],
+      "mimes": ["image/heic", "image/heic-sequence"],
+      "outputExtension": ".webp",
+      "outputMime": "image/webp",
+      "preserve": false
+    },
+    {
+      "id": "heif",
+      "labels": ["HEIF"],
+      "extensions": [".heif"],
+      "signatures": ["heif", "heic"],
+      "mimes": ["image/heif", "image/heif-sequence"],
+      "outputExtension": ".webp",
+      "outputMime": "image/webp",
+      "preserve": false
+    }
+  ]
+}

@@ -74,8 +74,11 @@
                     <input type="url" id="e-reg" name="registrationLink">
                   </div>
                   <div class="form-group">
-                    <label for="e-cover">Replace cover image (JPG, PNG, or WebP; max 5 MB)</label>
-                    <input type="file" id="e-cover" name="photo" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+                    <label for="e-cover">Replace cover image (max 5 MB)</label>
+                    <input type="file" id="e-cover" name="photo" data-event-image-upload data-event-image-error="e-cover-error" disabled aria-describedby="e-cover-error">
+                    <small id="e-cover-error" data-event-image-error role="alert" style="display:block;color:var(--cpri-danger,#b23b32);"></small>
+                    <img id="e-cover-preview" alt="Selected cover preview" style="display:none;margin-top:8px;max-height:140px;border-radius:8px;border:1px solid var(--cpri-border);">
+                    <div id="e-cover-preview-placeholder" role="status" style="display:none;margin-top:8px;padding:14px;border:1px solid var(--cpri-border);border-radius:8px;"></div>
                   </div>
                   <button type="submit" class="btn btn-primary">Save Changes</button>
                   <button type="button" class="btn btn-navy" id="delete-btn" style="margin-left:8px;">Delete Event</button>
@@ -123,6 +126,7 @@
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/event-image-upload.js"></script>
   <script>
     const message = document.getElementById('message');
     const detail = document.getElementById('detail');
@@ -134,6 +138,69 @@
       message.className = 'form-message ' + type;
       message.textContent = text;
     }
+
+    const coverInput = document.getElementById('e-cover');
+    const coverError = document.getElementById('e-cover-error');
+    const coverPreview = document.getElementById('e-cover-preview');
+    const coverPreviewPlaceholder = document.getElementById('e-cover-preview-placeholder');
+    let coverObjectUrl = '';
+    let coverFileValidation = Promise.resolve(true);
+
+    function clearCoverPreview() {
+      if (coverObjectUrl) URL.revokeObjectURL(coverObjectUrl);
+      coverObjectUrl = '';
+      coverPreview.removeAttribute('src');
+      coverPreview.style.display = 'none';
+      coverPreviewPlaceholder.textContent = '';
+      coverPreviewPlaceholder.style.display = 'none';
+    }
+
+    async function validateSelectedCover(file) {
+      if (!file) {
+        coverError.textContent = '';
+        clearCoverPreview();
+        coverFileValidation = Promise.resolve(true);
+        return true;
+      }
+      coverFileValidation = (async () => {
+        if (!await CPRIEventUpload.ready) {
+          coverError.textContent = 'Image upload options could not be loaded. Refresh this page before choosing a cover image.';
+          coverInput.value = '';
+          clearCoverPreview();
+          return false;
+        }
+        const result = CPRIEventUpload.validate(file);
+        if (!result.valid) {
+          coverError.textContent = result.message;
+          showMsg('error', result.message);
+          coverInput.value = '';
+          clearCoverPreview();
+          return false;
+        }
+        coverError.textContent = '';
+        clearCoverPreview();
+        if (CPRIEventUpload.needsPlaceholder(file)) {
+          coverPreviewPlaceholder.textContent = 'Preview unavailable for HEIC/HEIF. The selected image will be converted on upload.';
+          coverPreviewPlaceholder.style.display = 'block';
+        } else {
+          coverObjectUrl = URL.createObjectURL(file);
+          coverPreview.src = coverObjectUrl;
+          coverPreview.style.display = 'block';
+        }
+        return true;
+      })();
+      return coverFileValidation;
+    }
+
+    coverInput.addEventListener('change', () => {
+      validateSelectedCover(coverInput.files[0]);
+    });
+    coverPreview.addEventListener('error', () => {
+      if (!coverObjectUrl) return;
+      coverPreview.style.display = 'none';
+      coverPreviewPlaceholder.textContent = 'Preview unavailable in this browser. The selected image will be converted on upload.';
+      coverPreviewPlaceholder.style.display = 'block';
+    });
 
     (async () => {
       const eventRes = await fetch('/api/events-module/' + id);
@@ -168,6 +235,7 @@
 
         document.getElementById('edit-form').addEventListener('submit', async (ev) => {
           ev.preventDefault();
+          if (!await coverFileValidation) return;
           const fd = new FormData(ev.target);
           const dtVal = new Date(fd.get('dateTime')).toISOString().slice(0, 16);
           fd.set('dateTime', dtVal);

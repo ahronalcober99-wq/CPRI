@@ -10,7 +10,7 @@ import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { addLog } from './audit.js';
 import { notify } from './notifications.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
-import { cleanupEventImages, MAX_EVENT_IMAGE_SIZE, isEventImageObjectId, normalizeEventImage, validateEventImage } from './event-image-utils.js';
+import { cleanupEventImages, EVENT_IMAGE_FORMAT_ERROR, MAX_EVENT_IMAGE_SIZE, isEventImageObjectId, normalizeEventImage, validateEventImage } from './event-image-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -669,16 +669,7 @@ router.delete('/content/announcement/:id', requireRole(...ANNOUNCEMENT_SENDER_RO
 // accepted as aliases for type/date/location.
 const eventPhotoUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_EVENT_IMAGE_SIZE },
-  fileFilter: (req, file, cb) => {
-    try {
-      validateEventImage(file);
-      cb(null, true);
-    } catch (error) {
-      error.status = 400;
-      cb(error);
-    }
-  }
+  limits: { fileSize: MAX_EVENT_IMAGE_SIZE }
 });
 
 router.post('/content/event/photo', requireAdmin, (req, res) => {
@@ -687,14 +678,14 @@ router.post('/content/event/photo', requireAdmin, (req, res) => {
       const msg = err.code === 'LIMIT_FILE_SIZE' ? 'Photo is too large (max 5 MB).' : (err.message || 'Photo upload failed.');
       return res.status(400).json({ error: msg });
     }
-    if (!req.file) return res.status(400).json({ error: 'No image uploaded (JPG, JPEG, PNG, or WebP; max 5 MB).' });
+    if (!req.file) return res.status(400).json({ error: `No image uploaded. ${EVENT_IMAGE_FORMAT_ERROR} Max 5 MB.` });
     try {
-      const contentType = validateEventImage(req.file);
-      const imagePublicId = `content-events/${randomUUID()}/${randomUUID()}${extname(req.file.originalname).toLowerCase()}`;
+      const image = await validateEventImage(req.file);
+      const imagePublicId = `content-events/${randomUUID()}/${randomUUID()}${image.extension}`;
       await supabaseStorage.uploadObject({
         path: imagePublicId,
-        buffer: req.file.buffer,
-        contentType,
+        buffer: image.buffer,
+        contentType: image.contentType,
         bucket: 'events'
       });
       const imageUrl = supabaseStorage.publicObjectUrl({ path: imagePublicId, bucket: 'events' });

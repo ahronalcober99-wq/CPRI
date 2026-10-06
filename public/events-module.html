@@ -57,9 +57,13 @@
               </div>
               <div class="form-group" style="margin:0;">
                 <label for="c-photo">Cover Photo</label>
-                <input type="file" id="c-photo" name="photo" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
-                <small class="form-note" style="display:block;margin-top:4px;">Optional — shown on the event card and homepage. JPG/PNG, max 8 MB.</small>
-                <img id="c-photo-preview" alt="Cover preview" style="display:none;margin-top:10px;max-height:140px;border-radius:12px;border:1px solid var(--cpri-border);">
+                <div id="c-photo-drop-zone" role="group" aria-label="Event cover image" style="padding:12px;border:1px dashed var(--cpri-border);border-radius:12px;">
+                  <input type="file" id="c-photo" name="photo" data-event-image-upload data-event-image-error="c-photo-error" disabled aria-describedby="c-photo-help c-photo-error">
+                  <small id="c-photo-help" class="form-note" style="display:block;margin-top:4px;">Optional — shown on the event card and homepage. Max 5 MB. You can also drop one image here.</small>
+                  <small id="c-photo-error" data-event-image-error role="alert" style="display:block;color:var(--cpri-danger,#b23b32);"></small>
+                  <img id="c-photo-preview" alt="Cover preview" style="display:none;margin-top:10px;max-height:140px;border-radius:12px;border:1px solid var(--cpri-border);">
+                  <div id="c-photo-preview-placeholder" role="status" style="display:none;margin-top:10px;padding:16px;border:1px solid var(--cpri-border);border-radius:12px;"></div>
+                </div>
               </div>
             </div>
             <div style="margin-top:14px;display:flex;gap:10px;">
@@ -107,6 +111,7 @@
   </main>
 
   <div id="site-footer"></div>
+  <script src="assets/js/event-image-upload.js"></script>
   <script src="assets/js/event-image-utils.js"></script>
   <script src="assets/js/main.js"></script>
   <script>
@@ -235,13 +240,76 @@
     // ---- Create event (admin / CPRI staff) ----
     const createForm = document.getElementById('create-form');
     const toggleCreate = document.getElementById('toggle-create');
+    const coverInput = document.getElementById('c-photo');
+    const coverDropZone = document.getElementById('c-photo-drop-zone');
+    const coverPreview = document.getElementById('c-photo-preview');
+    const coverPreviewPlaceholder = document.getElementById('c-photo-preview-placeholder');
+    const coverError = document.getElementById('c-photo-error');
+    let coverObjectUrl = '';
+    let coverValidation = Promise.resolve(true);
+
+    function clearCoverPreview() {
+      if (coverObjectUrl) URL.revokeObjectURL(coverObjectUrl);
+      coverObjectUrl = '';
+      coverPreview.removeAttribute('src');
+      coverPreview.style.display = 'none';
+      coverPreviewPlaceholder.style.display = 'none';
+      coverPreviewPlaceholder.textContent = '';
+    }
+
+    async function selectCoverFile(file, isDrop = false) {
+      if (!file) {
+        clearCoverPreview();
+        coverError.textContent = '';
+        return true;
+      }
+      coverValidation = (async () => {
+        const ready = await CPRIEventUpload.ready;
+        if (!ready) {
+          coverError.textContent = 'Image upload options could not be loaded. Refresh this page before choosing a cover image.';
+          if (!isDrop) {
+            coverInput.value = '';
+            clearCoverPreview();
+          }
+          return false;
+        }
+        const result = CPRIEventUpload.validate(file);
+        if (!result.valid) {
+          if (!isDrop) {
+            coverInput.value = '';
+            clearCoverPreview();
+          }
+          coverError.textContent = result.message;
+          showMsg('error', result.message);
+          return false;
+        }
+        if (isDrop) {
+          const transfer = new DataTransfer();
+          transfer.items.add(file);
+          coverInput.files = transfer.files;
+        }
+        coverError.textContent = '';
+        clearCoverPreview();
+        if (CPRIEventUpload.needsPlaceholder(file)) {
+          coverPreviewPlaceholder.textContent = 'Preview unavailable for HEIC/HEIF. The selected image will be converted on upload.';
+          coverPreviewPlaceholder.style.display = 'block';
+        } else {
+          coverObjectUrl = URL.createObjectURL(file);
+          coverPreview.src = coverObjectUrl;
+          coverPreview.style.display = 'block';
+        }
+        return true;
+      })();
+      return coverValidation;
+    }
 
     function resetCreateForm() {
       createForm.reset();
       createForm.style.display = 'none';
       toggleCreate.style.display = 'inline-block';
-      const preview = document.getElementById('c-photo-preview');
-      if (preview) { preview.style.display = 'none'; preview.src = ''; }
+      clearCoverPreview();
+      coverError.textContent = '';
+      coverValidation = Promise.resolve(true);
     }
 
     toggleCreate.addEventListener('click', () => {
@@ -259,9 +327,34 @@
       message.className = 'form-message';
       message.textContent = '';
     });
+    coverInput.addEventListener('change', () => {
+      selectCoverFile(coverInput.files && coverInput.files[0]);
+    });
+    coverPreview.addEventListener('error', () => {
+      if (!coverObjectUrl) return;
+      coverPreview.style.display = 'none';
+      coverPreviewPlaceholder.textContent = 'Preview unavailable in this browser. The selected image will be converted on upload.';
+      coverPreviewPlaceholder.style.display = 'block';
+    });
+    coverDropZone.addEventListener('dragover', (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+    });
+    coverDropZone.addEventListener('drop', (event) => {
+      event.preventDefault();
+      const files = event.dataTransfer.files;
+      if (!files || files.length !== 1) {
+        const error = 'Drop one cover image at a time.';
+        coverError.textContent = error;
+        showMsg('error', error);
+        return;
+      }
+      selectCoverFile(files[0], true);
+    });
 
     createForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!await coverValidation) return;
       const fd = new FormData(createForm);
       const res = await fetch('/api/events-module', {
         method: 'POST',
@@ -274,15 +367,6 @@
       await load();
       // Scroll to the list so the new event is visible right away.
       recordsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-
-    // Live preview of the chosen cover photo.
-    document.getElementById('c-photo').addEventListener('change', (e) => {
-      const file = e.target.files && e.target.files[0];
-      const preview = document.getElementById('c-photo-preview');
-      if (!file) { preview.style.display = 'none'; preview.src = ''; return; }
-      preview.src = URL.createObjectURL(file);
-      preview.style.display = 'block';
     });
 
     (async () => {

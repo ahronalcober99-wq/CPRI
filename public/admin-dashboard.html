@@ -160,9 +160,11 @@
                     </div>
                     <div class="form-group">
                       <label>Photo</label>
-                      <input type="file" id="e-photo" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" style="margin-bottom:8px;">
+                      <input type="file" id="e-photo" data-event-image-upload data-event-image-error="e-photo-error" disabled aria-describedby="e-photo-error" style="margin-bottom:8px;">
+                      <small id="e-photo-error" data-event-image-error role="alert" style="display:block;color:var(--cpri-danger,#b23b32);"></small>
                       <div id="e-photo-preview" style="display:none;margin-top:4px;">
                         <img id="e-photo-img" alt="Event photo preview" style="max-width:100%;max-height:120px;border-radius:8px;border:1px solid var(--cpri-border);display:block;">
+                        <div id="e-photo-preview-placeholder" role="status" style="display:none;padding:14px;border:1px solid var(--cpri-border);border-radius:8px;"></div>
                         <button type="button" class="btn btn-outline btn-sm" id="e-photo-clear" style="margin-top:6px;border-color:#b23b32;color:#b23b32;">Remove photo</button>
                       </div>
                     </div>
@@ -256,6 +258,7 @@
   </main>
 
   <div id="site-footer"></div>
+  <script src="assets/js/event-image-upload.js"></script>
   <script src="assets/js/event-image-utils.js"></script>
   <script src="assets/js/main.js"></script>
 
@@ -524,28 +527,82 @@
     let eventPhotoUrl = ''; // public URL of the current event photo ('' = none)
     let eventPhotoPublicId = '';
     let eventPhotoObjectUrl = null; // blob URL preview of a freshly picked file
+    let eventPhotoValidation = Promise.resolve(true);
 
-    function setEventPhotoPreview(url, isObjectUrl) {
+    function setEventPhotoPreview(url, isObjectUrl, placeholderText = '') {
       if (eventPhotoObjectUrl) { URL.revokeObjectURL(eventPhotoObjectUrl); eventPhotoObjectUrl = null; }
       const img = document.getElementById('e-photo-img');
       const wrap = document.getElementById('e-photo-preview');
+      const placeholder = document.getElementById('e-photo-preview-placeholder');
       if (!img || !wrap) return;
+      if (placeholderText) {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+        placeholder.textContent = placeholderText;
+        placeholder.style.display = 'block';
+        wrap.style.display = 'block';
+        return;
+      }
+      placeholder.textContent = '';
+      placeholder.style.display = 'none';
       if (url) {
         img.src = isObjectUrl ? url : (CPRI.resolveImageUrl({ imageUrl: url }) || url);
+        img.style.display = 'block';
         wrap.style.display = 'block';
         if (isObjectUrl) eventPhotoObjectUrl = url;
       } else {
         wrap.style.display = 'none';
         img.removeAttribute('src');
+        img.style.display = 'none';
       }
     }
 
+    async function previewSelectedEventPhoto(file) {
+      const fileInput = document.getElementById('e-photo');
+      const error = document.getElementById('e-photo-error');
+      if (!file) {
+        eventPhotoValidation = Promise.resolve(true);
+        error.textContent = '';
+        setEventPhotoPreview(eventPhotoUrl);
+        return true;
+      }
+      eventPhotoValidation = (async () => {
+        if (!await CPRIEventUpload.ready) {
+          error.textContent = 'Image upload options could not be loaded. Refresh this page before choosing a cover image.';
+          fileInput.value = '';
+          setEventPhotoPreview(eventPhotoUrl);
+          return false;
+        }
+        const result = CPRIEventUpload.validate(file);
+        if (!result.valid) {
+          error.textContent = result.message;
+          showMsg('error', result.message);
+          fileInput.value = '';
+          setEventPhotoPreview(eventPhotoUrl);
+          return false;
+        }
+        error.textContent = '';
+        if (CPRIEventUpload.needsPlaceholder(file)) {
+          setEventPhotoPreview('', false, 'Preview unavailable for HEIC/HEIF. The selected image will be converted on upload.');
+        } else {
+          setEventPhotoPreview(URL.createObjectURL(file), true);
+        }
+        return true;
+      })();
+      return eventPhotoValidation;
+    }
+
     document.getElementById('e-photo').addEventListener('change', (ev) => {
-      const file = ev.target.files[0];
-      setEventPhotoPreview(file ? URL.createObjectURL(file) : '', !!file);
+      previewSelectedEventPhoto(ev.target.files[0]);
+    });
+    document.getElementById('e-photo-img').addEventListener('error', () => {
+      if (!eventPhotoObjectUrl) return;
+      setEventPhotoPreview('', false, 'Preview unavailable in this browser. The selected image will be converted on upload.');
     });
     document.getElementById('e-photo-clear').addEventListener('click', () => {
       document.getElementById('e-photo').value = '';
+      document.getElementById('e-photo-error').textContent = '';
+      eventPhotoValidation = Promise.resolve(true);
       eventPhotoUrl = '';
       eventPhotoPublicId = '';
       setEventPhotoPreview('');
@@ -636,6 +693,7 @@
 
     document.getElementById('event-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!await eventPhotoValidation) return;
       const id = document.getElementById('e-id').value;
       let imageUrl = eventPhotoUrl || '';
       let imagePublicId = eventPhotoPublicId || '';
@@ -672,6 +730,8 @@
       document.getElementById('e-id').value = '';
       eventPhotoUrl = '';
       eventPhotoPublicId = '';
+      eventPhotoValidation = Promise.resolve(true);
+      document.getElementById('e-photo-error').textContent = '';
       setEventPhotoPreview('');
       document.getElementById('e-submit').textContent = 'Publish Event';
       document.getElementById('e-cancel').style.display = 'none';
@@ -683,6 +743,8 @@
       document.getElementById('e-id').value = '';
       eventPhotoUrl = '';
       eventPhotoPublicId = '';
+      eventPhotoValidation = Promise.resolve(true);
+      document.getElementById('e-photo-error').textContent = '';
       setEventPhotoPreview('');
       document.getElementById('e-submit').textContent = 'Publish Event';
       document.getElementById('e-cancel').style.display = 'none';
