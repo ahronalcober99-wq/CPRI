@@ -1,5 +1,20 @@
+import { basename, join } from 'path';
+
 function normalizeTitle(title) {
   return String(title || '').trim().toLowerCase();
+}
+
+export function resolveContentEventPhotoPath(photo, uploadDir) {
+  if (typeof photo !== 'string' || !photo.startsWith('/') || photo.startsWith('//')) return null;
+  try {
+    const pathname = decodeURIComponent(new URL(photo, 'http://localhost').pathname);
+    if (!pathname.startsWith('/assets/uploads/events/')) return null;
+    const filename = basename(pathname);
+    if (!filename || filename === '.' || filename === '..') return null;
+    return join(uploadDir, filename);
+  } catch {
+    return null;
+  }
 }
 
 export function isValidEventId(id) {

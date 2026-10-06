@@ -79,10 +79,11 @@
       if (gallery) {
         gallery.innerHTML = events.map(e => `
           <div class="card event-gallery-card" data-event-id="${CPRI.escapeHtml(String(e.id))}" style="padding:0;overflow:hidden;">
+            ${isAdmin ? `<button type="button" class="event-gallery-delete" data-id="${CPRI.escapeHtml(String(e.id))}" data-title="${CPRI.escapeHtml(e.title)}" aria-label="Delete '${CPRI.escapeHtml(e.title)}'"><i class="bi bi-trash" aria-hidden="true"></i></button>` : ''}
             <div style="height:140px;background:linear-gradient(135deg,#13518f,#2a9d8f);display:grid;place-items:center;color:#fff;font-size:2rem;">📷</div>
             <div style="padding:14px;">
-              <h3 style="font-size:1rem;margin:0 0 4px;">${e.title}</h3>
-              <div class="meta">${CPRI.fmtDate(e.date)}</div>
+              <h3 style="font-size:1rem;margin:0 0 4px;">${CPRI.escapeHtml(e.title)}</h3>
+              <div class="meta">${CPRI.escapeHtml(CPRI.fmtDate(e.date))}</div>
             </div>
           </div>`).join('') || '<p class="empty-state">No photos yet.</p>';
       }
@@ -115,6 +116,65 @@
         if (!up.querySelector('.event-list-card')) up.innerHTML = '<p class="empty-state">No upcoming events scheduled.</p>';
         if (!past.querySelector('.event-list-card')) past.innerHTML = '<p class="empty-state">No past events recorded yet.</p>';
         if (gallery && !gallery.querySelector('.event-gallery-card')) gallery.innerHTML = '<p class="empty-state">No photos yet.</p>';
+      }
+
+      function fadeRemoveEventCards(eventId) {
+        const cards = [...document.querySelectorAll('.event-list-card, .event-gallery-card')]
+          .filter(card => card.dataset.eventId === eventId);
+        return Promise.all(cards.map(card => new Promise(resolve => {
+          let timer;
+          const finish = () => {
+            clearTimeout(timer);
+            card.removeEventListener('transitionend', onTransitionEnd);
+            card.remove();
+            resolve();
+          };
+          const onTransitionEnd = event => {
+            if (event.target === card && event.propertyName === 'opacity') finish();
+          };
+          card.addEventListener('transitionend', onTransitionEnd);
+          timer = setTimeout(finish, 350);
+          requestAnimationFrame(() => card.classList.add('is-removing'));
+        }))).then(() => {
+          if (!up.querySelector('.event-list-card')) up.innerHTML = '<p class="empty-state">No upcoming events scheduled.</p>';
+          if (!past.querySelector('.event-list-card')) past.innerHTML = '<p class="empty-state">No past events recorded yet.</p>';
+          if (gallery && !gallery.querySelector('.event-gallery-card')) gallery.innerHTML = '<p class="empty-state">No photos yet.</p>';
+        });
+      }
+
+      if (gallery && isAdmin) {
+        gallery.addEventListener('click', async event => {
+          const button = event.target.closest('.event-gallery-delete');
+          if (!button) return;
+          event.preventDefault();
+          event.stopPropagation();
+          if (button.disabled) return;
+
+          const ask = window.confirmDialog || ((text) => Promise.resolve(window.confirm(text)));
+          if (!await ask(`Delete '${button.dataset.title}'? This also removes its photos and cannot be undone.`, 'Delete')) return;
+
+          button.disabled = true;
+          button.setAttribute('aria-busy', 'true');
+          try {
+            const res = await fetch('/api/events/' + encodeURIComponent(button.dataset.id), {
+              method: 'DELETE',
+              credentials: 'same-origin'
+            });
+            const out = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              button.disabled = false;
+              button.removeAttribute('aria-busy');
+              CPRI.toast('Delete failed', CPRI.escapeHtml(out.error || 'Could not delete the event.'), 'exclamation-triangle');
+              return;
+            }
+            await fadeRemoveEventCards(button.dataset.id);
+            CPRI.toast('Event deleted', CPRI.escapeHtml(out.title || button.dataset.title), 'check-circle-fill');
+          } catch {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+            CPRI.toast('Delete failed', CPRI.escapeHtml('Could not delete the event. Please try again.'), 'exclamation-triangle');
+          }
+        });
       }
 
       document.querySelectorAll('.delete-event').forEach(button => {

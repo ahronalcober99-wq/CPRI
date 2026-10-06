@@ -28,7 +28,11 @@ import { messagesRouter, ensureMessagesTable } from './messages.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
 import { testConnection, explainDbError, connectionOptions } from './db.js';
 import { insert, all, get, withTransaction } from './server/db/queries.js';
-import { deleteEventAcrossStores, isValidEventId } from './event-deletion.js';
+import {
+  deleteEventAcrossStores,
+  isValidEventId,
+  resolveContentEventPhotoPath
+} from './event-deletion.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -400,19 +404,7 @@ async function writeContentEvents(events) {
 }
 
 function contentEventPhotoPath(photo) {
-  if (typeof photo !== 'string' || !photo.startsWith('/') || photo.startsWith('//')) return null;
-  let pathname;
-  try {
-    pathname = new URL(photo, 'http://localhost').pathname;
-    pathname = decodeURIComponent(pathname);
-  } catch {
-    return null;
-  }
-  const prefix = '/assets/uploads/events/';
-  if (!pathname.startsWith(prefix)) return null;
-  const filename = pathname.slice(prefix.length);
-  if (!filename || filename.includes('/') || filename.includes('\\') || filename === '.' || filename === '..') return null;
-  return join(EVENT_CONTENT_UPLOAD_DIR, filename);
+  return resolveContentEventPhotoPath(photo, EVENT_CONTENT_UPLOAD_DIR);
 }
 
 async function cleanupDeletedEventFiles({ contentEvents, moduleEvents }) {

@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { deleteEventAcrossStores, isValidEventId } from '../event-deletion.js';
+import { join } from 'path';
+import {
+  deleteEventAcrossStores,
+  isValidEventId,
+  resolveContentEventPhotoPath
+} from '../event-deletion.js';
 
 function makeTransaction({ moduleEvents = [], calls = [] } = {}) {
   return async callback => callback({
@@ -60,6 +65,20 @@ test('event ids must be UUIDs', () => {
   assert.equal(isValidEventId('8f72ebb2-37e6-4388-ac87-5bf684f6c55c'), true);
   assert.equal(isValidEventId('not-an-id'), false);
   assert.equal(isValidEventId('8f72ebb2-37e6-4388-ac87-5bf684f6c55'), false);
+});
+
+test('content event photo paths stay inside the upload directory', () => {
+  const uploadDir = 'C:\\uploads\\events';
+  assert.equal(
+    resolveContentEventPhotoPath('/assets/uploads/events/photo.jpg', uploadDir),
+    join(uploadDir, 'photo.jpg')
+  );
+  assert.equal(
+    resolveContentEventPhotoPath('/assets/uploads/events/%2e%2e%2fsecret.jpg', uploadDir),
+    join(uploadDir, 'secret.jpg')
+  );
+  assert.equal(resolveContentEventPhotoPath('https://example.com/photo.jpg', uploadDir), null);
+  assert.equal(resolveContentEventPhotoPath('', uploadDir), null);
 });
 
 test('deleting a module-only event does not change content events', async () => {

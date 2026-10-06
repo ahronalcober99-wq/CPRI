@@ -372,6 +372,22 @@ img { max-width: 100%; display: block; }
 .event-module-delete:disabled { opacity: .65; cursor: wait; }
 .card.event-module-card { transition: opacity .28s ease, transform .28s ease; }
 .card.event-module-card.is-removing { opacity: 0; transform: translateY(8px); pointer-events: none; }
+.event-gallery-card { position: relative; transition: opacity .28s ease, transform .28s ease; }
+.event-gallery-delete {
+  position: absolute; top: 10px; right: 10px; z-index: 1;
+  width: 40px; height: 40px; padding: 0; border: 1px solid #b23b32;
+  border-radius: 50%; display: grid; place-items: center;
+  background: #fff; color: #b23b32; cursor: pointer;
+  opacity: 0; transition: opacity .18s ease, background .18s ease, transform .18s ease;
+}
+.event-gallery-card:hover .event-gallery-delete,
+.event-gallery-delete:focus-visible { opacity: 1; }
+.event-gallery-delete:focus-visible { outline: 3px solid var(--cpri-accent); outline-offset: 2px; }
+.event-gallery-delete:hover { background: #b23b32; color: #fff; }
+.event-gallery-delete:disabled { opacity: .65; cursor: wait; }
+.event-gallery-card.is-removing,
+.event-list-card.is-removing { opacity: 0; transform: translateY(8px); pointer-events: none; }
+@media (hover: none) { .event-gallery-delete { opacity: 1; } }
 
 /* ============================================================
    GLOBAL UX CHROME
