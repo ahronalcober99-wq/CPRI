@@ -372,6 +372,14 @@ img { max-width: 100%; display: block; }
 .event-module-delete:disabled { opacity: .65; cursor: wait; }
 .card.event-module-card { transition: opacity .28s ease, transform .28s ease; }
 .card.event-module-card.is-removing { opacity: 0; transform: translateY(8px); pointer-events: none; }
+/* Research repository cards — admin Delete sits top-right, and the card fades
+   out the same way event cards do after a confirmed delete. */
+.repo-card-head { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+.repo-card-head h3 { flex: 1 1 240px; min-width: 0; }
+.repo-delete { flex: 0 0 auto; padding: 5px 12px; font-size: .76rem; }
+.repo-delete:disabled { opacity: .65; cursor: wait; }
+.card.repo-card { transition: opacity .28s ease, transform .28s ease; }
+.card.repo-card.is-removing { opacity: 0; transform: translateY(8px); pointer-events: none; }
 .event-gallery-card { position: relative; transition: opacity .28s ease, transform .28s ease; }
 .event-gallery-delete {
   position: absolute; top: 10px; right: 10px; z-index: 1;

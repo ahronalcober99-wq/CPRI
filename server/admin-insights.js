@@ -550,7 +550,7 @@ router.post('/files/delete', requireAdmin, async (req, res) => {
     // 3) Sweep now-empty per-record folders (e.g. uploads/submissions/<id>).
     const parent = dirname(target);
     if (parent.startsWith(uploadsRoot) && parent !== uploadsRoot) {
-      await fs.rmdir(parent).catch(() => {});
+      await fs.rmdir(parent).catch(() => { });
     }
 
     await addLog('file_delete', `Deleted file ${path}`, req);

@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { randomUUID } from 'crypto';
-import { readUsers } from './auth.js';
-import { all, get, run, insert, update, remove } from './server/db/queries.js';
+import { readUsers, requireAuth, requireAdmin } from './auth.js';
+import { all, get, run, insert, update, withTransaction } from './server/db/queries.js';
+import { addLog } from './audit.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
 
 // ---------- Access levels ----------
@@ -73,6 +74,23 @@ function manuscriptMetadata(files) {
     : null;
 }
 
+// Repository ids are UUIDs from randomUUID(), but older/demo rows may use short
+// slugs — accept anything URL-safe and bounded before it reaches a query.
+const REPOSITORY_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+// submissions.files is a JSON column that arrives already parsed through
+// queryRow() or as raw text, depending on the driver path.
+function parsedFiles(value) {
+  if (value && typeof value === 'object') return { ...value };
+  if (typeof value === 'string' && value) {
+    try {
+      const decoded = JSON.parse(value);
+      return decoded && typeof decoded === 'object' ? { ...decoded } : null;
+    } catch { return null; }
+  }
+  return null;
+}
+
 async function defaultOptionalUser(req) {
   if (!req.session || !req.session.userId) return null;
   const users = await readUsers();
@@ -86,11 +104,23 @@ export function createRepositoryRouter(dependencies = {}) {
     get: dependencies.get || get,
     run: dependencies.run || run,
     insert: dependencies.insert || insert,
-    update: dependencies.update || update,
-    remove: dependencies.remove || remove
+    update: dependencies.update || update
   };
   const resolveUser = dependencies.optionalUser || defaultOptionalUser;
   const storage = dependencies.storage || supabaseStorage;
+  // Deleting touches two tables (the repository row and the linked
+  // submission's file pointer), so it runs in one transaction. Tests inject
+  // their own implementation.
+  const transaction = dependencies.withTransaction || withTransaction;
+  // Audit trail (system_logs): records who deleted what and when.
+  const log = dependencies.log || addLog;
+  // The app's real auth middleware gives exactly the required contract:
+  // 401 when not signed in, 403 when the session is not an active admin.
+  // Tests inject a pass-through because requireAdmin reads the real DB, while
+  // the handler keeps an equivalent check of its own (defense in depth).
+  const adminGuard = dependencies.adminGuard !== undefined
+    ? dependencies.adminGuard
+    : [requireAuth, requireAdmin];
 
 // ---------- Public list with search & filter ----------
 router.get('/', async (req, res) => {
@@ -286,13 +316,76 @@ router.patch('/:id', async (req, res) => {
 });
 
 // ---------- Admin: delete ----------
-router.delete('/:id', async (req, res) => {
+// Admin-only (role === 'admin'): CPRI staff may add/update records but not
+// destroy them. Anonymous callers get 401, non-admins 403, unknown ids 404.
+//
+// Hard delete, not soft: neither db/schema.sql nor server/init-db.sql has a
+// deleted_at / is_deleted column, so the project has no soft-delete pattern to
+// follow. Because the row is physically removed, every public listing, search,
+// report and export query stops returning it with no extra filter.
+//
+// What else is removed: the uploaded manuscript. Repository rows only store a
+// fileAvailable flag; the object path lives in the linked submission's files
+// JSON, so the pointer is unlinked in the same transaction and the object is
+// deleted from storage afterwards. A storage failure must not undo a deletion
+// the admin already confirmed, so it is logged instead of thrown. The
+// submission itself is kept — syncRepository() in submissions.js already treats
+// submissions and repository entries as separate records the owner still sees.
+// The check for other repository rows pointing at the same submission avoids
+// unlinking a file another record still uses.
+// The deletion is written to system_logs (admin id, entry id, title, time).
+router.delete('/:id', adminGuard, async (req, res) => {
   const user = await resolveUser(req);
-  if (!user || !['admin', 'cpri_staff'].includes(user.role)) return res.status(403).json({ error: 'Admin/CPRI staff only.' });
-  const r = await queries.get('SELECT * FROM repository WHERE id = ?', [req.params.id]);
-  if (!r) return res.status(404).json({ error: 'Record not found.' });
-  await queries.remove('repository', req.params.id);
-  res.json({ message: 'Record removed from repository.' });
+  if (!user) return res.status(401).json({ error: 'Not authenticated.' });
+  if (user.role !== 'admin' || user.status !== 'active') {
+    return res.status(403).json({ error: 'Admin access required.' });
+  }
+
+  const id = String(req.params.id || '');
+  if (!REPOSITORY_ID_PATTERN.test(id)) return res.status(404).json({ error: 'Record not found.' });
+  const record = await queries.get('SELECT * FROM repository WHERE id = ?', [id]);
+  if (!record) return res.status(404).json({ error: 'Record not found.' });
+
+  const submission = record.sourceSubmissionId
+    ? await queries.get('SELECT id, files FROM submissions WHERE id = ?', [record.sourceSubmissionId]).catch(() => null)
+    : null;
+  const manuscript = manuscriptMetadata(submission?.files);
+
+  const removeStoredFile = await transaction(async (tx) => {
+    await tx.run('DELETE FROM repository WHERE id = ?', [id]);
+    if (!submission || !manuscript) return false;
+
+    const siblings = await tx.all(
+      'SELECT id FROM repository WHERE sourceSubmissionId = ? AND id <> ?',
+      [submission.id, id]
+    );
+    if (siblings.length) return false;
+
+    const files = parsedFiles(submission.files);
+    if (!files) return false;
+    delete files.manuscript;
+    await tx.run(
+      'UPDATE submissions SET files = ?, updatedAt = ? WHERE id = ?',
+      [JSON.stringify(files), new Date().toISOString(), submission.id]
+    );
+    return true;
+  });
+
+  if (removeStoredFile) {
+    try {
+      await storage.deleteObjects([manuscript.storage_path]);
+    } catch (error) {
+      console.error(`[repository] deleted ${id} but could not remove its stored file:`, error.message);
+    }
+  }
+
+  await log(
+    'repository_delete',
+    `Deleted repository entry "${record.title}" (${id})` + (manuscript ? ' including its uploaded file' : ''),
+    req
+  );
+
+  res.json({ success: true, message: 'Repository entry deleted' });
 });
 
   return router;

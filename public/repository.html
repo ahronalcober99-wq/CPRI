@@ -99,17 +99,18 @@
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
-  <script>
+  <script type="module">
+    import { repositoryCardHtml, REPOSITORY_EMPTY_STATE } from './assets/js/repository-cards.js';
+
     const message = document.getElementById('message');
     const recordsEl = document.getElementById('records');
+    // Filled from GET /api/auth/me before the first render. The server decides
+    // who may actually delete; this only decides whether the button is built.
+    let currentUser = null;
 
-    const ACCESS_BADGE = {
-      public_abstract: 'Abstract only',
-      viewable: 'Viewable',
-      downloadable: 'Downloadable',
-      restricted_institutional: 'Institutional only',
-      restricted_staff: 'Staff only'
-    };
+    function isAdmin() {
+      return currentUser?.role === 'admin' && currentUser?.status === 'active';
+    }
 
     function buildQuery() {
       const fd = new FormData(document.getElementById('filter-form'));
@@ -135,35 +136,94 @@
         return;
       }
       const records = Array.isArray(data?.records) ? data.records : [];
-      const escape = value => CPRI.escapeHtml(String(value ?? ''));
       if (!records.length) {
-        recordsEl.innerHTML = '<p class="empty-state">No research records found.</p>';
+        recordsEl.innerHTML = REPOSITORY_EMPTY_STATE;
         return;
       }
-      recordsEl.innerHTML = records.map(r => `
-        <div class="card" style="margin-bottom:16px;">
-          <h3 style="margin:0 0 6px;"><a href="repository-detail.html?id=${escape(encodeURIComponent(String(r.id)))}">${escape(r.title)}</a></h3>
-          <div class="meta">${escape(r.authors)} · ${escape(r.department)} · ${escape(r.categoryLabel)} · ${escape(r.yearCompleted)}</div>
-          <div><span class="badge">${escape(ACCESS_BADGE[r.accessLevel] || r.accessLevel)}</span> <span class="badge">${escape(r.status)}</span> ${r.fileAvailable ? '<span class="form-note">File available</span>' : ''}</div>
-        </div>`).join('');
+      recordsEl.innerHTML = records
+        .map(r => repositoryCardHtml(r, { isAdmin: isAdmin(), escapeHtml: CPRI.escapeHtml }))
+        .join('');
     }
+
+    // ---- Delete (admins only) ----
+    // The button only reaches the DOM for admins; DELETE /api/repository/:id
+    // re-checks the role on the server, so hiding it is never the protection.
+    function restoreDeleteButton(button) {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
+      button.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i> Delete';
+    }
+
+    function removeCardAfterFade(card) {
+      return new Promise(resolve => {
+        let timer;
+        const finish = () => {
+          clearTimeout(timer);
+          card.removeEventListener('transitionend', onTransitionEnd);
+          card.remove();
+          resolve();
+        };
+        const onTransitionEnd = event => {
+          if (event.target === card && event.propertyName === 'opacity') finish();
+        };
+        card.addEventListener('transitionend', onTransitionEnd);
+        timer = setTimeout(finish, 350);
+        requestAnimationFrame(() => card.classList.add('is-removing'));
+      });
+    }
+
+    const DELETE_ERRORS = {
+      401: 'Please log in again',
+      403: "You don't have permission",
+      404: 'Entry no longer exists'
+    };
+
+    recordsEl.addEventListener('click', async event => {
+      const button = event.target.closest('.repo-delete');
+      if (!button || button.disabled) return;
+      // The card title is a link; never let a Delete click follow it.
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (typeof window.confirmDialog !== 'function') {
+        CPRI.toast('Delete unavailable', 'The confirmation dialog could not be loaded. Refresh the page and try again.', 'exclamation-triangle');
+        return;
+      }
+      const confirmed = await window.confirmDialog(
+        `Delete '${button.dataset.title}'? This can't be undone.`,
+        'Delete'
+      );
+      if (!confirmed) return;
+
+      const card = button.closest('.repo-card');
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      button.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i> Deleting…';
+
+      try {
+        const { res } = await CPRI.apiFetch(
+          '/api/repository/' + encodeURIComponent(button.dataset.id),
+          { method: 'DELETE' }
+        );
+        if (!res.ok) {
+          restoreDeleteButton(button);
+          CPRI.toast('Not deleted', DELETE_ERRORS[res.status] || 'Something went wrong. Try again.', 'exclamation-triangle');
+          return;
+        }
+        if (card) await removeCardAfterFade(card);
+        if (!recordsEl.querySelector('.repo-card')) recordsEl.innerHTML = REPOSITORY_EMPTY_STATE;
+        CPRI.toast('Repository entry deleted', 'The record and its uploaded file were removed.', 'trash');
+      } catch {
+        restoreDeleteButton(button);
+        CPRI.toast('Not deleted', 'Something went wrong. Try again.', 'exclamation-triangle');
+      }
+    });
 
     document.getElementById('filter-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
     document.getElementById('clear-btn').addEventListener('click', () => {
       document.getElementById('filter-form').reset();
       load();
     });
-
-    // Role-aware admin panel
-    (async () => {
-      const { res: meRes, data } = await CPRI.apiFetch('/api/auth/me');
-      if (meRes.ok) {
-        const { user } = data;
-        if (['admin', 'cpri_staff'].includes(user.role)) {
-          document.getElementById('admin-panel').style.display = 'block';
-        }
-      }
-    })();
 
     document.getElementById('publish-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -178,7 +238,20 @@
       load();
     });
 
-    load();
+    // Role-aware admin panel, then the first render (so cards are built with
+    // the correct role the first time).
+    (async () => {
+      try {
+        const { res: meRes, data } = await CPRI.apiFetch('/api/auth/me');
+        if (meRes.ok) currentUser = data?.user || null;
+      } catch (error) {
+        console.warn('Could not verify repository management access:', error);
+      }
+      if (currentUser && ['admin', 'cpri_staff'].includes(currentUser.role)) {
+        document.getElementById('admin-panel').style.display = 'block';
+      }
+      await load();
+    })();
   </script>
 </body>
 </html>

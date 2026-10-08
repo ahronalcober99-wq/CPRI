@@ -233,16 +233,32 @@
             showMsg('error', error.message || 'Could not update the access level.');
           }
         });
-        document.getElementById('delete-rec').addEventListener('click', async () => {
-          if (!confirm('Delete this record from the repository?')) return;
-          try {
-            const { res, data: out } = await CPRI.apiFetch('/api/repository/' + encodeURIComponent(String(r.id)), { method: 'DELETE' });
-            if (!res.ok) return showMsg('error', out?.error || 'Could not delete this record.');
-            location.href = 'repository.html';
-          } catch (error) {
-            showMsg('error', error.message || 'Could not delete this record.');
-          }
-        });
+        // Deleting is admin-only (DELETE /api/repository/:id enforces it), so
+        // CPRI staff get the access editor but no Delete control at all.
+        const deleteBtn = document.getElementById('delete-rec');
+        if (currentUser.role === 'admin' && currentUser.status === 'active') {
+          deleteBtn.addEventListener('click', async () => {
+            const ask = window.confirmDialog || (() => Promise.resolve(false));
+            if (!await ask(`Delete '${r.title}'? This can't be undone.`, 'Delete')) return;
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = 'Deleting…';
+            try {
+              const { res, data: out } = await CPRI.apiFetch('/api/repository/' + encodeURIComponent(String(r.id)), { method: 'DELETE' });
+              if (!res.ok) {
+                deleteBtn.disabled = false;
+                deleteBtn.textContent = 'Delete from Repository';
+                return showMsg('error', out?.error || 'Could not delete this record.');
+              }
+              location.href = 'repository.html';
+            } catch (error) {
+              deleteBtn.disabled = false;
+              deleteBtn.textContent = 'Delete from Repository';
+              showMsg('error', error.message || 'Could not delete this record.');
+            }
+          });
+        } else {
+          deleteBtn.remove();
+        }
       }
     })();
   </script>
