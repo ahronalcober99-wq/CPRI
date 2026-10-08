@@ -59,9 +59,47 @@
                     <label for="department">Department / Program</label>
                     <input type="text" id="department" name="department">
                   </div>
-                  <div class="form-group">
+                  <div class="form-group phone-group">
                     <label for="contactNumber">Contact Number</label>
-                    <input type="text" id="contactNumber" name="contactNumber">
+                    <div class="phone-field">
+                      <span class="phone-prefix" aria-hidden="true">+63</span>
+                      <input type="tel" id="contactNumber" name="contactNumber" inputmode="tel"
+                             autocomplete="tel" placeholder="917 123 4567" aria-describedby="phone-hint">
+                      <button type="button" class="btn btn-navy phone-send" id="phone-send">
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
+                        <i class="bi bi-chat-dots" aria-hidden="true"></i> Send code
+                      </button>
+                      <span class="badge phone-badge-verified" id="phone-verified" hidden>
+                        <i class="bi bi-patch-check-fill" aria-hidden="true"></i> Verified
+                      </span>
+                      <button type="button" class="btn btn-outline phone-change" id="phone-change" hidden>Change</button>
+                    </div>
+                    <p class="form-note phone-hint" id="phone-hint">
+                      Philippine mobile number. We text a 6-digit code to confirm it.
+                    </p>
+                    <div class="phone-status" id="phone-status" role="status" aria-live="polite"></div>
+                    <!-- Kept OUTSIDE the code panel: validation and rate-limit
+                         errors must be visible before any code was sent. -->
+                    <p class="phone-error" id="phone-code-error" role="alert" hidden></p>
+
+                    <fieldset class="phone-code" id="phone-code" hidden>
+                      <legend class="phone-code-legend">Enter the 6-digit code we sent you</legend>
+                      <div class="phone-code-boxes">
+                        <input class="phone-code-input" type="text" id="phone-digit-1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" aria-label="Verification code digit 1 of 6">
+                        <input class="phone-code-input" type="text" id="phone-digit-2" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 2 of 6">
+                        <input class="phone-code-input" type="text" id="phone-digit-3" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 3 of 6">
+                        <input class="phone-code-input" type="text" id="phone-digit-4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 4 of 6">
+                        <input class="phone-code-input" type="text" id="phone-digit-5" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 5 of 6">
+                        <input class="phone-code-input" type="text" id="phone-digit-6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 6 of 6">
+                      </div>
+                      <div class="phone-code-row">
+                        <button type="button" class="btn btn-navy phone-verify" id="phone-code-verify" disabled>
+                          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span> Verify
+                        </button>
+                        <button type="button" class="phone-resend" id="phone-resend" hidden>Resend code</button>
+                        <span class="phone-timer" id="phone-expiry" aria-live="polite"></span>
+                      </div>
+                    </fieldset>
                   </div>
                 </div>
                 <div class="form-group">
@@ -138,10 +176,17 @@
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
-  <script>
+  <script type="module">
+    import { initPhoneField } from './assets/js/phone-field.js';
+
     const message = document.getElementById('message');
     const profileArea = document.getElementById('profile-area');
     const notLogged = document.getElementById('not-logged');
+    // Created once the profile loads; the save handler refreshes it afterwards.
+    let phoneField = null;
+    function toast(title, body, icon) {
+      if (typeof CPRI !== 'undefined' && typeof CPRI.toast === 'function') CPRI.toast(title, body, icon);
+    }
 
     // Initials avatar (matches the My Account navbar icon): a gradient circle
     // with the user's initials, replaced by the uploaded photo when one exists.
@@ -190,6 +235,9 @@
       document.getElementById('contactNumber').value = profile.contactNumber || '';
       document.getElementById('researchInterests').value = profile.researchInterests || '';
       renderResearches(profile.researches);
+
+      // Contact-number (SMS) verification: badge, code boxes and countdowns.
+      phoneField = initPhoneField({ profile, toast });
     })();
 
     function renderResearches(list) {
@@ -222,6 +270,10 @@
       if (!res.ok) return showMsg('error', out.error || 'Update failed');
       showMsg('success', out.message);
       document.getElementById('p-name').textContent = out.profile.fullName || out.profile.username;
+      // The server is the authority on the verified flag: a number that was
+      // edited (or replaced) here comes back unverified until it is confirmed
+      // with a new SMS code.
+      if (phoneField) phoneField.refresh(out.profile);
     });
 
     // Edit photo: open the picker, upload immediately on selection

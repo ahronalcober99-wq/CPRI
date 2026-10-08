@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS users (
   researches JSON,
   user_prefs JSON,
   setupPending TINYINT(1) DEFAULT 0,
+  -- SMS-verified contact number (server/phone-verification.js). The number
+  -- itself lives in contactNumber once verified; these columns flag the state.
+  phone_verified TINYINT(1) NOT NULL DEFAULT 0,
+  phone_verified_at DATETIME DEFAULT NULL,
   resetToken VARCHAR(120) DEFAULT NULL,
   resetTokenExpiry BIGINT DEFAULT NULL,
   createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -151,6 +155,23 @@ CREATE TABLE IF NOT EXISTS notifications (
   action VARCHAR(80), title VARCHAR(255), message TEXT, link VARCHAR(255),
   readAt DATETIME DEFAULT NULL, createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
   KEY `idx_notif_user` (`userId`, `createdAt`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Pending SMS verification codes for the contact-number field
+--   codeHash  bcrypt hash of the 6-digit code — the plain code is never stored
+--   attempts  wrong-code counter; the code is dropped at 5
+--   expiresAt 5 minutes after the send
+CREATE TABLE IF NOT EXISTS phone_verification_codes (
+  id VARCHAR(36) PRIMARY KEY,
+  userId VARCHAR(36) NOT NULL,
+  phone VARCHAR(20) NOT NULL,
+  codeHash VARCHAR(120) NOT NULL,
+  attempts INT NOT NULL DEFAULT 0,
+  ip VARCHAR(64) DEFAULT NULL,
+  expiresAt DATETIME NOT NULL,
+  createdAt DATETIME NOT NULL,
+  KEY `idx_phone_codes_user` (`userId`, `createdAt`),
+  KEY `idx_phone_codes_ip` (`ip`, `createdAt`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Direct messages between registered users

@@ -11,6 +11,7 @@ import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { notify } from './notifications.js';
 import { addLog } from './audit.js';
 import { normalizeUsername, validateUsername } from './utils/username.js';
+import { normalizePhone } from './lib/phone.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -185,6 +186,10 @@ function fullProfile(u) {
     status: u.status,
     department: u.department || '',
     contactNumber: u.contactNumber || '',
+    // A contact number only counts as verified once the SMS code was confirmed
+    // (see server/phone-verification.js); editing it clears this again.
+    phoneVerified: u.phone_verified === 1 || u.phone_verified === '1',
+    phoneVerifiedAt: u.phone_verified_at || null,
     researchInterests: u.researchInterests || '',
     profilePhoto: u.profilePhoto || null,
     researches: u.researches || [],
@@ -886,13 +891,39 @@ router.get('/profile', requireAuth, async (req, res) => {
   res.json({ profile: fullProfile(user) });
 });
 
+// Two numbers count as "the same" when they normalize to the same E.164 form —
+// the form shows the local digits while the verified record stores +63…, and
+// re-saving the untouched number must not drop its verified state.
+function phoneChanged(currentValue, nextValue) {
+  const current = normalizePhone(currentValue);
+  const next = normalizePhone(nextValue);
+  if (current && next) return current !== next;
+  return String(currentValue ?? '').trim() !== String(nextValue ?? '').trim();
+}
+
 router.put('/profile', requireAuth, async (req, res) => {
   const { fullName, department, contactNumber, researchInterests } = req.body || {};
   const changes = {};
   if (fullName !== undefined) changes.fullName = String(fullName).trim();
   if (department !== undefined) changes.department = String(department).trim();
-  if (contactNumber !== undefined) changes.contactNumber = String(contactNumber).trim();
   if (researchInterests !== undefined) changes.researchInterests = String(researchInterests).trim();
+  if (contactNumber !== undefined) {
+    const current = await get('SELECT contactNumber FROM users WHERE id = ?', [req.session.userId]);
+    if (!current) return res.status(401).json({ error: 'Not authenticated.' });
+    const trimmed = String(contactNumber).trim();
+    if (phoneChanged(current.contactNumber, contactNumber)) {
+      // The verified flag is never set from here — only the SMS flow can do
+      // that — so a changed number stays unverified until it is confirmed again.
+      changes.phone_verified = 0;
+      changes.phone_verified_at = null;
+      changes.contactNumber = trimmed;
+    } else {
+      // Same number in a different notation (the form shows the local digits
+      // while the verified record stores +63…): keep the canonical E.164 form so
+      // a verified number never drifts between shapes.
+      changes.contactNumber = normalizePhone(trimmed) || trimmed;
+    }
+  }
   const user = await patchUser(req.session.userId, changes);
   if (!user) return res.status(401).json({ error: 'Not authenticated.' });
   res.json({ message: 'Profile updated.', profile: fullProfile(user) });

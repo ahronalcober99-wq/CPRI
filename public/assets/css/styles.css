@@ -1861,6 +1861,56 @@ textarea { resize: vertical; min-height: 140px; }
 .empty-state { padding: 30px; text-align: center; color: var(--cpri-muted); background: var(--cpri-card); border-radius: var(--radius); border: 1px dashed var(--cpri-border); }
 .badge { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: .75rem; font-weight: 700; background: rgba(20,184,166,.14); color: #0d9488; margin-bottom: 10px; }
 
+/* ---- Contact-number (SMS) verification (profile page) ----
+   The global input rule above is more specific than a single class, so these
+   selectors carry the .phone-group scope to win on the elements that need a
+   different box model (the code boxes). */
+.phone-field { display: flex; align-items: stretch; flex-wrap: wrap; gap: 8px; }
+.phone-prefix {
+  display: inline-flex; align-items: center; padding: 0 12px;
+  border: 1px solid var(--cpri-border); border-right: none; border-radius: 12px 0 0 12px;
+  background: rgba(30,58,138,.06); font-family: var(--font-head); font-weight: 700;
+  color: var(--cpri-secondary); letter-spacing: .01em;
+}
+.phone-group .phone-field input { width: auto; flex: 1 1 150px; border-radius: 0 12px 12px 0; }
+.phone-group .phone-field input[readonly] { background: var(--cpri-bg-2); color: var(--cpri-text); cursor: default; }
+.phone-send { flex: 0 0 auto; white-space: nowrap; }
+.phone-send.is-cooling { opacity: .6; cursor: not-allowed; }
+.phone-badge-verified {
+  display: inline-flex; align-items: center; gap: 6px; margin: 0; padding: 6px 12px;
+  background: rgba(16,185,129,.16); color: #047857; font-size: .78rem;
+}
+/* The generic dark-theme badge rule is more specific, and the Verified badge
+   must stay green (success), not the accent teal. */
+[data-theme="dark"] .phone-badge-verified { background: rgba(16,185,129,.18); color: #34D399; }
+.phone-change { flex: 0 0 auto; padding: 6px 14px; font-size: .8rem; }
+.phone-hint { margin: 6px 0 0; }
+.phone-status { margin-top: 6px; font-size: .85rem; color: var(--cpri-secondary); }
+.phone-status:empty { display: none; }
+.phone-code { margin: 12px 0 0; padding: 0; border: 0; min-inline-size: 0; }
+.phone-code-legend { padding: 0; margin-bottom: 8px; font-size: .82rem; font-weight: 700; color: var(--cpri-text); }
+.phone-code-boxes { display: flex; flex-wrap: wrap; gap: 8px; }
+.phone-group .phone-code-boxes .phone-code-input {
+  width: 48px; height: 56px; padding: 0; text-align: center;
+  font-family: var(--font-head); font-size: 1.3rem; font-weight: 700;
+  border: 1px solid var(--cpri-border); border-radius: 12px;
+  background: var(--cpri-card); color: var(--cpri-text);
+}
+.phone-group .phone-code-boxes .phone-code-input:focus { border-color: var(--cpri-secondary); }
+[data-theme="dark"] .phone-group .phone-code-boxes .phone-code-input { border-color: var(--cpri-border); }
+.phone-code-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.phone-verify { display: inline-flex; align-items: center; gap: 6px; }
+.phone-resend { border: 0; background: none; padding: 0; color: var(--cpri-secondary); font-weight: 700; font-size: .82rem; text-decoration: underline; cursor: pointer; }
+.phone-resend:disabled { color: var(--cpri-muted); text-decoration: none; cursor: default; font-weight: 600; }
+.phone-timer { font-size: .8rem; color: var(--cpri-muted); }
+.phone-error { margin: 8px 0 0; font-size: .84rem; font-weight: 600; color: #b23b32; }
+/* [hidden] must beat the component display rules (and Bootstrap's spinner). */
+.phone-group [hidden] { display: none !important; }
+@media (max-width: 520px) {
+  .phone-send { flex: 1 1 100%; justify-content: center; }
+  .phone-group .phone-code-boxes .phone-code-input { width: 42px; height: 50px; font-size: 1.15rem; }
+}
+
 /* neon focus ring for keyboard users */
 :focus-visible { outline: 3px solid var(--cpri-accent); outline-offset: 2px; border-radius: 6px; }
 

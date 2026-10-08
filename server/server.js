@@ -11,6 +11,8 @@ import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { authRouter, initAuth, requireAdmin } from './auth.js';
+import { phoneVerificationRouter, ensurePhoneSchema } from './phone-verification.js';
+import { smsProviderInfo } from './lib/sms.js';
 import { usernameRouter } from './username.js';
 import { submissionsRouter } from './submissions.js';
 import { repositoryRouter } from './repository.js';
@@ -224,6 +226,8 @@ app.use(session({
 }));
 
 app.use('/api/auth', authRouter);
+// Phone-number (SMS) verification for the profile page.
+app.use('/api/profile/phone', phoneVerificationRouter);
 app.use('/api/username', usernameRouter);
 app.use('/api/submissions', submissionsRouter);
 app.use('/api/repository', repositoryRouter);
@@ -637,6 +641,12 @@ try {
   console.error('[events] schema ensure failed:', err.message);
 }
 
+try {
+  await ensurePhoneSchema();
+} catch (err) {
+  console.error('[phone] schema ensure failed:', err.message);
+}
+
 const server = app.listen(PORT, async () => {
   void supabaseStorage.verifyBucketAtStartup();
   let dbUp = true;
@@ -664,6 +674,15 @@ const server = app.listen(PORT, async () => {
 
   console.log('[mail] BREVO_API_KEY set:', Boolean(process.env.BREVO_API_KEY));
   console.log('[mail] BREVO_SENDER_EMAIL set:', Boolean(process.env.BREVO_SENDER_EMAIL));
+
+  const smsInfo = smsProviderInfo();
+  if (smsInfo.dev) {
+    console.warn(`[sms] No SMS provider configured — DEV mode is on (${smsInfo.label}): verification codes are printed to this console instead of being sent.`);
+  } else if (!smsInfo.configured) {
+    console.warn(`[sms] SMS_PROVIDER=${smsInfo.id} is missing ${(smsInfo.missing || []).join(', ')} — phone verification codes cannot be sent.`);
+  } else {
+    console.log(`[sms] provider: ${smsInfo.label}`);
+  }
 
   console.log(`CPRI public website running at http://localhost:${PORT}`);
   if (!dbUp) {

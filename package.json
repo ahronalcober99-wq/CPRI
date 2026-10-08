@@ -15,6 +15,7 @@
     "seed:demo:clear": "node server/server/seed-demo.mjs --clear",
     "migrate": "node server/server/seed.mjs",
     "test:dropdowns": "node server/dev/test-dropdowns.mjs",
+    "test:phone": "node --test server/dev/test-phone-verification.mjs",
     "test:repository": "node --test server/dev/test-repository-delete.mjs server/dev/test-repository-files.mjs",
     "check:api": "node server/dev/check-api.mjs",
     "doctor": "node server/dev/db-doctor.mjs",
