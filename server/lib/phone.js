@@ -6,8 +6,8 @@
 //  spaces / dashes / parentheses) and everything is stored in
 //  E.164 (+639171234567) once verified.
 //
-//  Kept dependency-free and pure so both the API and the browser
-//  bundle (public/assets/js/phone-field.js) can mirror the rules.
+//  Kept dependency-free and pure so the API stays the single source of
+//  truth for the shapes a number is accepted in.
 // ============================================================
 
 // Accepts: 09XXXXXXXXX · 9XXXXXXXXX · 639XXXXXXXXX · +639XXXXXXXXX

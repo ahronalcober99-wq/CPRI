@@ -64,42 +64,8 @@
                     <div class="phone-field">
                       <span class="phone-prefix" aria-hidden="true">+63</span>
                       <input type="tel" id="contactNumber" name="contactNumber" inputmode="tel"
-                             autocomplete="tel" placeholder="917 123 4567" aria-describedby="phone-hint">
-                      <button type="button" class="btn btn-navy phone-send" id="phone-send">
-                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
-                        <i class="bi bi-chat-dots" aria-hidden="true"></i> Send code
-                      </button>
-                      <span class="badge phone-badge-verified" id="phone-verified" hidden>
-                        <i class="bi bi-patch-check-fill" aria-hidden="true"></i> Verified
-                      </span>
-                      <button type="button" class="btn btn-outline phone-change" id="phone-change" hidden>Change</button>
+                             autocomplete="tel" placeholder="917 123 4567">
                     </div>
-                    <p class="form-note phone-hint" id="phone-hint">
-                      Philippine mobile number. We text a 6-digit code to confirm it.
-                    </p>
-                    <div class="phone-status" id="phone-status" role="status" aria-live="polite"></div>
-                    <!-- Kept OUTSIDE the code panel: validation and rate-limit
-                         errors must be visible before any code was sent. -->
-                    <p class="phone-error" id="phone-code-error" role="alert" hidden></p>
-
-                    <fieldset class="phone-code" id="phone-code" hidden>
-                      <legend class="phone-code-legend">Enter the 6-digit code we sent you</legend>
-                      <div class="phone-code-boxes">
-                        <input class="phone-code-input" type="text" id="phone-digit-1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" aria-label="Verification code digit 1 of 6">
-                        <input class="phone-code-input" type="text" id="phone-digit-2" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 2 of 6">
-                        <input class="phone-code-input" type="text" id="phone-digit-3" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 3 of 6">
-                        <input class="phone-code-input" type="text" id="phone-digit-4" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 4 of 6">
-                        <input class="phone-code-input" type="text" id="phone-digit-5" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 5 of 6">
-                        <input class="phone-code-input" type="text" id="phone-digit-6" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label="Verification code digit 6 of 6">
-                      </div>
-                      <div class="phone-code-row">
-                        <button type="button" class="btn btn-navy phone-verify" id="phone-code-verify" disabled>
-                          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span> Verify
-                        </button>
-                        <button type="button" class="phone-resend" id="phone-resend" hidden>Resend code</button>
-                        <span class="phone-timer" id="phone-expiry" aria-live="polite"></span>
-                      </div>
-                    </fieldset>
                   </div>
                 </div>
                 <div class="form-group">
@@ -113,29 +79,6 @@
                 <button type="submit" class="btn btn-primary">Save Changes</button>
               </form>
             </div>
-          </div>
-
-          <!-- Notification Preferences -->
-          <div class="card" id="prefs" style="margin-top:22px;">
-            <h3><i class="bi bi-bell"></i> Notification Preferences</h3>
-            <p class="form-note">Choose what shows up in your notification bell and how you are alerted.</p>
-            <div class="prefs-row">
-              <div class="prefs-info"><b>In-app notifications</b><small>Show alerts in the bell on the site.</small></div>
-              <label class="switch"><input type="checkbox" id="pref-inapp"><span></span></label>
-            </div>
-            <div class="prefs-row">
-              <div class="prefs-info"><b>Email copies</b><small>Also send each alert to your email address.</small></div>
-              <label class="switch"><input type="checkbox" id="pref-email"><span></span></label>
-            </div>
-            <div class="prefs-quiet-times">
-              <label class="switch" title="Suppress email copies during quiet hours"><input type="checkbox" id="pref-quiet"><span></span></label>
-              <div class="prefs-info"><b>Quiet hours</b><small>Pause email alerts between these times.</small></div>
-              <div style="margin-left:auto;display:flex;gap:10px;align-items:flex-end;">
-                <div class="form-group"><label for="pref-start">From</label><input type="time" id="pref-start" value="22:00"></div>
-                <div class="form-group"><label for="pref-end">To</label><input type="time" id="pref-end" value="07:00"></div>
-              </div>
-            </div>
-            <button class="btn btn-primary" id="prefs-save" style="margin-top:14px;">Save Preferences</button>
           </div>
 
           <!-- Researches -->
@@ -177,15 +120,19 @@
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script type="module">
-    import { initPhoneField } from './assets/js/phone-field.js';
-
     const message = document.getElementById('message');
     const profileArea = document.getElementById('profile-area');
     const notLogged = document.getElementById('not-logged');
-    // Created once the profile loads; the save handler refreshes it afterwards.
-    let phoneField = null;
-    function toast(title, body, icon) {
-      if (typeof CPRI !== 'undefined' && typeof CPRI.toast === 'function') CPRI.toast(title, body, icon);
+
+    // The field renders a "+63" prefix, so only the national digits are shown.
+    // Stored numbers can be E.164 (+639…), local (09…) or 63… — all shown as 9….
+    function nationalDigits(value) {
+      const raw = String(value ?? '').trim().replace(/[\s().-]/g, '');
+      if (/^\+639\d{9}$/.test(raw)) return raw.slice(3);
+      if (/^639\d{9}$/.test(raw)) return raw.slice(2);
+      if (/^09\d{9}$/.test(raw)) return raw.slice(1);
+      if (/^9\d{9}$/.test(raw)) return raw;
+      return String(value ?? '').trim();
     }
 
     // Initials avatar (matches the My Account navbar icon): a gradient circle
@@ -232,12 +179,9 @@
       document.getElementById('fullName').value = profile.fullName || '';
       document.getElementById('email').value = profile.email || '';
       document.getElementById('department').value = profile.department || '';
-      document.getElementById('contactNumber').value = profile.contactNumber || '';
+      document.getElementById('contactNumber').value = nationalDigits(profile.contactNumber);
       document.getElementById('researchInterests').value = profile.researchInterests || '';
       renderResearches(profile.researches);
-
-      // Contact-number (SMS) verification: badge, code boxes and countdowns.
-      phoneField = initPhoneField({ profile, toast });
     })();
 
     function renderResearches(list) {
@@ -270,10 +214,6 @@
       if (!res.ok) return showMsg('error', out.error || 'Update failed');
       showMsg('success', out.message);
       document.getElementById('p-name').textContent = out.profile.fullName || out.profile.username;
-      // The server is the authority on the verified flag: a number that was
-      // edited (or replaced) here comes back unverified until it is confirmed
-      // with a new SMS code.
-      if (phoneField) phoneField.refresh(out.profile);
     });
 
     // Edit photo: open the picker, upload immediately on selection
@@ -320,36 +260,6 @@
       e.target.reset();
       const me = await (await fetch('/api/auth/profile')).json();
       renderResearches(me.profile.researches);
-    });
-
-    // Notification preferences
-    (async () => {
-      const r = await fetch('/api/auth/profile/prefs');
-      if (!r.ok) return;
-      const { prefs } = await r.json();
-      document.getElementById('pref-inapp').checked = prefs.inApp !== false;
-      document.getElementById('pref-email').checked = !!prefs.email;
-      document.getElementById('pref-quiet').checked = !!(prefs.quietHours && prefs.quietHours.enabled);
-      if (prefs.quietHours) {
-        document.getElementById('pref-start').value = prefs.quietHours.start || '22:00';
-        document.getElementById('pref-end').value = prefs.quietHours.end || '07:00';
-      }
-    })();
-    document.getElementById('prefs-save').addEventListener('click', async () => {
-      const body = {
-        inApp: document.getElementById('pref-inapp').checked,
-        email: document.getElementById('pref-email').checked,
-        quietHours: {
-          enabled: document.getElementById('pref-quiet').checked,
-          start: document.getElementById('pref-start').value,
-          end: document.getElementById('pref-end').value
-        }
-      };
-      const res = await fetch('/api/auth/profile/prefs', {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-      });
-      const out = await res.json();
-      showMsg(res.ok ? 'success' : 'error', out.message || out.error || 'Failed to save preferences.');
     });
 
     async function removeResearch(id) {

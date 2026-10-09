@@ -3,7 +3,9 @@
 //   POST /api/profile/phone/verify-code
 //   the shared PH number rules (server/lib/phone.js)
 //   the SMS wrapper + DEV mode (server/lib/sms.js)
-//   the browser helpers behind the code boxes (public/assets/js/phone-field.js)
+//
+// The profile page no longer offers the Send-code flow, but the API and the
+// SMS wrapper are still here and still tested.
 //
 // Run: npm run test:phone
 import test from 'node:test';
@@ -13,14 +15,6 @@ import bcrypt from 'bcryptjs';
 import { createPhoneVerificationRouter } from '../phone-verification.js';
 import { normalizePhone, maskPhone, phoneNationalDigits } from '../lib/phone.js';
 import { sendSms, smsProviderInfo } from '../lib/sms.js';
-import {
-  normalizePhone as clientNormalizePhone,
-  phoneNationalDigits as clientNationalDigits,
-  maskPhone as clientMaskPhone,
-  splitCode,
-  formatClock,
-  describeRetry
-} from '../../public/assets/js/phone-field.js';
 
 const FIXED_CODE = '246813';
 
@@ -454,26 +448,12 @@ test('verification codes are hashed with bcrypt and never stored in clear', asyn
 });
 
 // ---------------------------------------------------------------
-// Shared number rules + browser helpers
+// Shared number rules
 // ---------------------------------------------------------------
 test('phone helpers normalize, mask and format consistently', () => {
   assert.equal(normalizePhone('09171234567'), '+639171234567');
   assert.equal(maskPhone('+639171234567'), '+63 917 *** 4567');
   assert.equal(phoneNationalDigits('+639171234567'), '9171234567');
-  assert.equal(clientNormalizePhone('09171234567'), normalizePhone('09171234567'));
-  assert.equal(clientNationalDigits('09171234567'), '9171234567');
-  assert.equal(clientMaskPhone('+639171234567'), maskPhone('+639171234567'));
-
-  assert.deepEqual(splitCode(' 12 34 56 '), ['1', '2', '3', '4', '5', '6']);
-  assert.deepEqual(splitCode('1234567890'), ['1', '2', '3', '4', '5', '6']);
-  assert.deepEqual(splitCode(''), []);
-  assert.equal(formatClock(42), '0:42');
-  assert.equal(formatClock(252), '4:12');
-  assert.equal(formatClock(-5), '0:00');
-  assert.equal(describeRetry(42), '42 seconds');
-  assert.equal(describeRetry(60), '1 minute');
-  assert.equal(describeRetry(90), '2 minutes');
-  assert.equal(describeRetry(3900), '1 hour 5 minutes');
 });
 
 // ---------------------------------------------------------------
