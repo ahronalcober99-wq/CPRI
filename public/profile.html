@@ -64,9 +64,10 @@
                     <label for="contactNumber">Contact Number</label>
                     <div class="phone-field">
                       <span class="phone-prefix" aria-hidden="true">+63</span>
-                      <input type="tel" id="contactNumber" name="contactNumber" inputmode="tel"
-                             autocomplete="tel" placeholder="917 123 4567">
+                      <input type="tel" id="contactNumber" name="contactNumber" inputmode="numeric" maxlength="10" placeholder="9123456789">
                     </div>
+                    <div id="phone-error" style="color:#b23b32; font-size: 0.8rem; display:none; margin-top:5px;"></div>
+                  </div>
                   </div>
                 </div>
                 <div class="form-group">
@@ -204,9 +205,44 @@
       });
     }
 
+    // Contact number validation
+    const contactInput = document.getElementById('contactNumber');
+    const phoneError = document.getElementById('phone-error');
+
+    function validatePhone() {
+        // Alisin agad ang kahit anong letter, space, o symbol
+        let val = contactInput.value.replace(/\D/g, ''); 
+
+        // 4. Normalize (tanggalin ang "+63" o ang leading "0")
+        if (val.startsWith('63')) val = val.substring(2);
+        else if (val.startsWith('0')) val = val.substring(1);
+        
+        // 2. Eksaktong 10 digits (truncate)
+        if (val.length > 10) val = val.substring(0, 10);
+        
+        contactInput.value = val;
+        
+        // 3. Dapat magsimula sa 9
+        if (val.length === 10 && val.startsWith('9')) {
+            phoneError.style.display = 'none';
+            contactInput.style.borderColor = '';
+            return true;
+        } else {
+            phoneError.textContent = "Contact number must be 10 digits and start with 9 (e.g., 9123456789).";
+            phoneError.style.display = 'block';
+            contactInput.style.borderColor = '#b23b32';
+            return false;
+        }
+    }
+    contactInput.addEventListener('input', validatePhone);
+
     // Save profile details
     document.getElementById('profile-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (!validatePhone()) {
+          showMsg('error', 'Please fix the contact number.');
+          return;
+      }
       const data = Object.fromEntries(new FormData(e.target).entries());
       const res = await fetch('/api/auth/profile', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)

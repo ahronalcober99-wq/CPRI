@@ -908,19 +908,18 @@ router.put('/profile', requireAuth, async (req, res) => {
   if (department !== undefined) changes.department = String(department).trim();
   if (researchInterests !== undefined) changes.researchInterests = String(researchInterests).trim();
   if (contactNumber !== undefined) {
+    let trimmed = String(contactNumber).trim().replace(/\D/g, '');
+    if (trimmed.startsWith('63')) trimmed = trimmed.substring(2);
+    if (trimmed.startsWith('0')) trimmed = trimmed.substring(1);
+    if (!/^9\d{9}$/.test(trimmed)) return res.status(400).json({ error: 'Contact number must be 10 digits and start with 9 (e.g., 9123456789).' });
+
     const current = await get('SELECT contactNumber FROM users WHERE id = ?', [req.session.userId]);
     if (!current) return res.status(401).json({ error: 'Not authenticated.' });
-    const trimmed = String(contactNumber).trim();
-    if (phoneChanged(current.contactNumber, contactNumber)) {
-      // The verified flag is never set from here — only the SMS flow can do
-      // that — so a changed number stays unverified until it is confirmed again.
+    if (phoneChanged(current.contactNumber, trimmed)) {
       changes.phone_verified = 0;
       changes.phone_verified_at = null;
       changes.contactNumber = trimmed;
     } else {
-      // Same number in a different notation (the form shows the local digits
-      // while the verified record stores +63…): keep the canonical E.164 form so
-      // a verified number never drifts between shapes.
       changes.contactNumber = normalizePhone(trimmed) || trimmed;
     }
   }
