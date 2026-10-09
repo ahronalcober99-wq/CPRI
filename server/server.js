@@ -397,6 +397,18 @@ async function readContentEvents() {
   return events;
 }
 
+// Add this endpoint
+app.get('/health', async (req, res) => {
+  const dbName = process.env.DB_NAME;
+  try {
+    // Only check if it connects
+    await testConnection(); // This reuses the logic from db.js
+    res.json({ server: 'ok', db: 'up', dbName });
+  } catch (err) {
+    res.json({ server: 'ok', db: 'down', dbName });
+  }
+});
+
 async function writeContentEvents(events) {
   const filePath = join(DATA_DIR, 'events.json');
   const tempPath = `${filePath}.${randomUUID()}.tmp`;

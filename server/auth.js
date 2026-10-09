@@ -7,7 +7,12 @@ import { randomBytes, randomUUID } from 'crypto';
 import { promises as fs, existsSync } from 'fs';
 import { spawn } from 'child_process';
 import { sendResetEmail, sendVerificationEmail } from './lib/mail.js';
-import { all, get, run, insert, update, remove } from './server/db/queries.js';
+import { all, get, run, insert, update, remove } from './db/queries.js';
+import { notify } from './notifications.js';
+import { addLog } from './audit.js';
+import { normalizeUsername, validateUsername } from './utils/username.js';
+import { normalizePhone } from './lib/phone.js';
+
 import { notify } from './notifications.js';
 import { addLog } from './audit.js';
 import { normalizeUsername, validateUsername } from './utils/username.js';
