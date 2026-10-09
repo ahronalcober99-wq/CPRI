@@ -359,18 +359,18 @@
       if (!res.ok) { accessDenied.style.display = 'block'; return; }
       const { summary } = await res.json();
       document.getElementById('dashboard-summary').innerHTML = [
-        { label: 'Total Submitted Research', value: summary.totalSubmissions, i:'bi-send' },
-        { label: 'Total Approved Researches', value: summary.approvedResearches, i:'bi-check2-circle' },
-        { label: 'Total Rejected Researches', value: summary.rejectedResearches, i:'bi-x-circle' },
-        { label: 'Total Archived Researches', value: summary.archivedResearches, i:'bi-archive' },
-        { label: 'Total Published Papers', value: summary.publishedPapers, i:'bi-journal-richtext' },
-        { label: 'Total Ethics Applications', value: summary.ethicsApplications, i:'bi-shield-check' },
-        { label: 'Total Innovation Projects', value: summary.innovationProjects, i:'bi-lightbulb' },
-        { label: 'Total Active Users', value: summary.activeUsers, i:'bi-people' }
-      ].map(s => `<div class="kpi">
+        { label: 'Total Submitted Research', value: summary.totalSubmissions, i:'bi-send', href:'submissions.html' },
+        { label: 'Total Approved Researches', value: summary.approvedResearches, i:'bi-check2-circle', href:'submissions.html' },
+        { label: 'Total Rejected Researches', value: summary.rejectedResearches, i:'bi-x-circle', href:'submissions.html' },
+        { label: 'Total Archived Researches', value: summary.archivedResearches, i:'bi-archive', href:'submissions.html' },
+        { label: 'Total Published Papers', value: summary.publishedPapers, i:'bi-journal-richtext', href:'publications.html' },
+        { label: 'Total Ethics Applications', value: summary.ethicsApplications, i:'bi-shield-check', href:'ethics.html' },
+        { label: 'Total Innovation Projects', value: summary.innovationProjects, i:'bi-lightbulb', href:'innovation-extension.html' },
+        { label: 'Total Active Users', value: summary.activeUsers, i:'bi-people', href:'#users' }
+      ].map(s => `<a class="kpi" href="${s.href}">
         <span class="k-ic"><i class="bi ${s.i}"></i></span>
         <div><div class="k-v">${s.value}</div><div class="k-l">${s.label}</div></div>
-      </div>`).join('');
+      </a>`).join('');
       return summary;
     }
 
