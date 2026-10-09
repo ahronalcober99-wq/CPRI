@@ -237,7 +237,9 @@ const CPRI = (() => {
     // the console via the Dashboard auth item, so buildMobileNav skips desktopOnly.
     const nav = SITE.baseNav.slice();
     if (isAdmin) {
-      nav.push({ label: 'Admin Console', href: 'admin-dashboard.html', icon: 'bi-speedometer2', desktopOnly: true });
+      // iconOnly: collapses to an icon pill below 1500px (CSS .nav-icon-only)
+      // so the nav row fits at 1366px/100% zoom; label stays as tooltip + aria-label.
+      nav.push({ label: 'Admin Console', href: 'admin-dashboard.html', icon: 'bi-speedometer2', desktopOnly: true, iconOnly: true });
     }
     // Avatar photo (Google OAuth URL or uploaded file) + display name, used by
     // headerHtml to render the My Account circle as a photo when one exists.
@@ -299,8 +301,11 @@ const CPRI = (() => {
           <ul class="cpri-submenu${panelCls}">${sub}</ul>
         </li>`;
       }
-      const isActive = item.href === active ? ' class="active"' : '';
-      return `<li><a href="${item.href}"${isActive}>${icon}<span>${item.label}</span></a></li>`;
+      const classes = [item.iconOnly ? 'nav-icon-only' : '', item.href === active ? 'active' : ''].filter(Boolean).join(' ');
+      const clsAttr = classes ? ` class="${classes}"` : '';
+      // Icon-only items keep an accessible name + native tooltip via title.
+      const tipAttr = item.iconOnly ? ` title="${item.label}" aria-label="${item.label}"` : '';
+      return `<li><a href="${item.href}"${clsAttr}${tipAttr}>${icon}<span>${item.label}</span></a></li>`;
     }).join('');
 
     const loggedIn = navItems.auth.some(a => a.action === 'logout');
@@ -874,14 +879,21 @@ const CPRI = (() => {
     // in-app notifications (bell + settings gear)
     initNotifications();
 
-    // mobile offcanvas
+    // mobile offcanvas — below 1200px this hamburger carries all nav links,
+    // so it must be a proper disclosure: aria-expanded tracks state, Escape
+    // closes it and returns focus to the toggle (keyboard operable).
     const offBtn = document.getElementById('nav-offcanvas');
     const off = document.getElementById('mobileOff');
     if (offBtn && off) {
-      offBtn.addEventListener('click', () => off.classList.add('open'));
+      const openOff = () => { off.classList.add('open'); offBtn.setAttribute('aria-expanded', 'true'); };
+      const closeOff = () => { off.classList.remove('open'); offBtn.setAttribute('aria-expanded', 'false'); offBtn.focus(); };
+      offBtn.setAttribute('aria-controls', 'mobileOff');
+      offBtn.setAttribute('aria-expanded', 'false');
+      offBtn.addEventListener('click', openOff);
       const moClose = document.getElementById('moClose');
-      if (moClose) moClose.addEventListener('click', () => off.classList.remove('open'));
-      off.addEventListener('click', (e) => { if (e.target === off) off.classList.remove('open'); });
+      if (moClose) moClose.addEventListener('click', closeOff);
+      off.addEventListener('click', (e) => { if (e.target === off) closeOff(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && off.classList.contains('open')) closeOff(); });
     }
     // Bottom sheet ("More") — slides up from the bottom with a blurred backdrop.
     const bnMenu = document.getElementById('bnMenu');
