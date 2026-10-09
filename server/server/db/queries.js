@@ -40,18 +40,33 @@ function toDbParams(params) {
 }
 
 export async function all(sql, params = []) {
-  const [rows] = await pool.query(sql, toDbParams(params));
-  return rows.map(parseRow);
+  try {
+    const [rows] = await pool.query(sql, toDbParams(params));
+    return rows.map(parseRow);
+  } catch (err) {
+    err.message = '[db] Query failed: ' + err.message;
+    throw err;
+  }
 }
 
 export async function get(sql, params = []) {
-  const [rows] = await pool.query(sql, toDbParams(params));
-  return parseRow(rows[0] || null);
+  try {
+    const [rows] = await pool.query(sql, toDbParams(params));
+    return parseRow(rows[0] || null);
+  } catch (err) {
+    err.message = '[db] Query failed: ' + err.message;
+    throw err;
+  }
 }
 
 export async function run(sql, params = []) {
-  const [result] = await pool.query(sql, toDbParams(params));
-  return result;
+  try {
+    const [result] = await pool.query(sql, toDbParams(params));
+    return result;
+  } catch (err) {
+    err.message = '[db] Query failed: ' + err.message;
+    throw err;
+  }
 }
 
 export async function insert(table, obj) {

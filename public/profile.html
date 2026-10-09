@@ -1,1 +1,36 @@
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Profile | CPRI</title>
+</head>
+<body>
+    <div id="app">
+        <h1>User Profile</h1>
+        <div id="profile-container"></div>
+        <div id="error-message" style="display:none; color:red; margin-top:20px;"></div>
+    </div>
+    <script>
+        async function loadProfile() {
+            try {
+                const response = await fetch('/api/profile');
+                if (!response.ok) throw new Error('Failed to load profile');
+                const data = await response.json();
+                document.getElementById('profile-container').innerText = JSON.stringify(data);
+            } catch (err) {
+                const errDiv = document.getElementById('error-message');
+                errDiv.style.display = 'block';
+                errDiv.innerText = 'Can\'t load your profile right now. Try again later.';
+            }
+        }
+        loadProfile();
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Unhandled rejection:', event.reason);
+            const errDiv = document.getElementById('error-message');
+            errDiv.style.display = 'block';
+            errDiv.innerText = 'A critical error occurred. Please try again.';
+        });
+    </script>
+</body>
+</html>
