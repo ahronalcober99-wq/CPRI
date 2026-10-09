@@ -4,20 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>CPRI — Mobile Preview</title>
+  <link rel="icon" type="image/png" href="/images/cdsga-logo.png">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       min-height: 100vh;
       display: flex; flex-direction: column; align-items: center;
-      background: radial-gradient(1200px 600px at 50% -10%, #1e3a8a 0%, #0f172a 55%, #0b1120 100%);
+      background: radial-gradient(1200px 600px at 50% -10%, #800000 0%, #240000 55%, #1a0505 100%);
       color: #fff; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       padding: 28px 16px 48px;
     }
     .topbar { width: 100%; max-width: 560px; text-align: center; margin-bottom: 22px; }
     .topbar h1 { font-size: 1.15rem; font-weight: 800; letter-spacing: .02em; }
-    .topbar h1 span { color: #2dd4bf; }
+    .topbar h1 span { color: #d9a82b; }
     .topbar p { margin-top: 6px; font-size: .82rem; color: rgba(255,255,255,.65); }
-    .topbar a { color: #2dd4bf; text-decoration: none; border-bottom: 1px dashed rgba(45,212,191,.5); }
+    .topbar a { color: #d9a82b; text-decoration: none; border-bottom: 1px dashed rgba(217,168,43,.5); }
     .topbar a:hover { color: #5eead4; }
     /* phone frame */
     .phone {
@@ -25,13 +26,13 @@
       height: 760px; max-height: 82vh;
       border-radius: 42px;
       background: #000;
-      border: 8px solid #1c2333;
+      border: 8px solid #2a0d0d;
       box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.08), inset 0 0 0 1px rgba(255,255,255,.06);
       position: relative; overflow: hidden;
     }
     .notch {
       position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-      width: 120px; height: 26px; border-radius: 999px; background: #0b1120;
+      width: 120px; height: 26px; border-radius: 999px; background: #1a0505;
       z-index: 20;
     }
     .phone iframe {

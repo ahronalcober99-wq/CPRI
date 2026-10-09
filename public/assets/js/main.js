@@ -331,8 +331,8 @@ const CPRI = (() => {
       <div class="cpri-nav${solid}">
         <div class="container-xl nav-inner">
           <a class="cpri-brand" href="index.html">
-            <span class="logo">C</span>
-            <span>${SITE.shortName}<small>${SITE.name}</small></span>
+            <img class="logo" src="/images/cdsga-logo.png" alt="Colegio de San Gabriel Arcangel seal">
+            <span>${SITE.shortName}<small>${SITE.name}</small><small class="cpri-school">Colegio de San Gabriel Arcangel, Inc.</small></span>
           </a>
           <button class="cpri-nav-toggle" aria-label="Toggle navigation" aria-expanded="false"><i class="bi bi-list"></i></button>
           <ul class="cpri-nav-links">${links}</ul>
@@ -578,7 +578,7 @@ const CPRI = (() => {
         <a class="mo-guest-login" href="login.html"><i class="bi bi-person"></i>Login</a>
         <a class="mo-guest-register" href="register.html">Create account</a>
       </div>`;
-    off.innerHTML = `<div class="mo-head"><span class="cpri-brand" style="color:#fff"><span class="logo">C</span><span>CPRI</span></span>
+    off.innerHTML = `<div class="mo-head"><span class="cpri-brand" style="color:#fff"><img class="logo" src="/images/cdsga-logo.png" alt="Colegio de San Gabriel Arcangel seal"><span>CPRI</span></span>
       <button class="mo-close" id="moClose" aria-label="Close"><i class="bi bi-x-lg"></i></button></div>
       ${guestAuth}
       ${links}
@@ -624,7 +624,7 @@ const CPRI = (() => {
       ).join('');
       const head = loggedIn
         ? `<span class="ms-avatar">${avatarHtml(navItems.photo, navItems.name)}</span><div class="ms-id"><b>${escapeHtml(navItems.name || 'My Account')}</b><small>Account</small></div>`
-        : `<span class="ms-logo">C</span><div class="ms-id"><b>Explore CPRI</b><small>Quick access</small></div>`;
+        : `<img class="ms-logo" src="/images/cdsga-logo.png" alt="Colegio de San Gabriel Arcangel seal"><div class="ms-id"><b>Explore CPRI</b><small>Quick access</small></div>`;
       const accountRows = loggedIn
         ? `${isAdmin ? `<a class="ms-row" href="admin-dashboard.html"><i class="bi bi-speedometer2"></i>Dashboard</a>` : ''}
            <a class="ms-row" href="messages.html"><i class="bi bi-chat-left-text"></i>Messages</a>
@@ -1083,15 +1083,15 @@ const CPRI = (() => {
   function initDashChart() {
     const ctx = document.getElementById('dashChart').getContext('2d');
     const g = ctx.createLinearGradient(0, 0, 0, 120);
-    g.addColorStop(0, 'rgba(20,184,166,.35)'); g.addColorStop(1, 'rgba(20,184,166,0)');
+    g.addColorStop(0, 'rgba(217,168,43,.35)'); g.addColorStop(1, 'rgba(217,168,43,0)');
     new Chart(ctx, {
       type: 'line',
       data: { labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug'],
         datasets: [
-          { label:'Submissions', data:[18,24,30,28,35,42,38,46], borderColor:'#1E3A8A', backgroundColor:g, fill:true, tension:.4, borderWidth:2.5 },
-          { label:'Approvals', data:[15,20,26,24,30,38,33,42], borderColor:'#14B8A6', backgroundColor:'transparent', tension:.4, borderWidth:2.5 }
+          { label:'Submissions', data:[18,24,30,28,35,42,38,46], borderColor:'#800000', backgroundColor:g, fill:true, tension:.4, borderWidth:2.5 },
+          { label:'Approvals', data:[15,20,26,24,30,38,33,42], borderColor:'#D9A82B', backgroundColor:'transparent', tension:.4, borderWidth:2.5 }
         ] },
-      options: { plugins:{ legend:{ display:false } }, scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'rgba(100,116,139,.15)' } } }, responsive:true, maintainAspectRatio:false }
+      options: { plugins:{ legend:{ display:false } }, scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:'rgba(117,98,95,.15)' } } }, responsive:true, maintainAspectRatio:false }
     });
   }
 
@@ -1197,7 +1197,7 @@ const CPRI = (() => {
   }
 
   // ---- Global cursor glow ----
-  // A soft teal light trails the pointer behind the content (mouse devices
+  // A soft gold light trails the pointer behind the content (mouse devices
   // only), giving the whole site a subtle "live system" feel.
   function initCursorGlow() {
     if (!window.matchMedia('(hover: hover)').matches) return;

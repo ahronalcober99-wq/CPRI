@@ -1,7 +1,7 @@
 (function (root) {
   const placeholderSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360">' +
-    '<rect width="640" height="360" fill="#e8edf2"/>' +
-    '<text x="320" y="188" text-anchor="middle" font-family="sans-serif" font-size="28" fill="#56616d">No image</text>' +
+    '<rect width="640" height="360" fill="#f0e6e4"/>' +
+    '<text x="320" y="188" text-anchor="middle" font-family="sans-serif" font-size="28" fill="#75625f">No image</text>' +
     '</svg>';
   const placeholderDataUrl = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(placeholderSvg);
 

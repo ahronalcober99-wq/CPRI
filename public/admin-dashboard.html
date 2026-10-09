@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Console | CPRI</title>
-  <meta name="theme-color" content="#0F172A">
+  <link rel="icon" type="image/png" href="/images/cdsga-logo.png">
+  <meta name="theme-color" content="#240000">
   <link rel="stylesheet" href="assets/css/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
@@ -30,7 +31,7 @@
           <!-- Sidebar -->
           <aside class="admin-side">
             <div class="as-brand">
-              <span class="logo">C</span>
+              <img class="logo" src="/images/cdsga-logo.png" alt="Colegio de San Gabriel Arcangel seal">
               <div><b>CPRI Admin</b><small>Control Center</small></div>
             </div>
             <div class="as-label">Operations</div>
@@ -279,7 +280,7 @@
        blocked in sandboxed iframes) -->
   <div class="confirm-overlay" id="pwdOverlay" hidden>
     <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="pwdTitle">
-      <div class="confirm-icon" style="background:linear-gradient(135deg,#1E3A8A,#14B8A6);"><i class="bi bi-key"></i></div>
+      <div class="confirm-icon" style="background:linear-gradient(135deg,#800000,#D9A82B);"><i class="bi bi-key"></i></div>
       <h3 id="pwdTitle">Reset Password</h3>
       <p id="pwdMsg" style="margin-bottom:14px;"></p>
       <div class="pwd-field">
@@ -465,28 +466,28 @@
       const subData = await subRes.json();
       const ethicsData = await ethicsRes.json();
 
-      const chartDefaults = { responsive: true, plugins: { legend: { labels: { color: '#5b6b7b' } } } };
-      const gridColor = '#e2e8f0';
+      const chartDefaults = { responsive: true, plugins: { legend: { labels: { color: '#75625f' } } } };
+      const gridColor = '#f7ecec';
 
       return [
         new Chart(document.getElementById('chart-dept'), {
           type: 'bar',
-          data: { labels: deptData.report.map(r => r.department), datasets: [{ label: 'Researches', data: deptData.report.map(r => r.count), backgroundColor: '#2a9d8f' }] },
-          options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } } } }
+          data: { labels: deptData.report.map(r => r.department), datasets: [{ label: 'Researches', data: deptData.report.map(r => r.count), backgroundColor: '#d9a82b' }] },
+          options: { ...chartDefaults, scales: { x: { ticks: { color: '#75625f' }, grid: { color: gridColor } }, y: { ticks: { color: '#75625f' }, grid: { color: gridColor } } } }
         }),
         new Chart(document.getElementById('chart-year'), {
           type: 'bar',
-          data: { labels: yearData.report.map(r => r.year), datasets: [{ label: 'Outputs', data: yearData.report.map(r => r.count), backgroundColor: '#13518f' }] },
-          options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } } } }
+          data: { labels: yearData.report.map(r => r.year), datasets: [{ label: 'Outputs', data: yearData.report.map(r => r.count), backgroundColor: '#800000' }] },
+          options: { ...chartDefaults, scales: { x: { ticks: { color: '#75625f' }, grid: { color: gridColor } }, y: { ticks: { color: '#75625f' }, grid: { color: gridColor } } } }
         }),
         new Chart(document.getElementById('chart-submissions'), {
           type: 'doughnut',
-          data: { labels: subData.report.map(r => r.status), datasets: [{ data: subData.report.map(r => r.count), backgroundColor: ['#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#264653', '#a8dadc'] }] },
+          data: { labels: subData.report.map(r => r.status), datasets: [{ data: subData.report.map(r => r.count), backgroundColor: ['#d9a82b', '#e9c46a', '#f4a261', '#e76f51', '#3F0000', '#ffe19a'] }] },
           options: chartDefaults
         }),
         new Chart(document.getElementById('chart-ethics'), {
           type: 'doughnut',
-          data: { labels: ethicsData.report.map(r => r.status), datasets: [{ data: ethicsData.report.map(r => r.count), backgroundColor: ['#457b9d', '#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#1d3557'] }] },
+          data: { labels: ethicsData.report.map(r => r.status), datasets: [{ data: ethicsData.report.map(r => r.count), backgroundColor: ['#800000', '#d9a82b', '#e9c46a', '#f4a261', '#e76f51', '#3d0000'] }] },
           options: chartDefaults
         })
       ];

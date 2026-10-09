@@ -4,7 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Analytics &amp; Reports | CPRI Admin</title>
-  <meta name="theme-color" content="#0F172A">
+  <link rel="icon" type="image/png" href="/images/cdsga-logo.png">
+  <meta name="theme-color" content="#240000">
   <link rel="stylesheet" href="assets/css/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
@@ -31,7 +32,7 @@
           <!-- Sidebar -->
           <aside class="admin-side">
             <div class="as-brand">
-              <span class="logo">C</span>
+              <img class="logo" src="/images/cdsga-logo.png" alt="Colegio de San Gabriel Arcangel seal">
               <div><b>CPRI Admin</b><small>Control Center</small></div>
             </div>
             <div class="as-label">Operations</div>
@@ -259,9 +260,9 @@
           <div><div class="k-v">${s.value}</div><div class="k-l">${s.label}</div></div>
         </div>`).join('');
 
-      const chartDefaults = { responsive: true, plugins: { legend: { labels: { color: '#5b6b7b' } } } };
-      const gridColor = '#e2e8f0';
-      const PALETTE = ['#2a9d8f', '#e9c46a', '#f4a261', '#e76f51', '#457b9d', '#1d3557', '#a8dadc', '#264653'];
+      const chartDefaults = { responsive: true, plugins: { legend: { labels: { color: '#75625f' } } } };
+      const gridColor = '#f7ecec';
+      const PALETTE = ['#d9a82b', '#e9c46a', '#f4a261', '#e76f51', '#800000', '#3d0000', '#ffe19a', '#3F0000'];
 
       // ---- Submissions over time (line) ----
       const timeLabels = analytics.submissionsOverTime.map(m => m.label);
@@ -272,11 +273,11 @@
         data: {
           labels: timeLabels,
           datasets: [
-            { label: 'Submitted', data: timeCounts, borderColor: '#13518f', backgroundColor: 'rgba(19,81,143,.12)', fill: true, tension: .4 },
-            { label: 'Approved', data: timeApproved, borderColor: '#2a9d8f', backgroundColor: 'transparent', tension: .4 }
+            { label: 'Submitted', data: timeCounts, borderColor: '#800000', backgroundColor: 'rgba(128,0,0,.12)', fill: true, tension: .4 },
+            { label: 'Approved', data: timeApproved, borderColor: '#d9a82b', backgroundColor: 'transparent', tension: .4 }
           ]
         },
-        options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor }, beginAtZero: true } } }
+        options: { ...chartDefaults, scales: { x: { ticks: { color: '#75625f' }, grid: { color: gridColor } }, y: { ticks: { color: '#75625f' }, grid: { color: gridColor }, beginAtZero: true } } }
       });
 
       // ---- Category breakdown (doughnut) ----
@@ -291,16 +292,16 @@
       const programs = analytics.topPrograms || [];
       new Chart(document.getElementById('chart-programs'), {
         type: 'bar',
-        data: { labels: programs.map(p => p.program), datasets: [{ label: 'Submissions', data: programs.map(p => p.count), backgroundColor: '#2a9d8f' }] },
-        options: { ...chartDefaults, indexAxis: 'y', scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor }, beginAtZero: true } } }
+        data: { labels: programs.map(p => p.program), datasets: [{ label: 'Submissions', data: programs.map(p => p.count), backgroundColor: '#d9a82b' }] },
+        options: { ...chartDefaults, indexAxis: 'y', scales: { x: { ticks: { color: '#75625f' }, grid: { color: gridColor }, beginAtZero: true } } }
       });
 
       // ---- Department output (bar) ----
       const depts = analytics.departmentOutput || [];
       new Chart(document.getElementById('chart-departments'), {
         type: 'bar',
-        data: { labels: depts.map(d => d.name), datasets: [{ label: 'Outputs', data: depts.map(d => d.count), backgroundColor: '#13518f' }] },
-        options: { ...chartDefaults, scales: { x: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor } }, y: { ticks: { color: '#5b6b7b' }, grid: { color: gridColor }, beginAtZero: true } } }
+        data: { labels: depts.map(d => d.name), datasets: [{ label: 'Outputs', data: depts.map(d => d.count), backgroundColor: '#800000' }] },
+        options: { ...chartDefaults, scales: { x: { ticks: { color: '#75625f' }, grid: { color: gridColor } }, y: { ticks: { color: '#75625f' }, grid: { color: gridColor }, beginAtZero: true } } }
       });
 
       // ---- Tables ----
