@@ -13,11 +13,6 @@ import { addLog } from './audit.js';
 import { normalizeUsername, validateUsername } from './utils/username.js';
 import { normalizePhone } from './lib/phone.js';
 
-import { notify } from './notifications.js';
-import { addLog } from './audit.js';
-import { normalizeUsername, validateUsername } from './utils/username.js';
-import { normalizePhone } from './lib/phone.js';
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'profiles');
