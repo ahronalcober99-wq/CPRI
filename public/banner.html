@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CPRI Banner</title>
+  <style>
+    .cpri-banner {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      max-width: 700px;
+      min-height: 220px;
+      box-sizing: border-box;
+      padding: 20px 40px;
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(135deg, #4a1410 0%, #2a0a08 100%);
+      font-family: Arial, sans-serif;
+    }
+    .cpri-banner::before {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 0; 
+      height: 0; 
+      border-bottom: 65px solid #d9a21b; 
+      border-right: 65px solid transparent;
+      z-index: 1;
+    }
+    .cpri-logo-wrapper {
+      flex: 0 0 auto;
+      width: 140px;
+      height: 140px;
+      border-radius: 50%;
+      overflow: hidden;
+      margin-right: 35px;
+      z-index: 2;
+      background-color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .cpri-logo-wrapper img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover; 
+      display: block;
+    }
+    .cpri-banner-text {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      z-index: 2;
+      min-width: 0;
+    }
+    .cpri-banner-title {
+      font-weight: bold;
+      color: #ffffff;
+      margin: 0;
+      line-height: 1.3;
+      font-size: clamp(18px, 4vw, 28px);
+      white-space: normal;
+    }
+    .cpri-banner-subtitle {
+      font-weight: bold;
+      color: #e8b923;
+      margin: 12px 0 0 0;
+      line-height: 1.25;
+      font-size: clamp(14px, 2.5vw, 18px);
+      white-space: normal;
+    }
+    @media (max-width: 480px) {
+      .cpri-banner {
+        flex-direction: column;
+        text-align: center;
+        padding: 30px 20px;
+      }
+      .cpri-logo-wrapper {
+        margin-right: 0;
+        margin-bottom: 25px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="cpri-banner">
+    <div class="cpri-logo-wrapper">
+      <img src="/images/cpri-logo.jpg" alt="Colegio de San Gabriel Arcangel Seal">
+    </div>
+    <div class="cpri-banner-text">
+      <div class="cpri-banner-title">Center for Publication,</div>
+      <div class="cpri-banner-title">Research, and Innovation</div>
+      <div class="cpri-banner-subtitle">Colegio de San Gabriel Arcangel, Inc.</div>
+    </div>
+  </div>
+</body>
+</html>
