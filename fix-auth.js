@@ -1,0 +1,1 @@
+const fs = require('fs'); let c = fs.readFileSync('server/auth.js', 'utf8'); c = c.replace(/from \\'\\.\\/db\\/queries\\.js\\'/g, 'from \\'./server/db/queries.js\\''); fs.writeFileSync('server/auth.js', c);
