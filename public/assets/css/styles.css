@@ -858,22 +858,28 @@ img { max-width: 100%; display: block; }
 }
 /* Single flex row, never wrapping: at 1366px/100% zoom the header used to
    overflow and html/body overflow-x:hidden clipped the right-side buttons. */
-.cpri-nav .nav-inner { display: flex; flex-wrap: nowrap; align-items: center; gap: 18px; min-height: var(--nav-h); }
+.cpri-nav .nav-inner { display: flex; flex-wrap: nowrap; align-items: center; gap: 18px; min-height: var(--nav-h); position: relative; }
+/* Triangle in the bottom left of nav */
+.cpri-nav::before {
+  content: ""; position: absolute; bottom: 0; left: 0; width: 0; height: 0;
+  border-bottom: 24px solid var(--gold); border-right: 24px solid transparent; z-index: 10;
+}
 /* Brand may shrink (min-width:0) so the util buttons never get pushed
    off-screen; the text block caps the long subtitle and ellipsizes it. */
 .cpri-brand { display: flex; align-items: center; gap: 12px; color: #fff; font-family: var(--font-head); font-weight: 800; font-size: 1.18rem; flex: 0 1 auto; min-width: 0; }
-.cpri-brand > span { min-width: 0; max-width: clamp(140px, 20vw, 300px); }
+.cpri-brand > span { min-width: 0; max-width: auto; flex-shrink: 1; }
 .cpri-brand:hover { color: #fff; }
+.cpri-brand-title { display: block; line-height: 1.2; font-size: clamp(0.7rem, 2vw, 1.05rem); font-family: var(--font-head); white-space: normal; }
 .cpri-brand .logo {
-  width: 46px; height: 46px; border-radius: 50%; box-sizing: border-box;
+  width: 56px; height: 56px; border-radius: 50%; box-sizing: border-box;
   border: 2px solid var(--gold); object-fit: cover; display: block;
   background: var(--maroon-deep); box-shadow: 0 8px 22px rgba(217,168,43,.35);
 }
 /* Subtitle stays on one line; ellipsis instead of being hidden at 1366px. */
-.cpri-brand small { display: block; font-family: var(--font-body); font-weight: 500; font-size: .66rem; color: rgba(255,255,255,.7); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cpri-brand .cpri-school { display: block; font-family: var(--font-body); font-weight: 600; font-size: .6rem; color: var(--gold-soft); line-height: 1.2; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cpri-brand .cpri-school { display: block; font-family: var(--font-head); font-weight: 700; font-size: clamp(0.55rem, 1.2vw, 0.65rem); margin-top: 3px; color: var(--gold); line-height: 1.2; letter-spacing: .01em; white-space: normal; }
 @media (max-width: 520px) {
   .cpri-brand .cpri-school { display: none; }
+  .cpri-brand-title { line-height: 1.1; font-size: 0.75rem; }
 }
 
 /* Nav links take the remaining space and shrink via clamp() so the row fits

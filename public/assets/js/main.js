@@ -156,7 +156,7 @@ const CPRI = (() => {
 
   const SITE = {
     shortName: 'CPRI',
-    name: 'Center for Policy and Research Innovations',
+    name: 'Center for Publication, Research, and Innovation',
     baseNav: [
       { label: 'Home', href: 'index.html', icon: 'bi-house' },
       { label: 'About', icon: 'bi-info-circle', group: [
@@ -337,7 +337,7 @@ const CPRI = (() => {
         <div class="container-xl nav-inner">
           <a class="cpri-brand" href="index.html">
             <img class="logo" src="/images/cpri-logo.jpg" alt="Colegio de San Gabriel Arcangel seal">
-            <span>${SITE.shortName}<small>${SITE.name}</small><small class="cpri-school">Colegio de San Gabriel Arcangel, Inc.</small></span>
+            <span><span class="cpri-brand-title">Center for Publication,<br>Research, and Innovation</span><span class="cpri-school" style="color:#e8b923;">Colegio de San Gabriel Arcangel, Inc.</span></span>
           </a>
           <button class="cpri-nav-toggle" aria-label="Toggle navigation" aria-expanded="false"><i class="bi bi-list"></i></button>
           <ul class="cpri-nav-links">${links}</ul>
