@@ -376,6 +376,8 @@ img { max-width: 100%; display: block; }
 .btn-primary:hover { background: #a00000; border-color: #a00000; color: #fff; }
 .btn-gradient { background: var(--maroon); border: none; color: #fff; box-shadow: var(--shadow-accent); }
 .btn-gradient:hover { background: var(--maroon-hover); color: #fff; }
+.btn-register { background: #7a0000; border: none; color: #fff; box-shadow: var(--shadow-accent); }
+.btn-register:hover { background: #5a0000; color: #fff; }
 .btn-accent { background: var(--cpri-accent); border-color: var(--cpri-accent); color: #2a1416; }
 .btn-accent:hover { background: #a8831f; border-color: #a8831f; color: #2a1416; }
 .btn-navy { background: var(--cpri-primary); border-color: var(--cpri-primary); color: #fff; }
@@ -847,12 +849,12 @@ img { max-width: 100%; display: block; }
   padding: 0;
 }
 .cpri-nav.scrolled {
-  background: rgba(36,0,0,.86);
+  background: linear-gradient(135deg, #2a0a08, #4a1410);
   backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px);
   box-shadow: var(--shadow);
 }
 .cpri-nav.force-solid {
-  background: rgba(36,0,0,.96);
+  background: linear-gradient(135deg, #2a0a08, #4a1410);
   backdrop-filter: saturate(180%) blur(14px); -webkit-backdrop-filter: saturate(180%) blur(14px);
   box-shadow: var(--shadow);
 }
@@ -864,31 +866,37 @@ img { max-width: 100%; display: block; }
   content: ""; position: absolute; bottom: 0; left: 0; width: 0; height: 0;
   border-bottom: 24px solid var(--gold); border-right: 24px solid transparent; z-index: 10;
 }
-/* Brand may shrink (min-width:0) so the util buttons never get pushed
-   off-screen; the text block caps the long subtitle and ellipsizes it. */
-.cpri-brand { display: flex; align-items: center; gap: 12px; color: #fff; font-family: var(--font-head); font-weight: 800; font-size: 1.18rem; flex: 0 1 auto; min-width: 0; }
-.cpri-brand > span { min-width: 0; max-width: auto; flex-shrink: 1; }
-.cpri-brand:hover { color: #fff; }
-.cpri-brand-title { display: block; line-height: 1.2; font-size: clamp(0.7rem, 2vw, 1.05rem); font-family: var(--font-head); white-space: normal; }
-.cpri-brand .logo {
-  width: 56px; height: 56px; border-radius: 50%; box-sizing: border-box;
-  border: 2px solid var(--gold); object-fit: cover; display: block;
-  background: var(--maroon-deep); box-shadow: 0 8px 22px rgba(217,168,43,.35);
+/* Brand block fixed width on desktop, flexible shrinking on mobile */
+.cpri-brand { 
+  display: flex; align-items: center; gap: 12px; color: #fff; flex-shrink: 0; width: 260px;
+  position: relative; padding-right: 24px;
 }
-/* Subtitle stays on one line; ellipsis instead of being hidden at 1366px. */
-.cpri-brand .cpri-school { display: block; font-family: var(--font-head); font-weight: 700; font-size: clamp(0.55rem, 1.2vw, 0.65rem); margin-top: 3px; color: var(--gold); line-height: 1.2; letter-spacing: .01em; white-space: normal; }
+.cpri-brand::after {
+  content: ""; position: absolute; right: 0; top: 50%; transform: translateY(-50%); width: 1px; height: 50px; background: rgba(255,255,255,0.18);
+}
+.cpri-brand > span { display: block; }
+.cpri-brand:hover { color: #fff; }
+.cpri-brand-title { display: block; line-height: 1.25; font-size: clamp(12px, 2vw, 17px); font-weight: 700; white-space: nowrap; }
+.cpri-brand .logo {
+  width: clamp(48px, 6vw, 80px); height: clamp(48px, 6vw, 80px); border-radius: 50%; box-sizing: border-box;
+  border: 1px solid #d9a21b; object-fit: cover; display: block; flex-shrink: 0;
+  background: var(--maroon-deep);
+}
+/* Subtitle stays on one line */
+.cpri-brand .cpri-school { display: block; font-weight: 700; font-size: clamp(9px, 1.3vw, 12px); margin-top: 3px; color: #e8b923; line-height: 1.2; letter-spacing: .01em; white-space: nowrap; }
+
+/* Keep the full name visible at all sizes - overriding old hide rule */
 @media (max-width: 520px) {
-  .cpri-brand .cpri-school { display: none; }
-  .cpri-brand-title { line-height: 1.1; font-size: 0.75rem; }
+  .cpri-brand::after { height: 32px; right: -4px; }
+  .cpri-brand { padding-right: 12px; width: auto; }
 }
 
-/* Nav links take the remaining space and shrink via clamp() so the row fits
-   from 1200px up without clipping the action buttons. */
-.cpri-nav-links { display: flex; align-items: center; justify-content: center; gap: clamp(2px, .4vw, 6px); margin: 0; padding: 0; list-style: none; flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; }
+/* Nav links */
+.cpri-nav-links { display: flex; align-items: center; justify-content: center; gap: 28px; margin: 0; padding: 0; list-style: none; flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; }
 .cpri-nav-links > li > a, .cpri-group-label {
-  position: relative; display: inline-flex; align-items: center; gap: clamp(5px, .6vw, 8px);
-  color: rgba(255,255,255,.88); padding: 10px clamp(8px, 1vw, 12px); border-radius: 999px;
-  font-size: clamp(.8rem, .95vw, .94rem); font-weight: 500; white-space: nowrap; transition: color .2s ease, background .2s ease;
+  position: relative; display: inline-flex; align-items: center; gap: 8px;
+  color: rgba(255,255,255,.88); padding: 10px 12px; border-radius: 999px;
+  font-size: 15px; font-weight: 600; white-space: nowrap; transition: color .2s ease, background .2s ease;
 }
 .cpri-nav-links > li > a:hover, .cpri-group-label:hover { color: #fff; background: rgba(255,255,255,.08); }
 .cpri-nav-links > li > a.active, .cpri-group.active > .cpri-group-label { color: #fff; }
@@ -1477,7 +1485,7 @@ img { max-width: 100%; display: block; }
 /* ============================================================
    RESPONSIVE
    ============================================================ */
-@media (max-width: 1199px) {
+@media (max-width: 899px) {
   .partner-grid { grid-template-columns: repeat(4, 1fr) !important; }
   .cpri-nav-links { gap: 2px; }
 }
@@ -1518,7 +1526,7 @@ img { max-width: 100%; display: block; }
    drawer so the navbar row can never overflow horizontally — the full row
    only fits ≥1200px. The hamburger opens the offcanvas drawer (which carries
    the same links + Account section); the old inline accordion is retired. */
-@media (max-width: 1199px) {
+@media (max-width: 899px) {
   .cpri-nav-toggle { display: none; }
   .cpri-util { order: 2; }
   #nav-bell, #nav-settings, #nav-lang, #nav-a11y { display: none !important; }
@@ -1536,10 +1544,10 @@ img { max-width: 100%; display: block; }
 }
 
 /* Desktop: full horizontal nav — only shown where the whole row fits (≥1200px). */
-@media (min-width: 1200px) {
+@media (min-width: 900px) {
   .cpri-nav-toggle { display: none !important; }
   .mobile-nav-toggle { display: none !important; }
-  .cpri-nav-links { display: flex !important; position: static; flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding: 0; background: transparent; max-height: none; overflow: visible; visibility: visible; opacity: 1; transform: none; pointer-events: auto; transition: none; }
+  .cpri-nav-links { display: flex !important; position: static; flex-direction: row; align-items: center; justify-content: center; gap: 28px; padding: 0; background: transparent; max-height: none; overflow: visible; visibility: visible; opacity: 1; transform: none; pointer-events: auto; transition: none; }
   .cpri-nav-links > li { width: auto; }
   .cpri-group .cpri-submenu { display: block; position: absolute; visibility: hidden; opacity: 0; transform: translateY(10px); pointer-events: none; min-width: 320px; box-shadow: 0 24px 50px rgba(36,0,0,.16); padding: 14px; }
   /* The generic `display: block` + `min-width: 320px` above would collapse the
@@ -1569,8 +1577,7 @@ img { max-width: 100%; display: block; }
    Placed last so it wins over the tablet rules above. */
 @media (max-width: 575px) {
   .cpri-nav .nav-inner { gap: 8px; padding-left: 10px; padding-right: 10px; }
-  .cpri-brand { gap: 6px; font-size: .92rem; }
-  .cpri-brand .logo { width: 32px; height: 32px; border-radius: 50%; }
+  .cpri-brand { gap: 6px; }
   .cpri-util { gap: 5px; }
   .cpri-icon-btn { width: 36px; height: 36px; border-radius: 10px; font-size: .98rem; }
   /* Signed-in users keep their avatar in the header on phones too — sized to
@@ -1586,8 +1593,7 @@ img { max-width: 100%; display: block; }
    ~309px fully compacted, so nothing overflows even on old 320px devices. */
 @media (max-width: 359px) {
   .cpri-nav .nav-inner { gap: 6px; padding-left: 8px; padding-right: 8px; }
-  .cpri-brand { gap: 5px; font-size: .85rem; }
-  .cpri-brand .logo { width: 28px; height: 28px; border-radius: 50%; }
+  .cpri-brand { gap: 5px; }
   .cpri-util { gap: 4px; }
   .cpri-icon-btn { width: 32px; height: 32px; border-radius: 9px; font-size: .92rem; }
   .cpri-avatar { width: 32px; height: 32px; font-size: .78rem; }

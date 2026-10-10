@@ -325,7 +325,7 @@ const CPRI = (() => {
         ` : ''}<button class="cpri-icon-btn cpri-bell-mobile" id="nav-bell-m" aria-label="Notifications" title="Notifications"><i class="bi bi-bell"></i><span class="dot" id="notifBadgeM" style="display:none"></span></button><a class="cpri-avatar" href="account.html" aria-label="My account" title="My Account">${avatarInner}</a>`;
     } else {
       authHtml = navItems.auth.map(item => {
-        const cls = item.primary ? 'btn btn-gradient' : 'btn btn-outline-light';
+        const cls = item.primary ? 'btn btn-register' : 'btn btn-outline-light';
         return `<a href="${item.href}" class="${cls}">${item.label}</a>`;
       }).join('');
     }
