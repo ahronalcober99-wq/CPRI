@@ -479,6 +479,7 @@ const CPRI = (() => {
       buildMobileNav(active, navItems);
       initNav();
       initChrome(active);
+      initBottomNavKeyboard();
       initAdminSidebar();
       initSpotlight();
       initTilt();
@@ -645,6 +646,30 @@ const CPRI = (() => {
         <div class="ms-grid">${tiles}</div>
         ${loggedIn ? '<span class="ms-label">Account</span>' + accountRows : accountRows}`;
     }
+  }
+
+  // ---- Floating bottom nav vs the on-screen keyboard ----
+  // The tab bar floats over the page, so with the keyboard up it sat on top of
+  // the field being typed into (see register.html). Hide it while a field has
+  // focus and bring it back on blur; visualViewport covers the keyboard shrinking
+  // the viewport without a field holding focus (e.g. after a Done key).
+  function initBottomNavKeyboard() {
+    const nav = document.getElementById('bottomNav');
+    if (!nav) return;
+    const isField = el => !!el && /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
+    const keyboardOpen = () => {
+      const vv = window.visualViewport;
+      return !!vv && (window.innerHeight - vv.height) > 140;
+    };
+    const sync = () => nav.classList.toggle('kb-hidden', isField(document.activeElement) || keyboardOpen());
+    document.addEventListener('focusin', e => { if (isField(e.target)) nav.classList.add('kb-hidden'); });
+    document.addEventListener('focusout', e => {
+      if (!isField(e.target)) return;
+      // focusout fires before the next field's focusin — re-check on the next tick
+      // so moving between fields keeps the bar hidden instead of flickering.
+      setTimeout(sync, 80);
+    });
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', sync);
   }
 
   function initNav() {

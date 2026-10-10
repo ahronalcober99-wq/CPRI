@@ -113,14 +113,16 @@
           </div>
           <div class="form-group">
             <label for="email">Email *</label>
-            <div style="display:flex;gap:8px;">
-              <input type="email" id="email" name="email" required style="flex:1;">
+            <!-- .field-row: side-by-side from 600px up, stacked full-width on
+                 phones (see the .field-row rules in styles.css). -->
+            <div class="field-row">
+              <input type="email" id="email" name="email" required autocomplete="email" inputmode="email">
               <button type="button" class="btn btn-soft" id="send-code-btn">Send Verification Code</button>
             </div>
             <div class="form-message" id="verify-message" style="margin-top:8px;"></div>
             <div class="verify-row" id="verify-row" style="display:none;margin-top:10px;">
-              <div style="display:flex;gap:8px;">
-                <input type="text" id="verify-code" placeholder="Enter 6-digit code" inputmode="numeric" maxlength="6" style="flex:1;letter-spacing:4px;text-align:center;font-weight:600;">
+              <div class="field-row">
+                <input type="text" id="verify-code" placeholder="Enter 6-digit code" inputmode="numeric" maxlength="6" style="letter-spacing:4px;text-align:center;font-weight:600;" aria-label="6-digit verification code">
                 <button type="button" class="btn btn-primary" id="verify-btn">Verify</button>
               </div>
               <p class="form-note" style="margin-top:6px;">The code expires in 10 minutes.</p>
@@ -138,7 +140,9 @@
             <p class="form-note" style="margin-top:6px;">Verify your email first to choose an account type.</p>
           </div>
           <div class="form-group">
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+            <!-- .field-row--split: label left / small button right, stacked on
+                 phones so the label isn't squashed into a narrow column. -->
+            <div class="field-row field-row--split">
               <label for="password" style="margin:0;">Password * (min 8 characters)</label>
               <button type="button" class="btn btn-soft btn-sm" id="suggest-btn" title="Generate a strong password" style="padding:6px 12px;font-size:.78rem;white-space:nowrap;"><i class="bi bi-magic"></i> Suggest Strong Password</button>
             </div>

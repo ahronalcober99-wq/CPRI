@@ -582,6 +582,7 @@ img { max-width: 100%; display: block; }
   left: 10px; right: 10px;
   bottom: max(10px, env(safe-area-inset-bottom));
   z-index: 1250;
+  transition: opacity .2s ease, transform .2s ease, visibility .2s;
   align-items: flex-end;
   border-radius: 999px;
   background: color-mix(in srgb, var(--cpri-card) 84%, transparent);
@@ -591,6 +592,12 @@ img { max-width: 100%; display: block; }
   box-shadow: 0 14px 40px rgba(20,0,0,.28);
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
 }
+/* Keyboard up: the tab bar drops out of the way instead of covering the field
+   being typed into (toggled by initBottomNavKeyboard in main.js). The transform
+   transition makes it slide down and back instead of blinking out. */
+.bottom-nav { transition: opacity .22s ease, transform .26s ease, visibility .22s; }
+.bottom-nav.kb-hidden { opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(calc(100% + 24px)); }
+
 .bottom-nav a {
   flex: 1; position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -2000,6 +2007,48 @@ label { display: block; font-weight: 600; margin-bottom: 6px; color: var(--cpri-
      next to it down to one-letter columns (see .role-pick cards). */
   input:not([type="radio"]):not([type="checkbox"]), textarea, select { width: 100%; padding: 11px 14px; border: 1px solid var(--cpri-border); border-radius: 12px; font-family: var(--font-body); font-size: 1rem; background: var(--cpri-card); color: var(--cpri-text); }
 input:focus, textarea:focus, select:focus { outline: none; border-color: var(--cpri-secondary); box-shadow: 0 0 0 3px rgba(128,0,0,.15); }
+
+/* ---- Field rows: one field + its action button on the same line ----
+   The row is a flex row, so the flexible child owns the leftover space and the
+   button keeps its natural width. Without that, the button's own max-content
+   width ("Send Verification Code" = 242px) ate a 390px phone's whole row and
+   left the email input the ~50px of slack — about three characters of what you
+   were typing. */
+.field-row { display: flex; align-items: center; gap: 8px; }
+.field-row > * { min-width: 0; }                        /* a flex child can never be squeezed */
+.field-row input, .field-row select { flex: 1 1 0; }    /* takes the remaining space */
+.field-row .btn { flex: 0 0 auto; white-space: nowrap; } /* action keeps its natural width */
+.field-row--split { justify-content: space-between; }
+.field-row--split label { margin: 0; }
+
+/* A focused email field gets an unmistakable dark-red border so it is obvious
+   where you are typing. (Dark theme needs a lighter tint of the same hue —
+   #7a0000 on a near-black card is invisible.) */
+#register-form #email:focus { border-color: #7a0000; box-shadow: 0 0 0 3px rgba(122,0,0,.18); }
+[data-theme="dark"] #register-form #email:focus { border-color: #e0a49e; box-shadow: 0 0 0 3px rgba(224,164,158,.22); }
+
+/* Phones: one control per row — the field goes full width and the button drops
+   to its own full-width line beneath it. 16px stops iOS zooming the page when a
+   field takes focus (the fluid root font lands at 15.96px on a 390px screen). */
+@media (max-width: 599.98px) {
+  .field-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .field-row input, .field-row select { flex: 0 0 auto; width: 100%; }
+  .field-row .btn { width: 100%; justify-content: center; }
+  #register-form input:not([type="radio"]):not([type="checkbox"]),
+  #register-form select { font-size: 16px; min-height: 48px; padding: 13px 14px; }
+  #send-code-btn { background: #7a0000; border-color: #7a0000; color: #fff; }
+  #send-code-btn:hover { background: #5a0000; border-color: #5a0000; color: #fff; }
+  /* label row: the label keeps the full width, the small button sits under it */
+  .field-row--split { align-items: flex-start; gap: 8px; }
+  .field-row--split .btn { width: auto; }
+}
+
+/* Clearance for the floating bottom nav (98px tall incl. its inset), which
+   landed on the register form's last fields once the keyboard closed. */
+@media (max-width: 768px) {
+  .section:has(#register-form) { padding-bottom: 116px; }
+}
+
 /* Password reveal: press-and-hold the eye to see the value */
 .pwd-field { position: relative; }
 .pwd-field input { padding-right: 44px; }
