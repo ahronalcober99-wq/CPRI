@@ -336,7 +336,7 @@ const CPRI = (() => {
       <div class="cpri-nav${solid}">
         <div class="container-xl nav-inner">
           <a class="cpri-brand" href="index.html">
-            <img class="logo" src="/images/cdsga-logo.png" alt="Colegio de San Gabriel Arcangel seal">
+            <img class="logo" src="/images/cpri-logo.jpg" alt="Colegio de San Gabriel Arcangel seal">
             <span>${SITE.shortName}<small>${SITE.name}</small><small class="cpri-school">Colegio de San Gabriel Arcangel, Inc.</small></span>
           </a>
           <button class="cpri-nav-toggle" aria-label="Toggle navigation" aria-expanded="false"><i class="bi bi-list"></i></button>
@@ -583,7 +583,7 @@ const CPRI = (() => {
         <a class="mo-guest-login" href="login.html"><i class="bi bi-person"></i>Login</a>
         <a class="mo-guest-register" href="register.html">Create account</a>
       </div>`;
-    off.innerHTML = `<div class="mo-head"><span class="cpri-brand" style="color:#fff"><img class="logo" src="/images/cdsga-logo.png" alt="Colegio de San Gabriel Arcangel seal"><span>CPRI</span></span>
+    off.innerHTML = `<div class="mo-head"><span class="cpri-brand" style="color:#fff"><img class="logo" src="/images/cpri-logo.jpg" alt="Colegio de San Gabriel Arcangel seal"><span>CPRI</span></span>
       <button class="mo-close" id="moClose" aria-label="Close"><i class="bi bi-x-lg"></i></button></div>
       ${guestAuth}
       ${links}
@@ -629,7 +629,7 @@ const CPRI = (() => {
       ).join('');
       const head = loggedIn
         ? `<span class="ms-avatar">${avatarHtml(navItems.photo, navItems.name)}</span><div class="ms-id"><b>${escapeHtml(navItems.name || 'My Account')}</b><small>Account</small></div>`
-        : `<img class="ms-logo" src="/images/cdsga-logo.png" alt="Colegio de San Gabriel Arcangel seal"><div class="ms-id"><b>Explore CPRI</b><small>Quick access</small></div>`;
+        : `<img class="ms-logo" src="/images/cpri-logo.jpg" alt="Colegio de San Gabriel Arcangel seal"><div class="ms-id"><b>Explore CPRI</b><small>Quick access</small></div>`;
       const accountRows = loggedIn
         ? `${isAdmin ? `<a class="ms-row" href="admin-dashboard.html"><i class="bi bi-speedometer2"></i>Dashboard</a>` : ''}
            <a class="ms-row" href="messages.html"><i class="bi bi-chat-left-text"></i>Messages</a>
