@@ -1028,20 +1028,28 @@ const CPRI = (() => {
     window.addEventListener('resize', init);
   }
 
-  // ---- Typing animation ----
-  function typing() {
+  // ---- Rotating hero phrase ----
+  // This used to type one character at a time, so the line spent most of its
+  // life showing a fragment — "We advance incl…" is 4 characters into
+  // "inclusive education", which is what kept getting reported as cut-off text.
+  // It now swaps WHOLE phrases: every frame renders a complete phrase, the CSS
+  // fade (`.type-line.is-swapping`) covers the change, and the line's reserved
+  // height means nothing below it moves.
+  function rotateHeroPhrase() {
     const el = document.getElementById('typed');
     if (!el) return;
-    const words = ['evidence-based policy','public health systems','inclusive education','climate resilience','digital governance'];
-    let wi = 0, ci = 0, del = false;
-    function tick() {
-      const w = words[wi];
-      el.textContent = del ? w.slice(0, ci--) : w.slice(0, ci++);
-      if (!del && ci > w.length) { del = true; return setTimeout(tick, 1400); }
-      if (del && ci < 0) { del = false; wi = (wi+1) % words.length; ci = 0; }
-      setTimeout(tick, del ? 45 : 90);
-    }
-    tick();
+    const line = el.closest('.type-line') || el;
+    const phrases = ['evidence-based policy','public health systems','inclusive education','climate resilience','digital governance'];
+    let i = 0;
+    el.textContent = phrases[0];
+    setInterval(() => {
+      line.classList.add('is-swapping');
+      setTimeout(() => {
+        i = (i + 1) % phrases.length;
+        el.textContent = phrases[i];
+        line.classList.remove('is-swapping');
+      }, 340);
+    }, 3400);
   }
 
   // ---- Count-up statistics (CountUp.js or fallback) ----
@@ -1070,7 +1078,7 @@ const CPRI = (() => {
 
   // ---- Progress bars + rings (triggered on view) ----
   function initHeroExtras() {
-    typing();
+    rotateHeroPhrase();
     particles();
     // progress bars
     const bars = document.querySelectorAll('.gc-bar > span[data-w]');

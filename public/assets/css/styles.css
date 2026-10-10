@@ -1137,12 +1137,17 @@ img { max-width: 100%; display: block; }
 .cpri-hero p.lead .lead-rotator,
 .cpri-hero p.lead .lead-sub { display: block; }
 .hero-cta { margin-top: 32px; display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
-/* Typing line: the rotating phrase sits on its own line and is sized to its
-   content. The old `min-width: 21ch` reserved a 278px box for a 212px word —
-   that fixed box is what left the gap after "We advance" and read as clipped
-   text. min-height still reserves one full line, so nothing below the line
-   moves while it types/deletes. white-space: nowrap keeps a word whole. */
-.type-line { color: var(--cpri-accent); font-weight: 700; display: inline-block; min-height: 1.7em; max-width: 100%; white-space: nowrap; vertical-align: bottom; }
+/* Rotating phrase: sits on its own line, sized to its content (the old
+   `min-width: 21ch` reserved a 278px box for a 212px word — that fixed box left
+   the gap after "We advance"). min-height reserves one full line, so the content
+   below never moves. The script now swaps WHOLE phrases and this fade covers the
+   swap, so every frame shows a complete gold phrase — never "incl…". */
+.type-line {
+  color: var(--cpri-accent); font-weight: 700; display: inline-block;
+  min-height: 1.7em; max-width: 100%; white-space: nowrap; vertical-align: bottom;
+  transition: opacity .34s ease, transform .34s ease;
+}
+.type-line.is-swapping { opacity: 0; transform: translateY(6px); }
 .type-caret { display: inline-block; width: 3px; background: var(--cpri-accent); margin-left: 2px; animation: caret 1s step-end infinite; }
 @keyframes caret { 50% { opacity: 0; } }
 
@@ -2164,13 +2169,23 @@ a.kpi:focus-visible { outline: 3px solid var(--cpri-accent); outline-offset: 2px
    ============================================================ */
 /* ---- Hero: status badge ---- */
 .cpri-hero .hero-grid .reveal-up { text-align: center; }
+/* The pill now carries the school's full name instead of the short "est. 2014"
+   line. inline-flex grows with the text and nowrap keeps it on one line, so the
+   longer name widens the pill (padding stays around it) instead of wrapping or
+   being clipped. Pad slightly wider so the longer name isn't cramped. */
 .hero-badge {
   display: inline-flex; align-items: center; gap: 10px;
-  padding: 9px 18px; border-radius: 999px; margin-bottom: 26px;
+  padding: 9px 20px; border-radius: 999px; margin-bottom: 26px;
   background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.22);
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  font-size: .8rem; font-weight: 600; letter-spacing: .02em; color: rgba(255,255,255,.92);
+  font-size: .88rem; font-weight: 700; letter-spacing: .02em; color: rgba(255,255,255,.95);
+  white-space: nowrap; max-width: 100%;
   box-shadow: 0 10px 26px rgba(20,0,0,.18);
+}
+/* Phones: the school's full name is long, so step the badge type down rather
+   than let the pill run off a 320-390px screen. */
+@media (max-width: 600px) {
+  .hero-badge { font-size: clamp(.76rem, 3.1vw, .88rem); padding: 8px 16px; gap: 8px; }
 }
 .hero-badge .hb-dot {
   width: 8px; height: 8px; border-radius: 50%; background: #D9A82B;
@@ -2277,6 +2292,8 @@ a.kpi:focus-visible { outline: 3px solid var(--cpri-accent); outline-offset: 2px
   .cpri-hero .hero-bg::before, .cpri-hero h1 .hl,
   .hero-badge .hb-dot, .hero-chip, .hero-scroll .hs-mouse::after { animation: none !important; }
   .btn-gradient::after, .btn-accent::after { display: none; }
+  /* phrase swaps become instant (the words still rotate, just without motion) */
+  .type-line { transition: none !important; }
 }
 
 /* ============================================================
