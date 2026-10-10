@@ -33,7 +33,13 @@
           <div class="reveal-up">
             <span class="hero-badge"><span class="hb-dot"></span> University research center · est. 2014</span>
             <h1>Evidence that moves<br><span class="hl">policy &amp; society</span> forward</h1>
-            <p class="lead">We advance <span class="type-line"><span id="typed"></span><span class="type-caret">&nbsp;</span></span><br>through rigorous research, collaboration, and capability building for a more equitable and resilient society.</p>
+            <!-- Two clean centered lines: line 1 is the rotating phrase on its
+                 own line (so the word can never be clipped and its reserved
+                 height keeps line 2 from jumping), line 2 the sentence. -->
+            <p class="lead">
+              <span class="lead-rotator">We advance <span class="type-line"><span id="typed"></span><span class="type-caret" aria-hidden="true">&nbsp;</span></span></span>
+              <span class="lead-sub">through rigorous research, collaboration, and capability building for a more equitable and resilient society.</span>
+            </p>
             <div class="hero-cta">
               <a class="btn btn-gradient" href="research-agenda.html"><i class="bi bi-graph-up-arrow"></i> Explore Research</a>
               <a class="btn btn-outline-light" href="about.html"><i class="bi bi-info-circle"></i> About CPRI</a>

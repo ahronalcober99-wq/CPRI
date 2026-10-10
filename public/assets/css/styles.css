@@ -78,7 +78,10 @@
   --max-width: 1320px;
   --section-pad: clamp(40px, 6vw, 88px);
   --section-gap: clamp(40px, 6vw, 88px);
-  --nav-h: clamp(64px, 7vw, 80px);
+  /* Header bar height: ~100px on a desktop/laptop, where the brand's 64px seal
+     plus its two-line title need the room. Everything that used to hardcode
+     the old 80px bar (hero offset, drawer offset, sticky sidebars) reads this. */
+  --nav-h: clamp(72px, 7.2vw, 100px);
 
   --font-head: "Plus Jakarta Sans", "Space Grotesk", "Segoe UI", sans-serif;
   --font-body: "Inter", "Segoe UI", Roboto, Arial, sans-serif;
@@ -866,9 +869,15 @@ img { max-width: 100%; display: block; }
   content: ""; position: absolute; bottom: 0; left: 0; width: 0; height: 0;
   border-bottom: 24px solid var(--gold); border-right: 24px solid transparent; z-index: 10;
 }
-/* Brand block fixed width on desktop, flexible shrinking on mobile */
-.cpri-brand { 
-  display: flex; align-items: center; gap: 12px; color: #fff; flex-shrink: 0; width: 260px;
+/* Brand block: the fixed 340px left zone from the spec. The old 260px box was
+   NARROWER than its own content (64px seal + ~195px two-line title), so the
+   nowrap title spilled ~50px past the box and the "Home" link landed on top of
+   "Research, and Innovation". Fixed basis (never shrinks on desktop) means the
+   middle nav can never slide underneath the brand again. min-width is the
+   widest line + seal + divider, so the title can never be squeezed either. */
+.cpri-brand {
+  display: flex; align-items: center; gap: 12px; color: #fff;
+  flex: 0 1 340px; min-width: 296px;
   position: relative; padding-right: 24px;
 }
 .cpri-brand::after {
@@ -876,26 +885,61 @@ img { max-width: 100%; display: block; }
 }
 .cpri-brand > span { display: block; }
 .cpri-brand:hover { color: #fff; }
-.cpri-brand-title { display: block; line-height: 1.25; font-size: clamp(12px, 2vw, 17px); font-weight: 700; white-space: nowrap; }
+/* Title: exactly two lines, from the <br> in the markup (16px bold white).
+   The clamp() here was 2vw → 17px, which is what made the text wider than the
+   260px brand box and spill under the menu. */
+.cpri-brand-title {
+  display: block; font-size: 16px; line-height: 1.22; font-weight: 700;
+  color: #fff; white-space: nowrap;
+}
+/* Circular seal: 64px with a gold ring (border + halo). */
 .cpri-brand .logo {
-  width: clamp(48px, 6vw, 80px); height: clamp(48px, 6vw, 80px); border-radius: 50%; box-sizing: border-box;
-  border: 1px solid #d9a21b; object-fit: cover; display: block; flex-shrink: 0;
+  width: 64px; height: 64px; border-radius: 50%; box-sizing: border-box;
+  border: 2px solid var(--gold); box-shadow: 0 0 0 3px rgba(217,168,43,.18);
+  object-fit: cover; display: block; flex-shrink: 0;
   background: var(--maroon-deep);
 }
-/* Subtitle stays on one line */
-.cpri-brand .cpri-school { display: block; font-weight: 700; font-size: clamp(9px, 1.3vw, 12px); margin-top: 3px; color: #e8b923; line-height: 1.2; letter-spacing: .01em; white-space: nowrap; }
+/* School name: one line, 11px, gold. Its measured width is 197px, so it fits
+   the 340px brand with room to spare; overflow/ellipsis only ever kicks in as a
+   safety net below that. */
+.cpri-brand .cpri-school {
+  display: block; margin-top: 4px; color: #e8b923; font-size: 11px; font-weight: 700;
+  line-height: 1.2; letter-spacing: .01em; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
 
-/* Keep the full name visible at all sizes - overriding old hide rule */
-@media (max-width: 520px) {
-  .cpri-brand::after { height: 32px; right: -4px; }
-  .cpri-brand { padding-right: 12px; width: auto; }
+/* Short wordmark for phones only (hidden from tablet up). */
+.cpri-brand-short {
+  display: none; font-family: var(--font-head); font-size: 19px; font-weight: 800;
+  letter-spacing: .06em; line-height: 1; color: #fff;
+}
+
+/* Phones: a 2-line 16px title + the school line + the action row cannot share a
+   390px bar — the full name needs ~200px of text box and the five action
+   buttons need ~200px, which is why the nowrap title used to spill over the
+   search button. The bar shows the seal + the CPRI wordmark instead; the full
+   name returns at ≥768px (every tablet/desktop width). It stays in the footer,
+   the logo's alt text and the drawer heading. */
+@media (max-width: 767px) {
+  .cpri-brand { flex: 0 1 auto; min-width: 0; width: auto; padding-right: 12px; gap: 8px; }
+  .cpri-brand::after { height: 34px; right: -4px; }
+  .cpri-brand .logo { width: 48px; height: 48px; }
+  .cpri-brand-title { display: none; }
+  .cpri-brand .cpri-school { display: none; }
+  .cpri-brand-short { display: block; }
 }
 
 /* Nav links */
-.cpri-nav-links { display: flex; align-items: center; justify-content: center; gap: 28px; margin: 0; padding: 0; list-style: none; flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; }
+/* Nav links own the middle zone. The 28px gap from the spec is kept on wide
+   screens and only tightens (down to 10px) on small laptops, where a fixed
+   28px gap would push "Research" into the action buttons. */
+.cpri-nav-links { display: flex; align-items: center; justify-content: center; gap: clamp(10px, 1.45vw, 24px); margin: 0; padding: 0; list-style: none; flex: 1 1 auto; flex-wrap: nowrap; min-width: 0; }
+/* 15px semi-bold, vertically centered, never wrapping. Horizontal padding
+   tightens with the viewport so the longest label ("News & Events") can't
+   reach the icons on the right. */
 .cpri-nav-links > li > a, .cpri-group-label {
   position: relative; display: inline-flex; align-items: center; gap: 8px;
-  color: rgba(255,255,255,.88); padding: 10px 12px; border-radius: 999px;
+  color: rgba(255,255,255,.88); padding: 10px clamp(8px, .8vw, 11px); border-radius: 999px;
   font-size: 15px; font-weight: 600; white-space: nowrap; transition: color .2s ease, background .2s ease;
 }
 .cpri-nav-links > li > a:hover, .cpri-group-label:hover { color: #fff; background: rgba(255,255,255,.08); }
@@ -941,9 +985,12 @@ img { max-width: 100%; display: block; }
 
 /* Action buttons never shrink or disappear on desktop — only sized down
    slightly with clamp() so the full row fits at 1200–1400px. */
-.cpri-util { display: flex; align-items: center; gap: clamp(5px, .7vw, 10px); flex: 0 0 auto; }
+.cpri-util { display: flex; align-items: center; gap: clamp(5px, .5vw, 8px); flex: 0 0 auto; }
+/* Action zone: every button keeps its own box (flex-shrink: 0) and only the
+   size breathes (42px → 34px) so all of settings/bell/search/theme/language/
+   avatar/accessibility stay on screen from 1200px up. */
 .cpri-icon-btn {
-  width: clamp(36px, 2.9vw, 42px); height: clamp(36px, 2.9vw, 42px); border-radius: 12px; border: none; cursor: pointer;
+  width: clamp(32px, 2.6vw, 36px); height: clamp(32px, 2.6vw, 36px); border-radius: 12px; border: none; cursor: pointer;
   background: rgba(255,255,255,.10); color: #fff; font-size: clamp(.95rem, 1.1vw, 1.05rem); display: grid;
   place-items: center; position: relative; flex-shrink: 0; transition: background .2s, transform .2s;
 }
@@ -1021,11 +1068,14 @@ img { max-width: 100%; display: block; }
   .notif-panel .np-delete-x { display: inline; }
 }
 
-.cpri-avatar { width: clamp(34px, 2.9vw, 42px); height: clamp(34px, 2.9vw, 42px); border-radius: 50%; background: var(--grad-avatar); color: #fff; display: grid; place-items: center; font-weight: 700; font-family: var(--font-head); cursor: pointer; border: 2px solid var(--gold); overflow: hidden; flex-shrink: 0; }
+.cpri-avatar { width: clamp(32px, 2.6vw, 36px); height: clamp(32px, 2.6vw, 36px); border-radius: 50%; background: var(--grad-avatar); color: #fff; display: grid; place-items: center; font-weight: 700; font-family: var(--font-head); cursor: pointer; border: 2px solid var(--gold); overflow: hidden; flex-shrink: 0; }
 /* Mobile-only bell button beside the profile avatar */
 .cpri-bell-mobile { display: none; }
 .cpri-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 50%; }
-.cpri-util > .btn { padding: 10px clamp(14px, 1.6vw, 22px); min-width: clamp(92px, 8.4vw, 116px); font-weight: 700; white-space: nowrap; }
+/* Login (white outline) + Register (dark red) pills: fixed enough to keep the
+   spec's pill look, narrow enough that the guest header (5 icons + 2 pills +
+   accessibility) still fits a 1200px laptop beside the 340px brand. */
+.cpri-util > .btn { padding: 10px clamp(12px, 1.3vw, 22px); min-width: clamp(78px, 7.2vw, 116px); font-weight: 700; white-space: nowrap; }
 .cpri-nav-toggle { display: none; background: none; border: none; color: #fff; font-size: 1.5rem; cursor: pointer; padding: 8px; flex-shrink: 0; }
 
 /* ============================================================
@@ -1037,7 +1087,11 @@ img { max-width: 100%; display: block; }
      below starts exactly at the fold (no dead white band on desktop). */
   min-height: 100vh; min-height: 100svh;
   display: flex; align-items: center; justify-content: center;
-  padding: calc(var(--nav-h) + 32px) 0 76px;
+  /* The 112px bottom gutter is reserved space for the scroll indicator
+     (a 24×38 "mouse" pinned 26px off the bottom edge). At 76px the content
+     column — the status pill — ran straight through it on short laptop
+     viewports (1366×620), which is the "stray circle" over ONLINE. */
+  padding: calc(var(--nav-h) + 32px) 0 112px;
   margin-top: calc(-1 * var(--nav-h));
 }
 .cpri-hero .hero-bg { position: absolute; inset: 0; z-index: 0; background: var(--grad-hero); }
@@ -1075,12 +1129,20 @@ img { max-width: 100%; display: block; }
   animation: hlShimmer 7s linear infinite;
 }
 @keyframes hlShimmer { to { background-position: 200% center; } }
-.cpri-hero p.lead { color: rgba(255,255,255,.85); font-size: 1.18rem; max-width: 640px; text-align: center; }
+/* Hero paragraph: two centered lines. Line 1 is the rotating phrase, line 2 the
+   sentence. max-width is the measure the sentence needs to stay on ONE line
+   (~1003px); the extra slack is invisible because the text is centered, and it
+   wraps gracefully on anything narrower. */
+.cpri-hero p.lead { color: rgba(255,255,255,.85); font-size: 1.18rem; max-width: 1060px; text-align: center; }
+.cpri-hero p.lead .lead-rotator,
+.cpri-hero p.lead .lead-sub { display: block; }
 .hero-cta { margin-top: 32px; display: flex; gap: 14px; flex-wrap: wrap; justify-content: center; }
-/* Reserve the typing line's box (longest word is "evidence-based policy" =
-   21ch) so typing/deleting never re-wraps the line and shifts the content
-   below it. min-height keeps the line box stable for the caret. */
-.type-line { color: var(--cpri-accent); font-weight: 700; display: inline-block; min-height: 1.7em; min-width: 21ch; white-space: nowrap; vertical-align: bottom; }
+/* Typing line: the rotating phrase sits on its own line and is sized to its
+   content. The old `min-width: 21ch` reserved a 278px box for a 212px word —
+   that fixed box is what left the gap after "We advance" and read as clipped
+   text. min-height still reserves one full line, so nothing below the line
+   moves while it types/deletes. white-space: nowrap keeps a word whole. */
+.type-line { color: var(--cpri-accent); font-weight: 700; display: inline-block; min-height: 1.7em; max-width: 100%; white-space: nowrap; vertical-align: bottom; }
 .type-caret { display: inline-block; width: 3px; background: var(--cpri-accent); margin-left: 2px; animation: caret 1s step-end infinite; }
 @keyframes caret { 50% { opacity: 0; } }
 
@@ -1487,15 +1549,15 @@ img { max-width: 100%; display: block; }
    ============================================================ */
 @media (max-width: 899px) {
   .partner-grid { grid-template-columns: repeat(4, 1fr) !important; }
-  .cpri-nav-links { gap: 2px; }
 }
 @media (max-width: 991px) {
   .cpri-hero .hero-grid { grid-template-columns: 1fr !important; gap: 40px; }
   .cpri-footer .f-grid { grid-template-columns: 1fr 1fr !important; }
   .cpri-nav.scrolled, .cpri-nav { background: rgba(36,0,0,.97); }
   .dash-preview .dp-body { grid-template-columns: 1fr !important; }
-  /* long brand subtitle pushes the nav row past phone widths — keep logo + short name */
-  .cpri-brand small { display: none; }
+  /* The brand subtitle is no longer hidden here: the brand is a fixed 340px
+     column now, so the school name (197px at 11px) fits every width ≥768px.
+     Only phones (≤767px) drop it — see the brand block rules at the top. */
 }
 
 @media (max-width: 768px) {
@@ -1522,18 +1584,37 @@ img { max-width: 100%; display: block; }
   .cpri-footer .footer-bottom { padding-bottom: 104px; }
   .cpri-footer .f-grid { grid-template-columns: 1fr !important; gap: 32px; }
 }
-/* Tablet & small laptop: collapse the full nav behind the mobile sidebar
-   drawer so the navbar row can never overflow horizontally — the full row
-   only fits ≥1200px. The hamburger opens the offcanvas drawer (which carries
-   the same links + Account section); the old inline accordion is retired. */
-@media (max-width: 899px) {
+/* Small laptop/tablet: collapse the nav links into the hamburger drawer.
+   Measured, not guessed — the full row is brand 340 + links ~450 + actions
+   ~400 + gutters ≈ 1250px, so it only fits from ~1200px up. The brand and
+   every action button stay in the bar; only the links move into the drawer
+   (keyboard operable, Escape closes, focus returns to the toggle). */
+@media (max-width: 1199px) {
+  /* Solid bar so the drawer, brand and icons stay readable over the hero. */
+  .cpri-nav, .cpri-nav.scrolled { background: rgba(36,0,0,.97); }
   .cpri-nav-toggle { display: none; }
-  .cpri-util { order: 2; }
+  /* The links are out of flow here, so the action row needs its own push to
+     stay pinned to the right edge of the three-zone bar (without it the whole
+     row packed left and left up to 200px of dead space on tablets). */
+  .cpri-util { order: 2; margin-left: auto; }
+  .mobile-nav-toggle { display: inline-flex; order: 3; }
+}
+
+/* Phones/small tablets (≤899px): trim the icon row to search + theme +
+   notifications + avatar/account + hamburger. Eight 34px buttons plus the
+   brand and the Login/Register pills do not share a 768px bar; wide screens
+   keep every button. */
+@media (max-width: 899px) {
   #nav-bell, #nav-settings, #nav-lang, #nav-a11y { display: none !important; }
   .cpri-util .cpri-icon-btn:not(.mobile-nav-toggle):not(#nav-search):not(#nav-theme):not(.cpri-bell-mobile) { display: none; }
   .cpri-bell-mobile { display: inline-flex; }
-  .mobile-nav-toggle { display: inline-flex; order: 3; }
   #nav-search, #nav-theme { display: inline-flex; }
+}
+
+/* The drawer itself: the same links (plus the Account section) as a vertical
+   panel under the bar. Hidden from layout (visibility/opacity/pointer-events)
+   until the hamburger opens it, so it can never sit on top of the header. */
+@media (max-width: 1199px) {
   .cpri-nav-links { position: absolute; top: var(--nav-h); left: 0; right: 0; flex-direction: column; align-items: stretch; gap: 0; background: var(--cpri-primary); padding: 12px 16px; z-index: 1050; max-height: calc(100vh - var(--nav-h)); overflow-y: auto; box-shadow: var(--shadow-lg); visibility: hidden; opacity: 0; transform: translateY(-8px); pointer-events: none; transition: opacity .35s ease, transform .35s ease, visibility .35s ease; }
   .cpri-nav-links.open { visibility: visible; opacity: 1; transform: none; pointer-events: auto; }
   .cpri-nav-links > li { width: 100%; }
@@ -1544,26 +1625,46 @@ img { max-width: 100%; display: block; }
 }
 
 /* Desktop: full horizontal nav — only shown where the whole row fits (≥1200px). */
-@media (min-width: 900px) {
+@media (min-width: 1200px) {
   .cpri-nav-toggle { display: none !important; }
   .mobile-nav-toggle { display: none !important; }
-  .cpri-nav-links { display: flex !important; position: static; flex-direction: row; align-items: center; justify-content: center; gap: 28px; padding: 0; background: transparent; max-height: none; overflow: visible; visibility: visible; opacity: 1; transform: none; pointer-events: auto; transition: none; }
+  .cpri-nav-links { display: flex !important; position: static; flex-direction: row; align-items: center; justify-content: center; gap: clamp(10px, 1.45vw, 24px); padding: 0; background: transparent; max-height: none; overflow: visible; visibility: visible; opacity: 1; transform: none; pointer-events: auto; transition: none; }
   .cpri-nav-links > li { width: auto; }
   .cpri-group .cpri-submenu { display: block; position: absolute; visibility: hidden; opacity: 0; transform: translateY(10px); pointer-events: none; min-width: 320px; box-shadow: 0 24px 50px rgba(36,0,0,.16); padding: 14px; }
   /* The generic `display: block` + `min-width: 320px` above would collapse the
      column layouts — re-assert grid AND the wider min-width for long menus
      (2-column flat + sectioned mega-menus), otherwise the panel shrinks to one
      narrow column again. */
-  .cpri-group .cpri-submenu.cols-2, .cpri-group .cpri-submenu.cols-sections { display: grid; min-width: 560px; }
-  .cpri-group.open .cpri-submenu { visibility: visible; opacity: 1; transform: none; pointer-events: auto; }
+  .cpri-group .cpri-submenu.cols-2, .cpri-group .cpri-submenu.cols-sections { display: grid; min-width: 560px; }  .cpri-group.open .cpri-submenu { visibility: visible; opacity: 1; transform: none; pointer-events: auto; }
 }
-/* Below 1500px: Admin Console collapses to an icon-only pill (label kept for
-   screen readers + native tooltip) to free ~110px in the nav row. */
-@media (max-width: 1499px) {
-  .cpri-nav-links .nav-icon-only > span { display: none; }
-  .cpri-nav-links .nav-icon-only { padding: 10px; }
-  .cpri-nav-links .nav-icon-only::after { left: 8px; right: 8px; }
+
+/* 1200–1299px is the one band where the full row is genuinely tight for a
+   SIGNED-OUT visitor (five icon buttons + Login + Register pills + the brand's
+   floor). Trim the nav's gaps/padding and the buttons a few px so the row still
+   fits at exactly 1200px — the spec's 28px gap and full-size buttons are kept
+   wherever there is room (≥1300px) — instead of collapsing 100px early.
+   Declared after the ≥1200px desktop block so it wins the cascade. */
+@media (min-width: 1200px) and (max-width: 1299px) {
+  .cpri-nav-links { gap: 10px; }
+  .cpri-nav-links > li > a, .cpri-group-label { padding-left: 6px; padding-right: 6px; }
+  .cpri-icon-btn, .cpri-avatar { width: 30px; height: 30px; font-size: .9rem; }
+  .cpri-util { gap: 4px; }
 }
+
+/* Nav labels are text-only, per the three-zone spec: the little leading icon
+   on each nav item costs ~25px per item (~100px across the row) and is exactly
+   what made "Research ▾" reach the settings button. Dropdown chevrons stay —
+   they are the affordance for the submenus. */
+.cpri-nav-links > li > a:not(.nav-icon-only) > i:not(.cpri-caret-icon),
+.cpri-group-label > i:not(.cpri-caret-icon) { display: none; }
+
+/* Admin Console is always the icon-only pill (label kept for screen readers +
+   native tooltip): with its label it needs ~115px the 1320px header container
+   does not have, even on a 1920px screen. Admins also get the same destination
+   from the dashboard icon in the action row. */
+.cpri-nav-links .nav-icon-only > span { display: none; }
+.cpri-nav-links .nav-icon-only { padding: 10px; }
+.cpri-nav-links .nav-icon-only::after { left: 8px; right: 8px; }
 /* Narrow desktop: the header keeps the brand subtitle (ellipsized) and all
    action buttons — shrinking via clamp() above replaced the old hide-them
    workaround, which is what made the subtitle "go missing" at 1366px. */
@@ -1571,6 +1672,22 @@ img { max-width: 100%; display: block; }
   .cpri-hero h1 { font-size: clamp(1.8rem, 6vw, 2.1rem); }
   .section-title { font-size: 1.9rem; }
 }
+/* Hero: under ~600px the two CTAs stack full width and the headline steps down,
+   so a 2-line headline can never collide with the buttons. */
+@media (max-width: 600px) {
+  .cpri-hero h1 { font-size: clamp(1.7rem, 8vw, 2.1rem); }
+  /* Smaller lead keeps the rotating phrase ("We advance evidence-based
+     policy" ≈ 339px at 1.18rem) inside a 320–390px screen without clipping. */
+  .cpri-hero p.lead { font-size: 1rem; }
+  .hero-cta { flex-direction: column; align-items: stretch; width: 100%; max-width: 340px; margin-left: auto; margin-right: auto; }
+  .hero-cta .btn { width: 100%; justify-content: center; }
+  /* The status pill's mono label wraps on phones; the page-wide
+     word-break: break-word was splitting "ONLINE" into "ONLIN / E". Wrap
+     between the groups instead and keep "● ONLINE" whole. */
+  .hero-status { flex-wrap: wrap; justify-content: center; row-gap: 2px; }
+  .hero-status .hs-live { flex: 0 0 auto; white-space: nowrap; }
+}
+
 /* Phones: the guest header (logo + search + theme + Login/Register + hamburger)
    needs ~410px, which overflows 360-414px screens and pushes the hamburger off.
    Compact the brand, icon buttons and auth pills so the whole row fits at 360px.
@@ -2083,10 +2200,11 @@ a.kpi:focus-visible { outline: 3px solid var(--cpri-accent); outline-offset: 2px
   0%, 100% { transform: translateY(0) rotate(-1deg); }
   50% { transform: translateY(-14px) rotate(1deg); }
 }
-/* Floating hero chips only fit where the headline column is narrow relative
-   to the viewport; below 1500px they overlapped the headline at 1366px/100%
-   zoom, so hide them there. */
-@media (max-width: 1499px) { .hero-chip { display: none; } }
+/* Floating hero chips: they are absolutely positioned 7% in from each edge, so
+   they need the viewport to be wide enough that the centered text column (the
+   hero paragraph is ~1003px wide as two clean lines) still clears them:
+   0.07W + 195 ≤ (W − 1003)/2 → W ≥ 1622px. Guarded at 1700px for margin. */
+@media (max-width: 1699px) { .hero-chip { display: none; } }
 
 /* ---- Hero: scroll indicator ---- */
 .hero-scroll {
@@ -2169,6 +2287,9 @@ a.kpi:focus-visible { outline: 3px solid var(--cpri-accent); outline-offset: 2px
 
 /* ---- Hero: system status readout ---- */
 .hero-status {
+  /* Pin the pill above the decorative layers (blobs, particle canvas, the
+     bottom scroll indicator) so nothing can ever paint over ONLINE. */
+  position: relative; z-index: 4;
   margin: 30px auto 0; display: inline-flex; align-items: center; gap: 10px;
   font-family: var(--font-mono); font-size: .73rem; letter-spacing: .1em;
   color: rgba(255,255,255,.72); text-transform: uppercase;

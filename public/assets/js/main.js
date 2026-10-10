@@ -337,7 +337,7 @@ const CPRI = (() => {
         <div class="container-xl nav-inner">
           <a class="cpri-brand" href="index.html">
             <img class="logo" src="/images/cpri-logo.jpg" alt="Colegio de San Gabriel Arcangel seal">
-            <span><span class="cpri-brand-title">Center for Publication,<br>Research, and Innovation</span><span class="cpri-school" style="color:#e8b923;">Colegio de San Gabriel Arcangel, Inc.</span></span>
+            <span><span class="cpri-brand-title">Center for Publication,<br>Research, and Innovation</span><span class="cpri-brand-short">CPRI</span><span class="cpri-school">Colegio de San Gabriel Arcangel, Inc.</span></span>
           </a>
           <button class="cpri-nav-toggle" aria-label="Toggle navigation" aria-expanded="false"><i class="bi bi-list"></i></button>
           <ul class="cpri-nav-links">${links}</ul>
