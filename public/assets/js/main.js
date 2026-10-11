@@ -393,8 +393,7 @@ const CPRI = (() => {
           </div>
           <div>
             <h4>Contact</h4>
-            <p><i class="bi bi-envelope"></i> cpri@university.edu<br>
-               <i class="bi bi-telephone"></i> +63 (2) 8123 4567</p>
+            <p><i class="bi bi-envelope"></i> cdsga.rpo2021@gmail.com</p>
           </div>
         </div>
         <div class="footer-bottom">

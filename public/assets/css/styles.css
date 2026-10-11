@@ -1525,6 +1525,24 @@ img { max-width: 100%; display: block; }
 .contact-row i { color: var(--cpri-secondary); font-size: 1.2rem; width: 24px; }
 .contact-row b { display: block; color: var(--cpri-text); font-family: var(--font-head); }
 
+/* ---- Homepage contact info card (the one beside the contact form) ----
+   With the Phone and Hours rows gone, three rows sat in a column far shorter
+   than the form next to them, leaving a dead gap under the last row. The card
+   now fills the column (height:100% — the column stretches to the form's height
+   because they share a Bootstrap row) and each row takes an equal share of the
+   extra height with its content centred, so the dividers stay evenly spaced.
+   Scoped by the modifier: the contact form uses the same .contact-card class,
+   and the contact page keeps its own layout. */
+.contact-card--info { display: flex; flex-direction: column; height: 100%; }
+.contact-card--info .contact-row { flex: 1 1 auto; align-items: center; }
+
+/* Email link: inherits the row's text colour and weight (the global `a` rule is
+   color:inherit / no underline), and only the hover picks up the brand colour.
+   --cpri-secondary is maroon in light mode and gold in dark, so the hover stays
+   visible on the card's near-black dark background. */
+.contact-mail { transition: color .18s ease; }
+.contact-mail:hover { color: var(--cpri-secondary); }
+
 .cpri-footer { background: var(--cpri-primary); color: #ffe19a; margin-top: 0; padding: 64px 0 0; position: relative; }
 .cpri-footer::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--accent-line); }
 .cpri-footer .f-grid { display: grid; grid-template-columns: 1.7fr repeat(3, 1fr); gap: 44px; }
