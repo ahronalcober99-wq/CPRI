@@ -2101,6 +2101,50 @@ textarea { resize: vertical; min-height: 140px; }
 
 .contact-card .contact-row { padding: 10px 0; }
 .contact-card .label { font-weight: 600; min-width: 110px; flex-shrink: 0; }
+
+/* ---- Profile edit: read-only vs editable fields ----
+   Read-only fields (Email, Account Type, Status) keep their gray card-style
+   background with a small "read-only" tag, so the user can tell they cannot be
+   changed from this page. Editable fields switch to a white background with a
+   maroon (#7a0000) border once Edit profile is clicked.
+   The inputs themselves reuse the site's global input/textarea/select rule (full
+   width, 11px/14px padding, 12px border-radius, Inter font); only the container
+   and the focus ring are specialised here.
+   Student Researcher Details is a separate section that is hidden for every other
+   account type, so non-students never see those fields at all. */
+.profile-fields { display: flex; flex-direction: column; }
+.field-row { display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--cpri-border); }
+.field-row:last-child { border-bottom: none; }
+.field-row > div { flex: 1 1 0; min-width: 0; }
+.field-label { display: block; font-weight: 600; margin-bottom: 6px; color: var(--cpri-text); font-family: var(--font-head); }
+.field-value { display: block; color: var(--cpri-text); word-break: break-word; }
+.read-only-field { background: var(--cpri-card); border-radius: 10px; padding: 10px 12px; border: 1px solid transparent; }
+.read-only-tag { margin-left: auto; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--cpri-muted); padding: 2px 6px; border-radius: 999px; background: rgba(128,0,0,.08); border: 1px solid rgba(128,0,0,.18); }
+.editable-field { background: var(--cpri-card); border-radius: 10px; padding: 10px 12px; border: 1px solid transparent; transition: background .15s, border-color .15s; }
+.editable-field.editing { background: #fff; border-color: #7a0000; }
+.editable-field.editing .field-label { color: #7a0000; }
+.editable-field.editing input:focus, .editable-field.editing textarea:focus, .editable-field.editing select:focus { outline: none; border-color: #7a0000; box-shadow: 0 0 0 3px rgba(122,0,0,.14); }
+
+/* card foot: buttons row — Edit/Save + Cancel + Log Out; Cancel is injected by
+   the page JS when edit mode opens so the markup stays source-of-truth for the
+   non-editing state. */
+.card-foot { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.card-foot #cancel-btn { flex: 0 0 auto; }
+
+/* ---- Student Researcher Details section ---- */
+.student-details-section { margin-top: 18px; border-top: 2px solid #7a0000; padding-top: 16px; }
+.field-section-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.student-details-title { margin: 0; font-size: 1.05rem; font-weight: 700; color: var(--cpri-text); font-family: var(--font-head); }
+.student-details-tag { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #fff; background: #e8b923; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+
+/* ---- Success + save-error message reuse ---- */
+.form-message.success { display: block; background: rgba(16,185,129,.12); color: #047857; border: 1px solid #bfe9e3; }
+
+/* ---- Responsive: stack the two-column student rows on small screens ---- */
+@media (max-width: 540px) {
+  .field-row > div { flex: 1 1 100%; }
+  .student-details-section { padding-left: 6px; padding-right: 6px; }
+}
 .empty-state { padding: 30px; text-align: center; color: var(--cpri-muted); background: var(--cpri-card); border-radius: var(--radius); border: 1px dashed var(--cpri-border); }
 .badge { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: .75rem; font-weight: 700; background: rgba(217,168,43,.14); color: #8a6d1f; margin-bottom: 10px; }
 

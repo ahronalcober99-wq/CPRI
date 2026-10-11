@@ -193,7 +193,14 @@ function fullProfile(u) {
     researchInterests: u.researchInterests || '',
     profilePhoto: u.profilePhoto || null,
     researches: u.researches || [],
-    prefs: u.user_prefs || DEFAULT_PREFS
+    prefs: u.user_prefs || DEFAULT_PREFS,
+    studentId: u.studentId || '',
+    yearLevel: u.yearLevel || '',
+    program: u.program || '',
+    section: u.section || '',
+    adviser: u.adviser || '',
+    researchTitle: u.researchTitle || '',
+    researchArea: u.researchArea || ''
   };
 }
 
@@ -901,31 +908,116 @@ function phoneChanged(currentValue, nextValue) {
   return String(currentValue ?? '').trim() !== String(nextValue ?? '').trim();
 }
 
-router.put('/profile', requireAuth, async (req, res) => {
-  const { fullName, department, contactNumber, researchInterests } = req.body || {};
-  const changes = {};
-  if (fullName !== undefined) changes.fullName = String(fullName).trim();
-  if (department !== undefined) changes.department = String(department).trim();
-  if (researchInterests !== undefined) changes.researchInterests = String(researchInterests).trim();
-  if (contactNumber !== undefined) {
-    let trimmed = String(contactNumber).trim().replace(/\D/g, '');
-    if (trimmed.startsWith('63')) trimmed = trimmed.substring(2);
-    if (trimmed.startsWith('0')) trimmed = trimmed.substring(1);
-    if (!/^9\d{9}$/.test(trimmed)) return res.status(400).json({ error: 'Contact number must be 10 digits and start with 9 (e.g., 9123456789).' });
+// Normalise a free-text contact number for storage: only digits, spaces, +, and
+// dashes are allowed; between 7 and 15 digits (covers PH mobile and landline
+// formats the user might enter). Returns the trimmed string on success or throws
+// a 400 with a friendly message.
+function normaliseContactNumber(raw) {
+  const s = String(raw).trim();
+  if (!s) return '';
+  if (!/^[-+0-9 ][-\+0-9 ]*$/.test(s)) {
+    throw new Error('Contact number may only contain digits, spaces, +, and -.');
+  }
+  const digits = s.replace(/[^\d]/g, '');
+  if (digits.length < 7 || digits.length > 15) {
+    throw new Error('Contact number must have between 7 and 15 digits.');
+  }
+  return s;
+}
 
-    const current = await get('SELECT contactNumber FROM users WHERE id = ?', [req.session.userId]);
-    if (!current) return res.status(401).json({ error: 'Not authenticated.' });
-    if (phoneChanged(current.contactNumber, trimmed)) {
+// The update endpoint is intentionally narrow: it can only change the fields that
+// the profile edit page exposes (fullName, department, contactNumber,
+// researchInterests, and — for Student Researchers only — the student fields).
+// Email, account type (role), username, and status are never writable here; those
+// live in registration / profile setup / admin user management instead.
+router.put('/profile', requireAuth, async (req, res) => {
+  const user = await get('SELECT * FROM users WHERE id = ?', [req.session.userId]);
+  if (!user) return res.status(401).json({ error: 'Not authenticated.' });
+
+  const changes = {};
+  const body = req.body || {};
+
+  // Fields everyone may edit.
+  if (body.fullName !== undefined) changes.fullName = String(body.fullName).trim() || '';
+  if (body.department !== undefined) {
+    const dept = String(body.department).trim();
+    if (dept.length > 120) return res.status(400).json({ error: 'Department must be 120 characters or fewer.' });
+    changes.department = dept;
+  }
+  if (body.researchInterests !== undefined) {
+    const ri = String(body.researchInterests).trim();
+    if (ri.length > 500) return res.status(400).json({ error: 'Research interests must be 500 characters or fewer.' });
+    changes.researchInterests = ri;
+  }
+  if (body.contactNumber !== undefined) {
+    try {
+      changes.contactNumber = normaliseContactNumber(body.contactNumber);
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+    // Any change to the contact number re-clears SMS verification state (the new
+    // value has not been verified). This mirrors the existing behaviour and keeps
+    // the verified flag meaningful.
+    if (!phoneChanged(user.contactNumber, changes.contactNumber)) {
+      changes.contactNumber = user.contactNumber;
+    } else {
       changes.phone_verified = 0;
       changes.phone_verified_at = null;
-      changes.contactNumber = trimmed;
-    } else {
-      changes.contactNumber = normalizePhone(trimmed) || trimmed;
     }
   }
-  const user = await patchUser(req.session.userId, changes);
-  if (!user) return res.status(401).json({ error: 'Not authenticated.' });
-  res.json({ message: 'Profile updated.', profile: fullProfile(user) });
+
+  // Student Researcher-only fields. Silently ignored for every other role, so a
+  // faculty researcher or admin cannot accidentally (or deliberately) write them.
+  if (user.role === 'student_researcher') {
+    if (body.studentId !== undefined) {
+      const sid = String(body.studentId).trim();
+      if (sid.length > 60) return res.status(400).json({ error: 'Student ID must be 60 characters or fewer.' });
+      changes.studentId = sid;
+    }
+    if (body.yearLevel !== undefined) {
+      const yl = String(body.yearLevel).trim();
+      if (!['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year', ''].includes(yl)) {
+        return res.status(400).json({ error: 'Year level must be one of: 1st Year, 2nd Year, 3rd Year, 4th Year, 5th Year.' });
+      }
+      changes.yearLevel = yl;
+    }
+    if (body.program !== undefined) {
+      const prog = String(body.program).trim();
+      if (prog.length > 180) return res.status(400).json({ error: 'Program / course must be 180 characters or fewer.' });
+      changes.program = prog;
+    }
+    if (body.section !== undefined) {
+      const sec = String(body.section).trim();
+      if (sec.length > 60) return res.status(400).json({ error: 'Section must be 60 characters or fewer.' });
+      changes.section = sec;
+    }
+    if (body.adviser !== undefined) {
+      const adv = String(body.adviser).trim();
+      if (adv.length > 160) return res.status(400).json({ error: 'Research adviser must be 160 characters or fewer.' });
+      changes.adviser = adv;
+    }
+    if (body.researchTitle !== undefined) {
+      const rt = String(body.researchTitle).trim();
+      if (rt.length > 255) return res.status(400).json({ error: 'Research title must be 255 characters or fewer.' });
+      changes.researchTitle = rt;
+    }
+    if (body.researchArea !== undefined) {
+      const ra = String(body.researchArea).trim();
+      if (!['Education', 'Health and Wellness', 'Business and Management', 'Technology and Innovation', 'Social Sciences', 'Other', ''].includes(ra)) {
+        return res.status(400).json({ error: 'Research area must be one of: Education, Health and Wellness, Business and Management, Technology and Innovation, Social Sciences, Other.' });
+      }
+      changes.researchArea = ra;
+    }
+    // For Student Researchers, research interests live in the student-details
+    // section on the page, so accept it from that section too.
+    if (body.researchInterests !== undefined) {
+      // already handled above (applies to everyone)
+    }
+  }
+
+  const updated = await patchUser(req.session.userId, changes);
+  if (!updated) return res.status(401).json({ error: 'Not authenticated.' });
+  res.json({ message: 'Profile updated.', profile: fullProfile(updated) });
 });
 
 // Profile photo upload (images only, max 2 MB)

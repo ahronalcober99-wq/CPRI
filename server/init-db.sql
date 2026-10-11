@@ -1,31 +1,20 @@
--- CPRI Database Initialization Script
---
--- This is the full schema for the API: every table the server queries is
--- created here. The server applies it automatically on every boot
--- (server/server.js) to the database named by DB_NAME, so it is safe to run on
--- every deploy — every statement is CREATE TABLE IF NOT EXISTS.
---
--- To run it by hand, select the database first (the server does that for you
--- from DB_NAME):
---   mysql -u root -p cpri < server/init-db.sql
---   npm run db:init            # uses DB_* from .env
-
--- Users table
-CREATE TABLE IF NOT EXISTS users (
-  id VARCHAR(36) PRIMARY KEY,
-  username VARCHAR(80) UNIQUE NOT NULL,
-  email VARCHAR(160) NOT NULL,
-  fullName VARCHAR(160) DEFAULT '',
-  role VARCHAR(30) NOT NULL,
-  passwordHash VARCHAR(120) NOT NULL,
-  status VARCHAR(20) DEFAULT 'active',
-  department VARCHAR(120) DEFAULT '',
-  contactNumber VARCHAR(60) DEFAULT '',
-  researchInterests TEXT,
-  profilePhoto VARCHAR(255) DEFAULT NULL,
   researches JSON,
+  -- Migration 2026-10-11: profile edit (schema 2026-10-11): department,
+  -- contactNo, researchInterests, studentId, yearLevel, program, section,
+  -- adviser, researchTitle, researchArea
+  contactNo VARCHAR(60) NOT NULL DEFAULT "",
   user_prefs JSON,
   setupPending TINYINT(1) DEFAULT 0,
+  -- Editable profile fields added by the profile page (all nullable; existing
+  -- rows just get the defaults). Student Researcher fields are only relevant
+  -- for that role; the API ignores them for everyone else.
+  studentId VARCHAR(60) DEFAULT "",
+  yearLevel VARCHAR(30) DEFAULT "",
+  program VARCHAR(180) DEFAULT "",
+  section VARCHAR(60) DEFAULT "",
+  adviser VARCHAR(160) DEFAULT "",
+  researchTitle VARCHAR(255) DEFAULT "",
+  researchArea VARCHAR(80) DEFAULT "",
   -- SMS-verified contact number (server/phone-verification.js). The number
   -- itself lives in contactNumber once verified; these columns flag the state.
   phone_verified TINYINT(1) NOT NULL DEFAULT 0,

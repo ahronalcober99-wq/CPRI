@@ -16,12 +16,12 @@
     <section class="page-header">
       <div class="container">
         <h1>My Profile</h1>
-        <p>Your account details and notification preferences.</p>
+        <p>Your account details and student researcher information.</p>
       </div>
     </section>
 
     <section class="section">
-      <div class="container" style="max-width:640px;">
+      <div class="container" style="max-width:720px;">
         <div class="form-message" id="message"></div>
 
         <div id="profile-loading" class="empty-state">Loading your profile…</div>
@@ -29,7 +29,7 @@
         <div id="profile-error" class="form-message error" role="alert" style="display:none;">
           <div class="error-card">
             <div class="error-ico"><i class="bi bi-exclamation-triangle"></i></div>
-            <div class="error-text"><b>Can\u2019t load your profile right now.</b> <span id="error-detail">Try again later.</span></div>
+            <div class="error-text"><b>Can't load your profile right now.</b> <span id="error-detail">Try again later.</span></div>
             <div class="error-actions">
               <button class="btn btn-primary" id="error-retry" type="button">Try again</button>
               <a class="btn btn-navy" href="login.html" id="error-login">Log in</a>
@@ -46,60 +46,127 @@
             <div class="avatar" id="pf-avatar">—</div>
             <h3 id="pf-name">—</h3>
             <p class="role" id="pf-role">—</p>
-            <div class="contact-row"><span class="label">Email</span><span id="pf-email"></span></div>
-            <div class="contact-row"><span class="label">Account Type</span><span id="pf-account-type"></span></div>
-            <div class="contact-row"><span class="label">Status</span><span id="pf-status"></span></div>
-            <div class="contact-row"><span class="label">Department</span><span id="pf-department"></span></div>
-            <div class="contact-row"><span class="label">Contact No.</span><span id="pf-phone"></span></div>
-            <div class="contact-row"><span class="label">Research Interests</span><span id="pf-interests"></span></div>
-            <div class="contact-row" style="margin-top:8px;border-bottom:none;">
-              <a class="btn btn-primary" id="edit-btn" href="#" role="button">Edit profile</a>
-              <button class="btn btn-navy" id="logout-btn" style="margin-left:auto;">Log Out</button>
+
+            <div class="profile-fields">
+              <!-- Read-only fields: gray background + "read-only" label -->
+              <div class="field-row read-only-field">
+                <span class="label">Email</span>
+                <span class="field-value" id="pf-email"></span>
+                <span class="read-only-tag">read-only</span>
+              </div>
+
+              <div class="field-row read-only-field">
+                <span class="label">Account Type</span>
+                <span class="field-value" id="pf-account-type"></span>
+                <span class="read-only-tag">read-only</span>
+              </div>
+
+              <div class="field-row read-only-field">
+                <span class="label">Status</span>
+                <span class="field-value" id="pf-status"></span>
+                <span class="read-only-tag">read-only</span>
+              </div>
+
+              <!-- Editable fields: white background + maroon border, disabled by default -->
+              <div class="field-row editable-field">
+                <label class="field-label" for="edit-department">Department</label>
+                <input type="text" id="edit-department" maxlength="120" placeholder="Your department" disabled>
+              </div>
+
+              <div class="field-row editable-field">
+                <label class="field-label" for="edit-contactno">Contact No.</label>
+                <input type="tel" id="edit-contactno" maxlength="20" placeholder="09XX XXX XXXX" disabled>
+              </div>
+
+              <!-- Research Interests moved to the Student Researcher Details section
+                   (shown only for Student Researchers). For non-students, show it here
+                   as an editable field so it is still reachable. -->
+              <div class="field-row editable-field" id="nonstudent-interests-row">
+                <label class="field-label" for="edit-interests">Research Interests</label>
+                <textarea id="edit-interests" maxlength="500" rows="3" placeholder="Your research interests" disabled></textarea>
+              </div>
+            </div>
+
+            <!-- Student Researcher Details section (only for Student Researchers) -->
+            <div class="student-details-section" id="student-details-section" style="display:none;">
+              <div class="field-section-head">
+                <h4 class="student-details-title">Student Researcher Details</h4>
+                <span class="student-details-tag">Only for Student Researchers</span>
+              </div>
+              <div class="field-row">
+                <div>
+                  <label class="field-label" for="edit-studentid">Student ID No.</label>
+                  <input type="text" id="edit-studentid" maxlength="60" placeholder="e.g. 2024-00123" disabled>
+                </div>
+                <div>
+                  <label class="field-label" for="edit-yearlevel">Year Level</label>
+                  <select id="edit-yearlevel" disabled>
+                    <option value="">— Select —</option>
+                    <option value="1st Year">1st Year</option>
+                    <option value="2nd Year">2nd Year</option>
+                    <option value="3rd Year">3rd Year</option>
+                    <option value="4th Year">4th Year</option>
+                    <option value="5th Year">5th Year</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field-row">
+                <div style="flex:1 1 100%;">
+                  <label class="field-label" for="edit-program">Program / Course</label>
+                  <input type="text" id="edit-program" maxlength="180" placeholder="Your program or course" disabled>
+                </div>
+              </div>
+              <div class="field-row">
+                <div>
+                  <label class="field-label" for="edit-section">Section</label>
+                  <input type="text" id="edit-section" maxlength="60" placeholder="Your section" disabled>
+                </div>
+                <div>
+                  <label class="field-label" for="edit-adviser">Research Adviser</label>
+                  <input type="text" id="edit-adviser" maxlength="160" placeholder="Your research adviser" disabled>
+                </div>
+              </div>
+              <div class="field-row">
+                <div style="flex:1 1 100%;">
+                  <label class="field-label" for="edit-researchtitle">Research Title (working title)</label>
+                  <textarea id="edit-researchtitle" maxlength="255" rows="3" placeholder="Your research title (working title)" disabled></textarea>
+                </div>
+              </div>
+              <div class="field-row">
+                <div style="flex:1 1 100%;">
+                  <label class="field-label" for="edit-researcharea">Research Area</label>
+                  <select id="edit-researcharea" disabled>
+                    <option value="">— Select —</option>
+                    <option value="Education">Education</option>
+                    <option value="Health and Wellness">Health and Wellness</option>
+                    <option value="Business and Management">Business and Management</option>
+                    <option value="Technology and Innovation">Technology and Innovation</option>
+                    <option value="Social Sciences">Social Sciences</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <div class="field-row">
+                <div style="flex:1 1 100%;">
+                  <label class="field-label" for="edit-interests">Research Interests</label>
+                  <textarea id="edit-interests-student" maxlength="500" rows="3" placeholder="Your research interests" disabled></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-foot" style="margin-top:16px;border-top:1px solid var(--cpri-border);padding-top:14px;">
+              <button class="btn btn-primary" id="edit-btn" type="button">Edit profile</button>
+              <button class="btn btn-navy" id="logout-btn" type="button" style="margin-left:auto;">Log Out</button>
             </div>
           </div>
 
-          <div class="card" id="prefs">
-            <h3>Notification Preferences</h3>
-            <p class="form-note" style="margin-top:0;">Choose how CPRI notifies you about activity on your account.</p>
-
-            <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;">
-              <div>
-                <label for="pref-inapp" style="margin:0;">In-app notifications</label>
-                <p class="form-note" style="margin:2px 0 0;">Show notifications in the bell menu.</p>
-              </div>
-              <label class="switch"><input type="checkbox" id="pref-inapp"><span></span></label>
+          <div class="form-message success" id="save-success" style="display:none;">Profile updated.</div>
+          <div class="form-message error" id="save-error" style="display:none;">
+            <div class="error-card">
+              <div class="error-ico"><i class="bi bi-exclamation-triangle"></i></div>
+              <div class="error-text"><b>Couldn't save your changes.</b> <span id="save-error-detail">Please try again.</span></div>
+              <button class="btn btn-primary" id="save-error-retry" type="button">Try again</button>
             </div>
-
-            <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;">
-              <div>
-                <label for="pref-email" style="margin:0;">Email copies</label>
-                <p class="form-note" style="margin:2px 0 0;">Also send each notification to your email.</p>
-              </div>
-              <label class="switch"><input type="checkbox" id="pref-email"><span></span></label>
-            </div>
-
-            <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;">
-              <div>
-                <label for="pref-quiet" style="margin:0;">Quiet hours</label>
-                <p class="form-note" style="margin:2px 0 0;">Hold email copies overnight.</p>
-              </div>
-              <label class="switch"><input type="checkbox" id="pref-quiet"><span></span></label>
-            </div>
-
-            <div id="quiet-range" class="form-group" style="display:none;">
-              <label for="pref-quiet-start">Quiet hours window</label>
-              <div style="display:flex;align-items:center;gap:10px;">
-                <input type="time" id="pref-quiet-start" style="max-width:140px;">
-                <span>to</span>
-                <input type="time" id="pref-quiet-end" style="max-width:140px;">
-              </div>
-            </div>
-
-            <button class="btn btn-primary" id="save-prefs">Save Preferences</button>
-          </div>
-
-          <div style="margin-top:20px;">
-            <button class="btn btn-navy" id="logout-btn">Log Out</button>
           </div>
         </div>
       </div>
@@ -109,209 +176,404 @@
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script>
-    const messageEl = document.getElementById('message');
-    const loadingEl = document.getElementById('profile-loading');
-    const errorEl = document.getElementById('profile-error');
-    const errorDetailEl = document.getElementById('error-detail');
-    const errorRetryBtn = document.getElementById('error-retry');
-    const notLoggedEl = document.getElementById('not-logged');
-    const profileArea = document.getElementById('profile-area');
+    (function () {
+      'use strict';
 
-    function hideAllStates() {
-      loadingEl.style.display = 'none';
-      errorEl.style.display = 'none';
-      notLoggedEl.style.display = 'none';
-      profileArea.style.display = 'none';
-    }
+      // ---- DOM refs ----
+      const messageEl = document.getElementById('message');
+      const loadingEl = document.getElementById('profile-loading');
+      const errorEl = document.getElementById('profile-error');
+      const errorDetailEl = document.getElementById('error-detail');
+      const errorRetryBtn = document.getElementById('error-retry');
+      const notLoggedEl = document.getElementById('not-logged');
+      const profileArea = document.getElementById('profile-area');
 
-    function avatarInitials(name) {
-      const parts = (name || '').trim().split(/\s+/).filter(Boolean);
-      if (!parts.length) return '?';
-      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
+      const saveSuccessEl = document.getElementById('save-success');
+      const saveErrorEl = document.getElementById('save-error');
+      const saveErrorDetailEl = document.getElementById('save-error-detail');
+      const saveErrorRetryBtn = document.getElementById('save-error-retry');
 
-    function renderProfile(p) {
-      const name = p.fullName || p.username || 'My Profile';
-      document.getElementById('pf-name').textContent = name;
-      // Avatar initials, same pattern as the site's person cards and header avatar.
-      const avatarEl = document.getElementById('pf-avatar');
-      avatarEl.textContent = avatarInitials(p.fullName || p.username || '');
-      document.getElementById('pf-email').textContent = shown(p.email);
-      // Account type = the human-readable role label the server already provides.
-      document.getElementById('pf-role').textContent = shown(p.roleLabel || p.role);
-      document.getElementById('pf-account-type').textContent = shown(p.roleLabel || p.role);
-      document.getElementById('pf-status').textContent = shown(p.status);
-      document.getElementById('pf-department').textContent = shown(p.department);
-      document.getElementById('pf-interests').textContent = shown(p.researchInterests);
+      const pfName = document.getElementById('pf-name');
+      const pfAvatar = document.getElementById('pf-avatar');
+      const pfRole = document.getElementById('pf-role');
+      const pfEmail = document.getElementById('pf-email');
+      const pfAccountType = document.getElementById('pf-account-type');
+      const pfStatus = document.getElementById('pf-status');
+      const studentDetailsSection = document.getElementById('student-details-section');
 
-      const phone = document.getElementById('pf-phone');
-      if (p.contactNumber) {
-        phone.textContent = p.contactNumber + (p.phoneVerified ? '  ✓ verified' : '');
-      } else {
-        phone.textContent = '—';
+      // Editable field inputs (shared between view + edit modes)
+      const editDepartment = document.getElementById('edit-department');
+      const editContactNo = document.getElementById('edit-contactno');
+      const editInterestsNonStudent = document.getElementById('edit-interests');
+      const editStudentId = document.getElementById('edit-studentid');
+      const editYearLevel = document.getElementById('edit-yearlevel');
+      const editProgram = document.getElementById('edit-program');
+      const editSection = document.getElementById('edit-section');
+      const editAdviser = document.getElementById('edit-adviser');
+      const editResearchTitle = document.getElementById('edit-researchtitle');
+      const editResearchArea = document.getElementById('edit-researcharea');
+      const editInterestsStudent = document.getElementById('edit-interests-student');
+
+      const editBtn = document.getElementById('edit-btn');
+      const logoutBtn = document.getElementById('logout-btn');
+      const cardFoot = document.querySelector('#profile-card .card-foot');
+
+      // ---- State ----
+      let isEditing = false;
+      let originalValues = null;       // snapshot at edit start
+      let pendingStudentValues = null; // tracks student fields across cancel/save
+
+      // ---- Helpers ----
+      function hideAllStates() {
+        loadingEl.style.display = 'none';
+        errorEl.style.display = 'none';
+        notLoggedEl.style.display = 'none';
+        profileArea.style.display = 'none';
+        saveSuccessEl.style.display = 'none';
+        saveErrorEl.style.display = 'none';
       }
-    }
 
-    function renderPrefs(prefs) {
-      const p = prefs || {};
-      document.getElementById('pref-inapp').checked = p.inApp !== false;
-      document.getElementById('pref-email').checked = p.email === true;
-      const q = p.quietHours || {};
-      document.getElementById('pref-quiet').checked = q.enabled === true;
-      document.getElementById('pref-quiet-start').value = q.start || '22:00';
-      document.getElementById('pref-quiet-end').value = q.end || '07:00';
-      toggleQuiet();
-    }
-
-    function toggleQuiet() {
-      const on = document.getElementById('pref-quiet').checked;
-      document.getElementById('quiet-range').style.display = on ? 'block' : 'none';
-    }
-    document.getElementById('pref-quiet').addEventListener('change', toggleQuiet);
-
-    // "—" for empty fields so a sparse account does not render as blank rows.
-    function shown(v) {
-      const s = (v ?? '').toString().trim();
-      return s || '—';
-    }
-
-    function setLoading() {
-      hideAllStates();
-      loadingEl.style.display = '';
-    }
-
-    function setError(friendlyMessage, detail) {
-      hideAllStates();
-      errorDetailEl.textContent = detail || 'Try again later.';
-      errorEl.style.display = 'block';
-    }
-
-    function showMessage(text, kind) {
-      if (!text) { messageEl.style.display = 'none'; messageEl.textContent = ''; return; }
-      messageEl.className = 'form-message ' + (kind || 'success');
-      messageEl.textContent = text;
-      messageEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    // ---- ROOT CAUSE (what made the page fail) ----
-    // The page called GET /api/profile, but there is no route at that path in the
-    // Express server. The real endpoint is GET /api/auth/profile: the auth router is
-    // mounted at /api/auth (see server/auth.js, router.get('/profile', ...) at line 888),
-    // so the full path is /api/auth/profile. Because /api/profile matched nothing, the
-    // request fell through to a 404, the catch block ran, and the page always showed
-    // "Can't load your profile right now. Try again later."
-    //
-    // Fix: call the correct path /api/auth/profile (and /api/auth/profile/prefs for the
-    // notification-preferences save). Also added: retry with 4-second backoff (2 retries)
-    // for network/5xx/sleeping-server failures, console.error logging, and a styled error
-    // card with Try again + Log in buttons instead of plain red text.
-    // 401 means the session expired between page load and the call — the page
-    // shell is server-gated, so send the visitor back through login and return.
-    async function fetchJson(url, opts) {
-      const res = await fetch(url, opts);
-      if (res.status === 401) {
-        window.location.replace('login.html?next=profile.html');
-        return null;
+      function avatarInitials(name) {
+        const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return '?';
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
       }
-      const text = await res.text();
-      if (!text) return { ok: true, data: null };
-      let data;
-      try { data = JSON.parse(text); } catch { throw new Error('The server returned an invalid response.'); }
-      if (!res.ok) {
-        const msg = data && data.error ? String(data.error) : 'Request failed.';
-        throw new Error(msg);
+
+      function shown(v) {
+        const s = (v ?? '').toString().trim();
+        return s || '—';
       }
-      return { ok: true, data };
-    }
 
-    // Load the profile with retry for a sleeping/restarting server.
-    // Render's hosting (free plan) sleeps the server when idle; the first request
-    // can time out or 502 while it wakes. Retry 2 times, 4 seconds apart, then give
-    // a friendly error with a Try again button (which re-runs the load) and a Log in
+      // ---- Validation ----
+      function validateContactNo(value) {
+        const s = (value || '').trim();
+        if (!s) return { ok: true, value: '' };
+        if (!/^[-+0-9 ][-\+0-9 ]*$/.test(s)) {
+          return { ok: false, message: 'Contact number may only contain digits, spaces, +, and -.' };
+        }
+        const digits = s.replace(/[^\d]/g, '');
+        if (digits.length < 7 || digits.length > 15) {
+          return { ok: false, message: 'Contact number must have between 7 and 15 digits.' };
+        }
+        return { ok: true, value: s };
+      }
 
-    // button (which takes a guest straight to login).
-    async function loadProfile() {
-      setLoading();
-      const lastErr = { error: null };
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const data = await fetchJson('/api/auth/profile');
-          if (!data) return; // 401 → redirected to login already
-          renderProfile(data.data.profile || {});
-          renderPrefs((data.data.profile || {}).prefs);
-          hideAllStates();
-          profileArea.style.display = 'block';
+      function maxLen(value, max) {
+        const s = String(value || '').trim();
+        if (s.length > max) return s.slice(0, max);
+        return s;
+      }
+
+      function snapshotEditable() {
+        return {
+          department: editDepartment.value,
+          contactNo: editContactNo.value,
+          interests: editInterestsNonStudent.value,
+          studentId: editStudentId.value,
+          yearLevel: editYearLevel.value,
+          program: editProgram.value,
+          section: editSection.value,
+          adviser: editAdviser.value,
+          researchTitle: editResearchTitle.value,
+          researchArea: editResearchArea.value,
+          interestsStudent: editInterestsStudent.value
+        };
+      }
+
+      function restoreEditable(snap) {
+        if (!snap) return;
+        editDepartment.value = snap.department;
+        editContactNo.value = snap.contactNo;
+        editInterestsNonStudent.value = snap.interests;
+        editStudentId.value = snap.studentId;
+        editYearLevel.value = snap.yearLevel;
+        editProgram.value = snap.program;
+        editSection.value = snap.section;
+        editAdviser.value = snap.adviser;
+        editResearchTitle.value = snap.researchTitle;
+        editResearchArea.value = snap.researchArea;
+        editInterestsStudent.value = snap.interestsStudent;
+      }
+
+      // ---- Render ----
+      function renderProfile(p) {
+        const name = p.fullName || p.username || 'My Profile';
+        pfName.textContent = name;
+        pfAvatar.textContent = avatarInitials(p.fullName || p.username || '');
+        pfEmail.textContent = shown(p.email);
+        // Account type: use the human-readable role label the server provides.
+        const accountType = p.roleLabel || p.role;
+        pfRole.textContent = shown(accountType);
+        pfAccountType.textContent = shown(accountType);
+        pfStatus.textContent = shown(p.status);
+
+        // Reset student-details visibility + the shared interests placement.
+        studentDetailsSection.style.display = 'none';
+        const isStudent = p.role === 'student_researcher';
+        document.getElementById('nonstudent-interests-row').style.display = isStudent ? 'none' : '';
+
+        // Wire editable field values in VIEW mode (disabled). Keep the inputs
+        // present so editing is one click away.
+        editDepartment.value = p.department || '';
+        editContactNo.value = p.contactNumber || '';
+        editInterestsNonStudent.value = (!isStudent && p.researchInterests) ? p.researchInterests : '';
+
+        if (isStudent && p) {
+          studentDetailsSection.style.display = '';
+          editStudentId.value = p.studentId || '';
+          editYearLevel.value = p.yearLevel || '';
+          editProgram.value = p.program || '';
+          editSection.value = p.section || '';
+          editAdviser.value = p.adviser || '';
+          editResearchTitle.value = p.researchTitle || '';
+          editResearchArea.value = p.researchArea || '';
+          editInterestsStudent.value = p.researchInterests || '';
+        }
+
+        setMode('view');
+      }
+
+      // ---- Edit / view mode ----
+      function setMode(mode) {
+        isEditing = (mode === 'edit');
+        const editing = mode === 'edit';
+
+        // Enable/disable the editable inputs.
+        const inputs = [
+          editDepartment, editContactNo,
+          editInterestsNonStudent,
+          editStudentId, editYearLevel, editProgram, editSection, editAdviser,
+          editResearchTitle, editResearchArea, editInterestsStudent
+        ];
+        inputs.forEach(el => {
+          if (!el) return;
+          el.disabled = !editing;
+          if (editing) {
+            el.readOnly = false;
+            el.required = false;
+          }
+        });
+
+        // Read-only fields keep their gray + "read-only" look; editable fields
+        // get the white background + maroon border when editing, and vice-versa.
+        document.querySelectorAll('.read-only-field').forEach(el => {
+          el.classList.toggle('editing', editing);
+        });
+        document.querySelectorAll('.editable-field').forEach(el => {
+          el.classList.toggle('editing', editing);
+        });
+
+        // Buttons.
+        if (mode === 'view') {
+          editBtn.textContent = 'Edit profile';
+          editBtn.style.display = '';
+          cardFoot.querySelector('#logout-btn').style.display = '';
+        } else {
+          editBtn.textContent = 'Save changes';
+          editBtn.style.display = '';
+          cardFoot.querySelector('#logout-btn').style.display = '';
+        }
+
+        if (mode === 'edit') {
+          // Focus the first editable field so the user can start typing right away.
+          const first = [
+            editDepartment, editContactNo,
+            editStudentId, editYearLevel, editProgram, editSection, editAdviser,
+            editResearchTitle, editResearchArea, editInterestsNonStudent, editInterestsStudent
+          ].find(el => el && el.style.display !== 'none');
+          if (first) first.focus();
+        }
+      }
+
+      function enterEditMode() {
+        originalValues = snapshotEditable();
+        pendingStudentValues = null;
+        setMode('edit');
+      }
+
+      function exitEditMode(keepValues) {
+        if (!keepValues) {
+          restoreEditable(originalValues);
+        }
+        setMode('view');
+        renderProfile(currentProfile);
+      }
+
+      // ---- Save / cancel ----
+      async function buildSavePayload() {
+        const isStudent = currentProfile && currentProfile.role === 'student_researcher';
+        const contact = validateContactNo(editContactNo.value);
+        if (!contact.ok) return { error: contact.message };
+
+        const payload = {
+          fullName: currentProfile.fullName,
+          department: maxLen(editDepartment.value, 120),
+          contactNumber: contact.value,
+          researchInterests: maxLen(
+            isStudent ? editInterestsStudent.value : editInterestsNonStudent.value,
+            500
+          )
+        };
+
+        if (isStudent) {
+          payload.studentId = maxLen(editStudentId.value, 60);
+          payload.yearLevel = editYearLevel.value || '';
+          payload.program = maxLen(editProgram.value, 180);
+          payload.section = maxLen(editSection.value, 60);
+          payload.adviser = maxLen(editAdviser.value, 160);
+          payload.researchTitle = maxLen(editResearchTitle.value, 255);
+          payload.researchArea = editResearchArea.value || '';
+        }
+
+        return { ok: true, payload };
+      }
+
+      let currentProfile = null;
+
+      async function saveProfile(retry) {
+        hideAllStates();
+        saveSuccessEl.style.display = 'none';
+        saveErrorEl.style.display = 'none';
+
+        const prep = buildSavePayload();
+        if (!prep.ok) {
+          showSaveError(prep.message);
           return;
+        }
+
+        try {
+          const res = await fetchJson('/api/auth/profile', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(prep.payload)
+          });
+          if (!res) return; // 401 -> redirected
+          if (!res.ok) throw new Error(res.data && res.data.error ? res.data.error : 'Request failed.');
+
+          currentProfile = res.data.profile;
+          renderProfile(currentProfile);
+          showMessage('Profile updated.', 'success');
         } catch (err) {
-          lastErr.error = err;
-          // 401 was already handled inside fetchJson (redirect). Network errors,
-          // timeouts, and 5xx from a waking server are retryable.
-          console.error('[profile] load attempt ' + (attempt + 1) + ' failed:', err && err.message ? String(err.message) : String(err));
-          if (attempt < 2) {
-            await new Promise(res => setTimeout(res, 4000));
+          const msg = err && err.message ? String(err.message) : 'Couldn\'t save your changes.';
+          showSaveError(msg);
+          console.error('[profile] save failed:', msg);
+        }
+      }
+
+      function showSaveError(detail) {
+        saveErrorDetailEl.textContent = detail || 'Please try again.';
+        saveErrorEl.style.display = 'block';
+      }
+
+      function showMessage(text, kind) {
+        if (!text) { messageEl.style.display = 'none'; messageEl.textContent = ''; return; }
+        messageEl.className = 'form-message ' + (kind || 'success');
+        messageEl.textContent = text;
+        messageEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+
+      // ---- fetchJson (same as before: correct /api/auth path + 401 redirect) ----
+      async function fetchJson(url, opts) {
+        const res = await fetch(url, opts);
+        if (res.status === 401) {
+          window.location.replace('login.html?next=profile.html');
+          return null;
+        }
+        const text = await res.text();
+        if (!text) return { ok: true, data: null };
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error('The server returned an invalid response.'); }
+        if (!res.ok) {
+          const msg = data && data.error ? String(data.error) : 'Request failed.';
+          throw new Error(msg);
+        }
+        return { ok: true, data };
+      }
+
+      // ---- Retry load (sleeping server) ----
+      async function loadProfile() {
+        setLoading();
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const data = await fetchJson('/api/auth/profile');
+            if (!data) return; // 401 -> redirected
+            currentProfile = data.data.profile || {};
+            renderProfile(currentProfile);
+            hideAllStates();
+            profileArea.style.display = 'block';
+            return;
+          } catch (err) {
+            console.error('[profile] load attempt ' + (attempt + 1) + ' failed:', err && err.message ? String(err.message) : String(err));
+            if (attempt < 2) await new Promise(res => setTimeout(res, 4000));
           }
         }
+        setError('Can\'t load your profile right now.', 'The server may be starting up. Please try again in a moment.');
       }
-      // All attempts failed — show a friendly error, never the raw message.
-      setError('Can\u2019t load your profile right now.', 'The server may be starting up. Please try again in a moment.');
-    }
 
-    // Kick off the first load once the DOM is ready.
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', loadProfile);
-    } else {
-      loadProfile();
-    }
-
-    // Retry button: re-run the same load path.
-    errorRetryBtn.addEventListener('click', () => { setError('', ''); loadProfile(); });
-
-    document.getElementById('save-prefs').addEventListener('click', async () => {
-      const btn = document.getElementById('save-prefs');
-      const body = {
-        inApp: document.getElementById('pref-inapp').checked,
-        email: document.getElementById('pref-email').checked,
-        quietHours: {
-          enabled: document.getElementById('pref-quiet').checked,
-          start: document.getElementById('pref-quiet-start').value,
-          end: document.getElementById('pref-quiet-end').value
-        }
-      };
-      btn.disabled = true;
-      try {
-        const res = await fetchJson('/api/auth/profile/prefs', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        if (!res || !res.ok) {
-          // fetchJson redirects to login on 401; if it returned here, something else failed.
-          throw new Error(res && res.data && res.data.error ? String(res.data.error) : 'Could not save preferences.');
-        }
-        renderPrefs(res.data.prefs);
-        showMessage('Preferences saved.', 'success');
-      } catch (err) {
-        showMessage('Could not save preferences.', 'error');
-        console.error('[profile] save prefs failed:', err && err.message ? String(err.message) : String(err));
-      } finally {
-        btn.disabled = false;
+      function setLoading() {
+        hideAllStates();
+        loadingEl.style.display = '';
       }
-    });
 
-    document.getElementById('logout-btn').addEventListener('click', async () => {
-      const res = await fetch('/api/auth/logout', { method: 'POST' });
-      if (res.ok) window.location.href = 'login.html';
-      else showMessage('Logout failed. Please try again.', 'error');
-    });
+      function setError(friendly, detail) {
+        hideAllStates();
+        errorDetailEl.textContent = detail || 'Try again later.';
+        errorEl.style.display = 'block';
+      }
 
-    document.getElementById('edit-btn').addEventListener('click', (e) => {
-      // Edit profile: open the profile page's own edit surface if one exists;
-      // otherwise fall back to the account page. Keep it a same-origin navigation.
-      e.preventDefault();
-      const editUrl = window.location.href.split('#')[0];
-      window.location.href = editUrl;
-    });
+      // ---- Event wiring ----
+      errorRetryBtn.addEventListener('click', () => { setError('', ''); loadProfile(); });
+      saveErrorRetryBtn.addEventListener('click', () => {
+        saveErrorEl.style.display = 'none';
+        saveProfile(true);
+      });
+
+      editBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!isEditing) {
+          enterEditMode();
+        } else {
+          saveProfile(false);
+        }
+      });
+
+      // Cancel: restore original values and leave edit mode.
+      // Implemented via a Cancel button injected into the card foot when editing.
+      function ensureCancelButton() {
+        let cancel = cardFoot.querySelector('#cancel-btn');
+        if (!cancel) {
+          cancel = document.createElement('button');
+          cancel.id = 'cancel-btn';
+          cancel.type = 'button';
+          cancel.className = 'btn btn-outline';
+          cancel.textContent = 'Cancel';
+          cancel.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (isEditing) {
+              restoreEditable(originalValues);
+              setMode('view');
+              renderProfile(currentProfile);
+            }
+          });
+          cardFoot.appendChild(cancel);
+        }
+      }
+      ensureCancelButton();
+
+      logoutBtn.addEventListener('click', async () => {
+        const res = await fetch('/api/auth/logout', { method: 'POST' });
+        if (res.ok) window.location.href = 'login.html';
+        else showMessage('Logout failed. Please try again.', 'error');
+      });
+
+      // ---- Boot ----
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadProfile);
+      } else {
+        loadProfile();
+      }
+    })();
   </script>
 </body>
 </html>
