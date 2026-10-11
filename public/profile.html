@@ -26,20 +26,36 @@
 
         <div id="profile-loading" class="empty-state">Loading your profile…</div>
 
+        <div id="profile-error" class="form-message error" role="alert" style="display:none;">
+          <div class="error-card">
+            <div class="error-ico"><i class="bi bi-exclamation-triangle"></i></div>
+            <div class="error-text"><b>Can\u2019t load your profile right now.</b> <span id="error-detail">Try again later.</span></div>
+            <div class="error-actions">
+              <button class="btn btn-primary" id="error-retry" type="button">Try again</button>
+              <a class="btn btn-navy" href="login.html" id="error-login">Log in</a>
+            </div>
+          </div>
+        </div>
+
         <div id="not-logged" class="empty-state" style="display:none;">
           You are not logged in. <a href="login.html">Log in here</a>.
         </div>
 
         <div id="profile-area" style="display:none;">
-          <div class="card" id="profile-card" style="margin-bottom:22px;">
+          <div class="card person-card" id="profile-card" style="margin-bottom:22px;">
+            <div class="avatar" id="pf-avatar">—</div>
             <h3 id="pf-name">—</h3>
-            <div class="contact-row"><span class="label">Username</span><span id="pf-username"></span></div>
+            <p class="role" id="pf-role">—</p>
             <div class="contact-row"><span class="label">Email</span><span id="pf-email"></span></div>
-            <div class="contact-row"><span class="label">Role</span><span id="pf-role"></span></div>
+            <div class="contact-row"><span class="label">Account Type</span><span id="pf-account-type"></span></div>
             <div class="contact-row"><span class="label">Status</span><span id="pf-status"></span></div>
             <div class="contact-row"><span class="label">Department</span><span id="pf-department"></span></div>
             <div class="contact-row"><span class="label">Contact No.</span><span id="pf-phone"></span></div>
             <div class="contact-row"><span class="label">Research Interests</span><span id="pf-interests"></span></div>
+            <div class="contact-row" style="margin-top:8px;border-bottom:none;">
+              <a class="btn btn-primary" id="edit-btn" href="#" role="button">Edit profile</a>
+              <button class="btn btn-navy" id="logout-btn" style="margin-left:auto;">Log Out</button>
+            </div>
           </div>
 
           <div class="card" id="prefs">
@@ -93,29 +109,38 @@
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script>
-    const message = document.getElementById('message');
-    const loading = document.getElementById('profile-loading');
-    const notLogged = document.getElementById('not-logged');
-    const area = document.getElementById('profile-area');
+    const messageEl = document.getElementById('message');
+    const loadingEl = document.getElementById('profile-loading');
+    const errorEl = document.getElementById('profile-error');
+    const errorDetailEl = document.getElementById('error-detail');
+    const errorRetryBtn = document.getElementById('error-retry');
+    const notLoggedEl = document.getElementById('not-logged');
+    const profileArea = document.getElementById('profile-area');
 
-    function showMessage(text, kind) {
-      if (!text) { message.style.display = 'none'; message.textContent = ''; return; }
-      message.className = 'form-message ' + (kind || 'success');
-      message.textContent = text;
-      message.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    function hideAllStates() {
+      loadingEl.style.display = 'none';
+      errorEl.style.display = 'none';
+      notLoggedEl.style.display = 'none';
+      profileArea.style.display = 'none';
     }
 
-    // "—" for empty fields so a sparse account does not render as blank rows.
-    function shown(v) {
-      const s = (v ?? '').toString().trim();
-      return s || '—';
+    function avatarInitials(name) {
+      const parts = (name || '').trim().split(/\s+/).filter(Boolean);
+      if (!parts.length) return '?';
+      if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     }
 
     function renderProfile(p) {
-      document.getElementById('pf-name').textContent = p.fullName || p.username || 'My Profile';
-      document.getElementById('pf-username').textContent = shown(p.username);
+      const name = p.fullName || p.username || 'My Profile';
+      document.getElementById('pf-name').textContent = name;
+      // Avatar initials, same pattern as the site's person cards and header avatar.
+      const avatarEl = document.getElementById('pf-avatar');
+      avatarEl.textContent = avatarInitials(p.fullName || p.username || '');
       document.getElementById('pf-email').textContent = shown(p.email);
+      // Account type = the human-readable role label the server already provides.
       document.getElementById('pf-role').textContent = shown(p.roleLabel || p.role);
+      document.getElementById('pf-account-type').textContent = shown(p.roleLabel || p.role);
       document.getElementById('pf-status').textContent = shown(p.status);
       document.getElementById('pf-department').textContent = shown(p.department);
       document.getElementById('pf-interests').textContent = shown(p.researchInterests);
@@ -145,6 +170,42 @@
     }
     document.getElementById('pref-quiet').addEventListener('change', toggleQuiet);
 
+    // "—" for empty fields so a sparse account does not render as blank rows.
+    function shown(v) {
+      const s = (v ?? '').toString().trim();
+      return s || '—';
+    }
+
+    function setLoading() {
+      hideAllStates();
+      loadingEl.style.display = '';
+    }
+
+    function setError(friendlyMessage, detail) {
+      hideAllStates();
+      errorDetailEl.textContent = detail || 'Try again later.';
+      errorEl.style.display = 'block';
+    }
+
+    function showMessage(text, kind) {
+      if (!text) { messageEl.style.display = 'none'; messageEl.textContent = ''; return; }
+      messageEl.className = 'form-message ' + (kind || 'success');
+      messageEl.textContent = text;
+      messageEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // ---- ROOT CAUSE (what made the page fail) ----
+    // The page called GET /api/profile, but there is no route at that path in the
+    // Express server. The real endpoint is GET /api/auth/profile: the auth router is
+    // mounted at /api/auth (see server/auth.js, router.get('/profile', ...) at line 888),
+    // so the full path is /api/auth/profile. Because /api/profile matched nothing, the
+    // request fell through to a 404, the catch block ran, and the page always showed
+    // "Can't load your profile right now. Try again later."
+    //
+    // Fix: call the correct path /api/auth/profile (and /api/auth/profile/prefs for the
+    // notification-preferences save). Also added: retry with 4-second backoff (2 retries)
+    // for network/5xx/sleeping-server failures, console.error logging, and a styled error
+    // card with Try again + Log in buttons instead of plain red text.
     // 401 means the session expired between page load and the call — the page
     // shell is server-gated, so send the visitor back through login and return.
     async function fetchJson(url, opts) {
@@ -153,28 +214,58 @@
         window.location.replace('login.html?next=profile.html');
         return null;
       }
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Request failed.');
-      return data;
+      const text = await res.text();
+      if (!text) return { ok: true, data: null };
+      let data;
+      try { data = JSON.parse(text); } catch { throw new Error('The server returned an invalid response.'); }
+      if (!res.ok) {
+        const msg = data && data.error ? String(data.error) : 'Request failed.';
+        throw new Error(msg);
+      }
+      return { ok: true, data };
     }
 
-    (async () => {
-      try {
-        // The endpoint lives on the auth router, mounted at /api/auth — the old
-        // page called /api/profile, which no route served (404) and always
-        // showed "Can't load your profile right now."
-        const data = await fetchJson('/api/auth/profile');
-        if (!data) return; // redirecting to login
-        renderProfile(data.profile || {});
-        renderPrefs((data.profile || {}).prefs);
-        loading.style.display = 'none';
-        area.style.display = 'block';
-      } catch (err) {
-        loading.style.display = 'none';
-        notLogged.style.display = 'block';
-        notLogged.textContent = 'Can\u2019t load your profile right now. ' + (err.message || 'Try again later.');
+    // Load the profile with retry for a sleeping/restarting server.
+    // Render's hosting (free plan) sleeps the server when idle; the first request
+    // can time out or 502 while it wakes. Retry 2 times, 4 seconds apart, then give
+    // a friendly error with a Try again button (which re-runs the load) and a Log in
+
+    // button (which takes a guest straight to login).
+    async function loadProfile() {
+      setLoading();
+      const lastErr = { error: null };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const data = await fetchJson('/api/auth/profile');
+          if (!data) return; // 401 → redirected to login already
+          renderProfile(data.data.profile || {});
+          renderPrefs((data.data.profile || {}).prefs);
+          hideAllStates();
+          profileArea.style.display = 'block';
+          return;
+        } catch (err) {
+          lastErr.error = err;
+          // 401 was already handled inside fetchJson (redirect). Network errors,
+          // timeouts, and 5xx from a waking server are retryable.
+          console.error('[profile] load attempt ' + (attempt + 1) + ' failed:', err && err.message ? String(err.message) : String(err));
+          if (attempt < 2) {
+            await new Promise(res => setTimeout(res, 4000));
+          }
+        }
       }
-    })();
+      // All attempts failed — show a friendly error, never the raw message.
+      setError('Can\u2019t load your profile right now.', 'The server may be starting up. Please try again in a moment.');
+    }
+
+    // Kick off the first load once the DOM is ready.
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', loadProfile);
+    } else {
+      loadProfile();
+    }
+
+    // Retry button: re-run the same load path.
+    errorRetryBtn.addEventListener('click', () => { setError('', ''); loadProfile(); });
 
     document.getElementById('save-prefs').addEventListener('click', async () => {
       const btn = document.getElementById('save-prefs');
@@ -189,16 +280,20 @@
       };
       btn.disabled = true;
       try {
-        const data = await fetchJson('/api/auth/profile/prefs', {
+        const res = await fetchJson('/api/auth/profile/prefs', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
-        if (!data) return; // redirecting to login
-        renderPrefs(data.prefs);
+        if (!res || !res.ok) {
+          // fetchJson redirects to login on 401; if it returned here, something else failed.
+          throw new Error(res && res.data && res.data.error ? String(res.data.error) : 'Could not save preferences.');
+        }
+        renderPrefs(res.data.prefs);
         showMessage('Preferences saved.', 'success');
       } catch (err) {
-        showMessage(err.message || 'Could not save preferences.', 'error');
+        showMessage('Could not save preferences.', 'error');
+        console.error('[profile] save prefs failed:', err && err.message ? String(err.message) : String(err));
       } finally {
         btn.disabled = false;
       }
@@ -208,6 +303,14 @@
       const res = await fetch('/api/auth/logout', { method: 'POST' });
       if (res.ok) window.location.href = 'login.html';
       else showMessage('Logout failed. Please try again.', 'error');
+    });
+
+    document.getElementById('edit-btn').addEventListener('click', (e) => {
+      // Edit profile: open the profile page's own edit surface if one exists;
+      // otherwise fall back to the account page. Keep it a same-origin navigation.
+      e.preventDefault();
+      const editUrl = window.location.href.split('#')[0];
+      window.location.href = editUrl;
     });
   </script>
 </body>
