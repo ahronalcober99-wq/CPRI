@@ -172,6 +172,42 @@ API (see the file header for the environment to start the app with).
 > app no longer uses Gmail at all — verification and reset emails go out through
 > Brevo using `BREVO_API_KEY` / `BREVO_SENDER_EMAIL`.
 
+### Verification codes: email first, SMS optional
+
+Registration and password reset have always used email (Brevo) — no SMS is
+needed for either. The contact-number verification endpoints
+(`POST /api/profile/phone/send-code`, `/verify-code`) deliver a code in this
+order:
+
+1. a configured SMS gateway (`SMS_PROVIDER` + that gateway's keys);
+2. otherwise, or if the gateway fails, the account's **verified email address**
+   through Brevo;
+3. outside production only, the server console (`[sms][dev] …`).
+
+With `NODE_ENV=production` (Render sets it, and so does the Dockerfile) the
+console route is impossible: `SMS_DEV_MODE` is ignored and no code is ever
+printed, so the deploy log cannot leak one. Startup then logs either
+`[sms] provider: <name>` or
+`[sms] No SMS provider configured — verification codes are delivered by email (Brevo).`
+
+Limits, all enforced server-side: codes live **10 minutes**, allow **5 wrong
+attempts**, and sending is capped at **5 per hour per user and per IP** with a
+60-second cooldown between sends.
+
+To send real SMS instead of email (optional, Philippines):
+
+```bash
+# Render → Environment → Add variable (repeat for each)
+SMS_PROVIDER=semaphore              # or twilio / philsms / vonage
+SEMAPHORE_API_KEY=…                 # Semaphore → API keys
+SEMAPHORE_SENDER_NAME=CPRI          # sender name, approved by Semaphore first
+# Twilio alternative:
+# TWILIO_ACCOUNT_SID=…  TWILIO_AUTH_TOKEN=…  TWILIO_FROM_NUMBER=+1…
+```
+
+No code change is needed — the gateway is picked from the environment at boot.
+If the SMS call fails at runtime the code still goes out by email.
+
 ## 7. GitHub Pages configuration
 
 The Pages workflow (`.github/workflows/pages.yml`) publishes `public/`, stamps

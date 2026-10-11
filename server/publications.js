@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import { documentFileFilter, uploadErrorHandler } from './lib/upload-safety.js';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
@@ -94,7 +95,7 @@ export function createPublicationsRouter(dependencies = {}) {
       cb(null, `${safe}-${Date.now()}${extname(file.originalname)}`);
     }
   });
-  const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
+  const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 }, fileFilter: documentFileFilter });
   const uploadProofs = upload.fields([
     { name: 'acceptance_letter', maxCount: 1 },
     { name: 'certificate_presentation', maxCount: 1 },
@@ -359,6 +360,10 @@ export function createPublicationsRouter(dependencies = {}) {
     }
     return res.status(404).json({ error: 'Publication not found.' });
   }
+
+  // Friendly JSON for oversized or rejected uploads (400, not the global 500).
+  // Registered after every route so it sees the upload errors from above.
+  router.use(uploadErrorHandler({ label: 'Document', maxMb: 15 }));
 
   return router;
 }

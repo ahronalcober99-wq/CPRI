@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import { documentFileFilter, uploadErrorHandler } from './lib/upload-safety.js';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
@@ -68,7 +69,7 @@ const storage = multer.diskStorage({
     cb(null, `${safe}-${Date.now()}${extname(file.originalname)}`);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 }, fileFilter: documentFileFilter });
 const uploadGallery = upload.fields([
   { name: 'photo', maxCount: 1 },
   { name: 'poster', maxCount: 1 },
@@ -228,19 +229,6 @@ router.post('/', requireAuth, uploadCover, async (req, res) => {
     throw error;
   }
   res.status(201).json({ message: 'Event created.', event: eventWithImage(rec) });
-});
-
-// Turn multer failures (oversized file, bad content type) into clean 400s
-// instead of the generic 500 the global handler would produce.
-router.use((err, req, res, next) => {
-  if (err && (err instanceof multer.MulterError || err.code === 'LIMIT_FILE_SIZE')) {
-    const message = err.code === 'LIMIT_FILE_SIZE' ? 'Photo is too large (max 5 MB).' : err.message || 'invalid file.';
-    return res.status(400).json({ error: 'Photo upload failed: ' + message });
-  }
-  if (err?.status === 400) {
-    return res.status(400).json({ error: err.message });
-  }
-  next(err);
 });
 
 router.patch('/:id', requireAuth, uploadCover, async (req, res) => {
@@ -571,5 +559,15 @@ router.get('/:id/gallery/:filename', async (req, res) => {
   const filePath = join(UPLOAD_DIR, e.id, req.params.filename);
   res.download(filePath, item.originalName);
 });
+
+// Turn multer failures (oversized file, rejected type, bad content type) into
+// clean 400s instead of the generic 500 the global handler would produce.
+// Registered at the very end of the router so every upload route above it —
+// including the create route — is covered. Covers are capped at 5 MB and
+// gallery files at 15 MB, so the limit in the message follows the route.
+router.use(uploadErrorHandler({
+  label: 'Photo',
+  maxMb: (req) => (/\/gallery\b/.test(req.path || '') ? 15 : 5)
+}));
 
 export { router as eventsModuleRouter, PARTICIPANT_TYPES, ABSTRACT_STATUS, STAFF_ROLES };

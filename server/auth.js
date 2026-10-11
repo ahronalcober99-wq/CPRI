@@ -11,6 +11,7 @@ import { notify } from './notifications.js';
 import { addLog } from './audit.js';
 import { normalizeUsername, validateUsername } from './utils/username.js';
 import { normalizePhone } from './lib/phone.js';
+import { createEmailCodeStore, randomSixDigitCode } from './lib/email-codes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -53,13 +54,11 @@ function normalizePrefs(input) {
 }
 
 // ---------- Email verification (in-memory) ----------
-// codeStore: email -> { code, expiresAt, verified }
-// rateStore: email -> { count, windowStart }
-const CODE_TTL_MS = 10 * 60 * 1000;          // 10 minutes
-const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-const RATE_LIMIT_MAX = 3;                    // max sends per window
-const codeStore = new Map();
-const rateStore = new Map();
+// The store owns the rules — codes last 10 minutes, allow 5 wrong attempts,
+// and are limited to 3 sends per address per 15 minutes plus 5 per IP per
+// hour — so they can be tested without a database or a mail server.
+// See server/lib/email-codes.js.
+const emailCodes = createEmailCodeStore();
 
 // ---------- External-browser Google bridge (in-memory) ----------
 // Google refuses to show its OAuth consent screen inside embedded browsers
@@ -81,31 +80,6 @@ function makeBridgeCode() {
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
-}
-
-function randomSixDigitCode() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-function cleanExpiredCodes() {
-  const now = Date.now();
-  for (const [email, entry] of codeStore) {
-    if (entry.expiresAt < now) codeStore.delete(email);
-  }
-  for (const [email, entry] of rateStore) {
-    if (entry.windowStart + RATE_LIMIT_WINDOW_MS < now) rateStore.delete(email);
-  }
-}
-
-function isRateLimited(email) {
-  const now = Date.now();
-  const entry = rateStore.get(email);
-  if (!entry || entry.windowStart + RATE_LIMIT_WINDOW_MS < now) {
-    rateStore.set(email, { count: 1, windowStart: now });
-    return false;
-  }
-  entry.count += 1;
-  return entry.count > RATE_LIMIT_MAX;
 }
 
 // ---------- Role-Based Access Control ----------
@@ -250,14 +224,22 @@ function requireRole(...roles) {
 
 // ---------- Email verification ----------
 router.post('/send-verification-code', async (req, res) => {
-  cleanExpiredCodes();
+  emailCodes.clean();
   const email = normalizeEmail(req.body?.email);
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: 'A valid email is required.' });
   }
 
-  if (isRateLimited(email)) {
+  // Per IP first: one host must not be able to push codes into many inboxes
+  // through the Brevo account (5 per hour, on top of 3 per address per 15 min).
+  const codeRequestIp = req.ip || req.connection?.remoteAddress || 'unknown';
+  if (emailCodes.isIpRateLimited(codeRequestIp)) {
+    return res.status(429).json({
+      error: 'Too many verification requests from this network. Please try again in an hour.'
+    });
+  }
+  if (emailCodes.isEmailRateLimited(email)) {
     return res.status(429).json({ error: 'Too many verification requests. Please try again in 15 minutes.' });
   }
 
@@ -268,12 +250,12 @@ router.post('/send-verification-code', async (req, res) => {
   }
 
   const code = randomSixDigitCode();
-  codeStore.set(email, { code, expiresAt: Date.now() + CODE_TTL_MS, verified: false });
+  emailCodes.issue(email, code);
 
   try {
     await sendVerificationEmail(email, code);
   } catch (err) {
-    codeStore.delete(email);
+    emailCodes.drop(email);
     console.error('[mail] send failed:', err.message);
     return res.status(500).json({ ok: false, message: 'Could not send the email. Please try again.' });
   }
@@ -282,7 +264,7 @@ router.post('/send-verification-code', async (req, res) => {
 });
 
 router.post('/verify-code', async (req, res) => {
-  cleanExpiredCodes();
+  emailCodes.clean();
   const email = normalizeEmail(req.body?.email);
   // Ensure both stored and submitted codes are compared as strings.
   const code = String(req.body?.code || '').trim();
@@ -291,12 +273,12 @@ router.post('/verify-code', async (req, res) => {
     return res.status(400).json({ error: 'Email and code are required.' });
   }
 
-  const entry = codeStore.get(email);
+  const entry = emailCodes.get(email);
   if (!entry) {
     return res.status(400).json({ error: 'No verification code has been sent for this email.' });
   }
   if (entry.expiresAt < Date.now()) {
-    codeStore.delete(email);
+    emailCodes.drop(email);
     console.warn(`[auth] verify-code: expired code for ${email}`);
     return res.status(400).json({ error: 'Code expired. Please request a new code.' });
   }
@@ -304,10 +286,16 @@ router.post('/verify-code', async (req, res) => {
     return res.json({ verified: true, message: 'Email already verified.' });
   }
   if (String(entry.code) !== code) {
-    return res.status(400).json({ error: 'Invalid code.' });
+    // Brute-force guard: five wrong guesses kill the code for good, so the six
+    // digits cannot be walked through one request at a time.
+    const attemptsLeft = emailCodes.recordWrongAttempt(email);
+    if (attemptsLeft <= 0) {
+      return res.status(400).json({ error: 'Too many incorrect attempts. Please request a new code.' });
+    }
+    return res.status(400).json({ error: 'Invalid code.', attemptsLeft });
   }
 
-  entry.verified = true;
+  emailCodes.markVerified(email);
   console.log(`[auth] Email verified successfully: ${email}`);
   res.json({ verified: true, message: 'Email verified successfully.' });
 });
@@ -331,8 +319,8 @@ router.post('/register', async (req, res) => {
   }
 
   // Require email verification before allowing registration
-  cleanExpiredCodes();
-  const verifiedEntry = codeStore.get(normalizeEmail(email));
+  emailCodes.clean();
+  const verifiedEntry = emailCodes.get(normalizeEmail(email));
   if (!verifiedEntry || !verifiedEntry.verified) {
     return res.status(403).json({
       error: 'Please verify your email address before registering.'
@@ -713,7 +701,11 @@ router.get('/google/callback', async (req, res) => {
     delete req.session.googleExternal;
     const code = makeBridgeCode();
     googleBridgeStore.set(code, { userId: user.id, expiresAt: Date.now() + GOOGLE_BRIDGE_TTL_MS });
-    console.log(`[google] External-browser sign-in complete — bridge code ${code} minted for ${email}`);
+    // The bridge code is a one-time sign-in credential: printing it would put
+    // a live sign-in code in the deploy log, so it is development-only.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[google] External-browser sign-in complete — bridge code ${code} minted for ${email}`);
+    }
     return res.redirect('/google-bridge.html?code=' + code);
   }
   if (isNewUser) return res.redirect('/complete-profile.html');

@@ -22,11 +22,12 @@ const FIXED_CODE = '246813';
 // Harness: an in-memory stand-in for the router's DB + SMS + clock.
 // Only the statements the route actually issues are implemented.
 // ---------------------------------------------------------------
-async function startApi({ users = [], realHash = false, smsFails = false, sms } = {}) {
+async function startApi({ users = [], realHash = false, smsFails = false, sms, email, emailFails = false } = {}) {
   const clock = { now: Date.parse('2026-10-08T09:00:00.000Z') };
   const userRows = new Map(users.map((user) => [user.id, { ...user }]));
   const codeRows = [];
   const sentMessages = [];
+  const sentEmails = [];
   const logs = [];
   let seq = 0;
 
@@ -130,6 +131,10 @@ async function startApi({ users = [], realHash = false, smsFails = false, sms } 
       sentMessages.push({ phone, message });
       return { provider: 'console', dev: true };
     }),
+    sendVerificationEmail: email || (async (to, code) => {
+      if (emailFails) throw new Error('mail gateway down');
+      sentEmails.push({ to, code });
+    }),
     ...(realHash ? {} : {
       hashCode: async (code) => `stub-hash:${code}`,
       compareCode: async (code, hash) => hash === `stub-hash:${code}`
@@ -151,6 +156,7 @@ async function startApi({ users = [], realHash = false, smsFails = false, sms } 
     clock,
     codeRows,
     sentMessages,
+    sentEmails,
     logs,
     user: (id) => userRows.get(id),
     advance(ms) { clock.now += ms; },
@@ -178,7 +184,7 @@ test('send-code normalizes PH numbers, texts the code and stores only a hash', a
 
   assert.equal(result.status, 200);
   assert.equal(result.body.success, true);
-  assert.equal(result.body.expiresIn, 300);
+  assert.equal(result.body.expiresIn, 600);
   assert.equal(result.body.resendIn, 60);
   assert.equal(result.body.phone, '+639171234567');
 
@@ -188,11 +194,11 @@ test('send-code normalizes PH numbers, texts the code and stores only a hash', a
   assert.equal(stored.userId, 'user-1');
   assert.equal(stored.attempts, 0);
   assert.notEqual(stored.codeHash, FIXED_CODE, 'the plain code is never stored');
-  assert.equal(Date.parse(stored.expiresAt) - Date.parse(stored.createdAt), 5 * 60 * 1000);
+  assert.equal(Date.parse(stored.expiresAt) - Date.parse(stored.createdAt), 10 * 60 * 1000);
 
   assert.equal(api.sentMessages.length, 1);
   assert.equal(api.sentMessages[0].phone, '+639171234567');
-  assert.match(api.sentMessages[0].message, /Your CPRI verification code is 246813\. It expires in 5 minutes\. Don't share it with anyone\./);
+  assert.match(api.sentMessages[0].message, /Your CPRI verification code is 246813\. It expires in 10 minutes\. Don't share it with anyone\./);
 
   await api.close();
 });
@@ -359,7 +365,7 @@ test('verify-code counts attempts and locks the code after 5 wrong tries', async
 test('verify-code rejects an expired code', async () => {
   const api = await startApi({ users: [student] });
   await post(`${api.url}/send-code`, { phone: '09171234567' }, { user: 'user-1' });
-  api.advance(5 * 60 * 1000 + 1000);
+  api.advance(10 * 60 * 1000 + 1000);
 
   const late = await post(`${api.url}/verify-code`, { phone: '09171234567', code: FIXED_CODE }, { user: 'user-1' });
   assert.equal(late.status, 400);
@@ -495,4 +501,78 @@ test('bcrypt round-trips a 6-digit code', async () => {
   const hash = await bcrypt.hash(FIXED_CODE, 4);
   assert.equal(await bcrypt.compare(FIXED_CODE, hash), true);
   assert.equal(await bcrypt.compare('000000', hash), false);
+});
+
+// ---------------------------------------------------------------
+// Delivery policy: where a code may go
+// ---------------------------------------------------------------
+test('smsProviderInfo disables console mode in production', () => {
+  const plain = smsProviderInfo({ NODE_ENV: 'production' });
+  assert.equal(plain.dev, undefined, 'production never gets DEV console mode');
+  assert.equal(plain.configured, false);
+  assert.equal(plain.consoleDisabled, true);
+
+  // Even an explicit SMS_DEV_MODE=1 must not turn a deploy log into a code dump.
+  const forced = smsProviderInfo({ NODE_ENV: 'production', SMS_DEV_MODE: '1' });
+  assert.equal(forced.dev, undefined);
+  assert.equal(forced.configured, false);
+
+  // A real provider still wins in production.
+  const wired = smsProviderInfo({ NODE_ENV: 'production', SEMAPHORE_API_KEY: 'k' });
+  assert.equal(wired.configured, true);
+  assert.equal(wired.id, 'semaphore');
+});
+
+test('sendSms prints nothing and refuses when production has no provider', async () => {
+  const printed = [];
+  const originalLog = console.log;
+  console.log = (...args) => printed.push(args.join(' '));
+  try {
+    await assert.rejects(
+      () => sendSms('+639171234567', 'Your CPRI verification code is 123456.', { NODE_ENV: 'production' }),
+      /not configured/i
+    );
+    assert.deepEqual(printed, [], 'a production log must never contain a code');
+  } finally {
+    console.log = originalLog;
+  }
+});
+
+test('send-code falls back to email when no SMS provider is configured', async () => {
+  const api = await startApi({
+    users: [{ ...student, email: 'student@example.edu' }],
+    sms: async () => {
+      const error = new Error('SMS is not configured; verification codes are delivered by email instead.');
+      error.code = 'SMS_UNAVAILABLE';
+      throw error;
+    }
+  });
+
+  const result = await post(`${api.url}/send-code`, { phone: '09171234567' }, { user: 'user-1' });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.success, true);
+  assert.equal(result.body.sentVia, 'email');
+  assert.equal(api.sentEmails.length, 1);
+  assert.equal(api.sentEmails[0].to, 'student@example.edu');
+  assert.equal(api.sentEmails[0].code.length, 6);
+  assert.deepEqual(api.sentMessages, [], 'nothing is sent to the handset');
+  assert.equal(api.codeRows.length, 1, 'the code is stored before delivery');
+
+  const ok = await post(`${api.url}/verify-code`, { phone: '09171234567', code: FIXED_CODE }, { user: 'user-1' });
+  assert.equal(ok.status, 200, 'the emailed code verifies the number');
+  assert.equal(Number(api.user('user-1').phone_verified), 1);
+  await api.close();
+});
+
+test('send-code reports a failure when neither SMS nor email can deliver', async () => {
+  const api = await startApi({
+    users: [{ ...student, email: 'student@example.edu' }],
+    smsFails: true,
+    emailFails: true
+  });
+  const result = await post(`${api.url}/send-code`, { phone: '09171234567' }, { user: 'user-1' });
+  assert.equal(result.status, 502);
+  assert.match(result.body.error, /could not send/i);
+  assert.equal(api.codeRows.length, 0, 'no undelivered code is left behind');
+  await api.close();
 });

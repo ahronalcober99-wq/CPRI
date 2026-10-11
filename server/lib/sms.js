@@ -8,8 +8,12 @@
 //    SMS_PROVIDER=semaphore | philsms | twilio | vonage | console
 //    SMS_DEV_MODE=1            → print the message to the server console
 //
-//  With no provider configured the wrapper falls back to console
-//  mode, so phone verification is fully testable without credits.
+//  Outside production, with no provider configured, the wrapper falls
+//  back to console mode so the flow is fully testable without credits.
+//  In production (NODE_ENV=production) console mode is NEVER used: a
+//  code printed to the deploy log is a code anyone with log access can
+//  read, so production falls back to the email channel instead (see
+//  server/phone-verification.js). SMS_DEV_MODE is ignored in production.
 //  No key is ever hardcoded — see .env.example.
 // ============================================================
 
@@ -134,11 +138,15 @@ const CONSOLE_PROVIDER = { id: 'console', label: 'Console (development mode)' };
 export function smsProviderInfo(env = process.env) {
   const requested = String(env.SMS_PROVIDER || '').trim().toLowerCase();
   const devForced = env.SMS_DEV_MODE === '1' || env.SMS_DEV_MODE === 'true';
+  const isProduction = String(env.NODE_ENV || '').trim().toLowerCase() === 'production';
+  const consoleRequested = devForced
+    || requested === 'console' || requested === 'dev' || requested === 'development';
 
-  if (devForced || requested === 'console' || requested === 'dev' || requested === 'development') {
+  // Console mode prints the code itself, so it exists only outside production.
+  if (consoleRequested && !isProduction) {
     return { ...CONSOLE_PROVIDER, configured: true, dev: true };
   }
-  if (requested) {
+  if (requested && !consoleRequested) {
     const provider = PROVIDERS[requested];
     if (!provider) {
       return {
@@ -152,10 +160,23 @@ export function smsProviderInfo(env = process.env) {
     const missing = provider.requiredEnv.filter((key) => !env[key]);
     return { id: requested, label: provider.label, configured: missing.length === 0, missing };
   }
-  // No explicit choice: first fully-configured provider wins, otherwise dev.
+  // No explicit choice: first fully-configured provider wins.
   const found = Object.entries(PROVIDERS).find(([, provider]) => provider.requiredEnv.every((key) => env[key]));
   if (found) return { id: found[0], label: found[1].label, configured: true, missing: [] };
-  return { ...CONSOLE_PROVIDER, configured: true, dev: true, autoDev: true };
+
+  if (!consoleRequested && !isProduction) {
+    return { ...CONSOLE_PROVIDER, configured: true, dev: true, autoDev: true };
+  }
+  // Production (or an unknown console request) with nothing configured:
+  // report "not configured" so the caller can hand the code to email.
+  return {
+    id: null,
+    label: 'None',
+    configured: false,
+    missing: [],
+    consoleDisabled: isProduction,
+    error: 'SMS is not configured; verification codes are delivered by email instead.'
+  };
 }
 
 /**
@@ -168,13 +189,17 @@ export async function sendSms(phone, message, env = process.env) {
 
   if (info.id === 'console') {
     // DEV mode: the code is printed so the flow can be tested without credits.
+    // smsProviderInfo only ever returns the console provider outside production.
     console.log(`[sms][dev] ${phone} ← ${message}`);
     return { provider: 'console', dev: true };
   }
   if (!info.configured) {
-    throw new Error(
+    const error = new Error(
       info.error || `SMS provider ${info.label} is not configured (missing ${info.missing.join(', ')})`
     );
+    // Lets the caller tell "no gateway" apart from "the gateway failed".
+    error.code = 'SMS_UNAVAILABLE';
+    throw error;
   }
 
   const result = await PROVIDERS[info.id].send({ to: phone, message });

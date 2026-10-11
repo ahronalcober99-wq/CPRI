@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import { documentFileFilter, uploadErrorHandler } from './lib/upload-safety.js';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
@@ -59,7 +60,7 @@ const storage = multer.diskStorage({
     cb(null, `${safe}-${Date.now()}${extname(file.originalname)}`);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 }, fileFilter: documentFileFilter });
 const uploadFields = upload.fields([
   ...FILE_FIELDS.map(f => ({ name: f.key, maxCount: 1 })),
   { name: 'additional', maxCount: 10 }
@@ -389,5 +390,9 @@ router.delete('/:id', requireRole(...REVIEWER_ROLES), async (req, res) => {
   await remove('ethics', req.params.id);
   res.json({ message: 'Application removed.' });
 });
+
+// Friendly JSON for oversized or rejected uploads (400, not the global 500).
+// Registered after every route so it sees the upload errors from above.
+router.use(uploadErrorHandler({ label: 'Document', maxMb: 15 }));
 
 export { router as ethicsRouter, ETHICS_STATUS, REVIEWER_ROLES, SUBMIT_ROLES, FILE_FIELDS };

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import { documentFileFilter, uploadErrorHandler } from './lib/upload-safety.js';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname, basename } from 'path';
@@ -431,7 +432,7 @@ const storage = multer.diskStorage({
     cb(null, `${Date.now()}-${safe}`);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 }, fileFilter: documentFileFilter });
 
 router.post('/files/upload', requireAdmin, upload.array('files', 10), async (req, res) => {
   try {
@@ -643,6 +644,10 @@ router.put('/notifications/prefs', requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to save preferences.' });
   }
 });
+
+// Friendly JSON for oversized or rejected uploads (400, not the global 500).
+// Registered after every route so it sees the upload errors from above.
+router.use(uploadErrorHandler({ label: 'File', maxMb: 15 }));
 
 export { router as adminInsightsRouter };
 

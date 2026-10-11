@@ -7,7 +7,11 @@
 //  Design notes:
 //   • Only a bcrypt hash of the code is stored — never the plain code, and the
 //     code is never written to any log.
-//   • Codes live 5 minutes, allow 5 attempts, then must be re-requested.
+//   • Codes live 10 minutes, allow 5 attempts, then must be re-requested.
+//   • Delivery: a configured SMS gateway first; if there is none (or it fails)
+//     the code is emailed to the account's verified address through Brevo.
+//     Outside production only, the last resort is printing it to the console.
+//     Production never prints a code — see server/lib/sms.js.
 //   • Sends are capped at 1/60s and 5/hour per user and per IP. The counter
 //     ledger is the audit trail (system_logs, action 'phone_code_sent'), so the
 //     limits survive the code row being deleted on success.
@@ -22,11 +26,12 @@ import { requireAuth } from './auth.js';
 import { all, get, run, insert, update } from './server/db/queries.js';
 import { addLog } from './audit.js';
 import { sendSms } from './lib/sms.js';
+import { sendVerificationEmail } from './lib/mail.js';
 import { normalizePhone, maskPhone } from './lib/phone.js';
 
 const SALT_ROUNDS = 10;
 
-export const CODE_TTL_MS = 5 * 60 * 1000;          // 5 minutes
+export const CODE_TTL_MS = 10 * 60 * 1000;         // 10 minutes
 export const RESEND_COOLDOWN_MS = 60 * 1000;       // 60 seconds between sends
 export const SEND_WINDOW_MS = 60 * 60 * 1000;      // 1 hour
 export const MAX_SENDS_PER_WINDOW = 5;             // per user AND per IP
@@ -116,6 +121,7 @@ export function createPhoneVerificationRouter(dependencies = {}) {
   const auth = dependencies.requireAuth || requireAuth;
   const now = dependencies.now || (() => Date.now());
   const smsSend = dependencies.sendSms || sendSms;
+  const emailSend = dependencies.sendVerificationEmail || sendVerificationEmail;
   const log = dependencies.log || addLog;
   const hashCode = dependencies.hashCode || ((code) => bcrypt.hash(code, SALT_ROUNDS));
   const compareCode = dependencies.compareCode || ((code, hash) => bcrypt.compare(code, hash));
@@ -182,26 +188,51 @@ export function createPhoneVerificationRouter(dependencies = {}) {
     });
 
     const message = `Your CPRI verification code is ${code}. It expires in ${Math.round(codeTtlMs / 60000)} minutes. Don't share it with anyone.`;
+
+    // Delivery: a real SMS gateway when one is configured; otherwise — or when
+    // the gateway fails — the code is emailed to the account's (already
+    // verified) address through Brevo. With no gateway and no email the send
+    // fails loudly, and in development the code is printed to the console.
+    // Production never prints a code (server/lib/sms.js), so the deploy log
+    // cannot leak a live one.
+    const owner = await queries.get('SELECT * FROM users WHERE id = ?', [userId]).catch(() => null);
+    let sentVia = null;
+    let failure = null;
     try {
-      await smsSend(phone, message);
+      const result = await smsSend(phone, message);
+      sentVia = result?.provider || 'sms';
     } catch (err) {
+      failure = err;
+    }
+    if (!sentVia && owner?.email) {
+      try {
+        await emailSend(owner.email, code);
+        sentVia = 'email';
+        failure = null;
+      } catch (err) {
+        failure = err;
+      }
+    }
+    if (!sentVia) {
       // Nothing was delivered — drop the code so no request can match it.
       await queries
         .run('DELETE FROM phone_verification_codes WHERE userId = ? AND phone = ?', [userId, phone])
         .catch(() => {});
-      console.error('[phone] SMS delivery failed:', err.message);
-      return res.status(502).json({ error: 'We could not send the SMS right now. Please try again in a moment.' });
+      console.error('[phone] verification code delivery failed:', failure?.message);
+      return res.status(502).json({ error: 'We could not send the verification code right now. Please try again in a moment.' });
     }
 
     await ledger.record({ userId, ip, phone, at, req });
-    await log('phone_code_sent', `Phone verification code sent to ${maskPhone(phone)}`, req);
+    await log('phone_code_sent', `Phone verification code sent to ${maskPhone(phone)} via ${sentVia}`, req);
 
     res.json({
       success: true,
       expiresIn: Math.round(codeTtlMs / 1000),
       resendIn: Math.round(cooldownMs / 1000),
       phone,
-      masked: maskPhone(phone)
+      masked: maskPhone(phone),
+      // Where the code actually went: 'sms' | 'email' | 'console'.
+      sentVia
     });
   });
 

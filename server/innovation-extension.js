@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import multer from 'multer';
+import { documentFileFilter, uploadErrorHandler } from './lib/upload-safety.js';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
@@ -39,7 +40,7 @@ const storage = multer.diskStorage({
     cb(null, `${safe}-${Date.now()}${extname(file.originalname)}`);
   }
 });
-const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 15 * 1024 * 1024 }, fileFilter: documentFileFilter });
 const uploadDocs = upload.fields([
   { name: 'supporting_document', maxCount: 1 },
   { name: 'photo', maxCount: 1 },
@@ -233,6 +234,10 @@ router.delete('/:id', requireAuth, async (req, res) => {
   await remove('innovation_extension', req.params.id);
   res.json({ message: 'Record removed.' });
 });
+
+// Friendly JSON for oversized or rejected uploads (400, not the global 500).
+// Registered after every route so it sees the upload errors from above.
+router.use(uploadErrorHandler({ label: 'Document', maxMb: 15 }));
 
 export { router as innovationExtensionRouter, PROJECT_TYPES, STAFF_ROLES };
 

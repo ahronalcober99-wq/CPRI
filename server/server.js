@@ -698,11 +698,15 @@ const server = app.listen(PORT, async () => {
 
   const smsInfo = smsProviderInfo();
   if (smsInfo.dev) {
+    // Only reachable outside production: the code is printed for local testing.
     console.warn(`[sms] No SMS provider configured — DEV mode is on (${smsInfo.label}): verification codes are printed to this console instead of being sent.`);
-  } else if (!smsInfo.configured) {
-    console.warn(`[sms] SMS_PROVIDER=${smsInfo.id} is missing ${(smsInfo.missing || []).join(', ')} — phone verification codes cannot be sent.`);
-  } else {
+  } else if (smsInfo.configured) {
     console.log(`[sms] provider: ${smsInfo.label}`);
+  } else if (smsInfo.consoleDisabled) {
+    // Production: codes are never printed here; they go out through Brevo email.
+    console.log('[sms] No SMS provider configured — verification codes are delivered by email (Brevo). Set SMS_PROVIDER plus its keys to send SMS instead.');
+  } else {
+    console.warn(`[sms] SMS_PROVIDER=${smsInfo.id} is missing ${(smsInfo.missing || []).join(', ')} — phone verification codes cannot be sent.`);
   }
 
   console.log(`CPRI public website running at http://localhost:${PORT}`);
