@@ -1,36 +1,214 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profile | CPRI</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile | CPRI</title>
+  <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
-    <div id="app">
-        <h1>User Profile</h1>
-        <div id="profile-container"></div>
-        <div id="error-message" style="display:none; color:red; margin-top:20px;"></div>
-    </div>
-    <script>
-        async function loadProfile() {
-            try {
-                const response = await fetch('/api/profile');
-                if (!response.ok) throw new Error('Failed to load profile');
-                const data = await response.json();
-                document.getElementById('profile-container').innerText = JSON.stringify(data);
-            } catch (err) {
-                const errDiv = document.getElementById('error-message');
-                errDiv.style.display = 'block';
-                errDiv.innerText = 'Can\'t load your profile right now. Try again later.';
-            }
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>My Profile</h1>
+        <p>Your account details and notification preferences.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container" style="max-width:640px;">
+        <div class="form-message" id="message"></div>
+
+        <div id="profile-loading" class="empty-state">Loading your profile…</div>
+
+        <div id="not-logged" class="empty-state" style="display:none;">
+          You are not logged in. <a href="login.html">Log in here</a>.
+        </div>
+
+        <div id="profile-area" style="display:none;">
+          <div class="card" id="profile-card" style="margin-bottom:22px;">
+            <h3 id="pf-name">—</h3>
+            <div class="contact-row"><span class="label">Username</span><span id="pf-username"></span></div>
+            <div class="contact-row"><span class="label">Email</span><span id="pf-email"></span></div>
+            <div class="contact-row"><span class="label">Role</span><span id="pf-role"></span></div>
+            <div class="contact-row"><span class="label">Status</span><span id="pf-status"></span></div>
+            <div class="contact-row"><span class="label">Department</span><span id="pf-department"></span></div>
+            <div class="contact-row"><span class="label">Contact No.</span><span id="pf-phone"></span></div>
+            <div class="contact-row"><span class="label">Research Interests</span><span id="pf-interests"></span></div>
+          </div>
+
+          <div class="card" id="prefs">
+            <h3>Notification Preferences</h3>
+            <p class="form-note" style="margin-top:0;">Choose how CPRI notifies you about activity on your account.</p>
+
+            <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;">
+              <div>
+                <label for="pref-inapp" style="margin:0;">In-app notifications</label>
+                <p class="form-note" style="margin:2px 0 0;">Show notifications in the bell menu.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="pref-inapp"><span></span></label>
+            </div>
+
+            <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;">
+              <div>
+                <label for="pref-email" style="margin:0;">Email copies</label>
+                <p class="form-note" style="margin:2px 0 0;">Also send each notification to your email.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="pref-email"><span></span></label>
+            </div>
+
+            <div class="form-group" style="display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px;">
+              <div>
+                <label for="pref-quiet" style="margin:0;">Quiet hours</label>
+                <p class="form-note" style="margin:2px 0 0;">Hold email copies overnight.</p>
+              </div>
+              <label class="switch"><input type="checkbox" id="pref-quiet"><span></span></label>
+            </div>
+
+            <div id="quiet-range" class="form-group" style="display:none;">
+              <label for="pref-quiet-start">Quiet hours window</label>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <input type="time" id="pref-quiet-start" style="max-width:140px;">
+                <span>to</span>
+                <input type="time" id="pref-quiet-end" style="max-width:140px;">
+              </div>
+            </div>
+
+            <button class="btn btn-primary" id="save-prefs">Save Preferences</button>
+          </div>
+
+          <div style="margin-top:20px;">
+            <button class="btn btn-navy" id="logout-btn">Log Out</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const loading = document.getElementById('profile-loading');
+    const notLogged = document.getElementById('not-logged');
+    const area = document.getElementById('profile-area');
+
+    function showMessage(text, kind) {
+      if (!text) { message.style.display = 'none'; message.textContent = ''; return; }
+      message.className = 'form-message ' + (kind || 'success');
+      message.textContent = text;
+      message.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    // "—" for empty fields so a sparse account does not render as blank rows.
+    function shown(v) {
+      const s = (v ?? '').toString().trim();
+      return s || '—';
+    }
+
+    function renderProfile(p) {
+      document.getElementById('pf-name').textContent = p.fullName || p.username || 'My Profile';
+      document.getElementById('pf-username').textContent = shown(p.username);
+      document.getElementById('pf-email').textContent = shown(p.email);
+      document.getElementById('pf-role').textContent = shown(p.roleLabel || p.role);
+      document.getElementById('pf-status').textContent = shown(p.status);
+      document.getElementById('pf-department').textContent = shown(p.department);
+      document.getElementById('pf-interests').textContent = shown(p.researchInterests);
+
+      const phone = document.getElementById('pf-phone');
+      if (p.contactNumber) {
+        phone.textContent = p.contactNumber + (p.phoneVerified ? '  ✓ verified' : '');
+      } else {
+        phone.textContent = '—';
+      }
+    }
+
+    function renderPrefs(prefs) {
+      const p = prefs || {};
+      document.getElementById('pref-inapp').checked = p.inApp !== false;
+      document.getElementById('pref-email').checked = p.email === true;
+      const q = p.quietHours || {};
+      document.getElementById('pref-quiet').checked = q.enabled === true;
+      document.getElementById('pref-quiet-start').value = q.start || '22:00';
+      document.getElementById('pref-quiet-end').value = q.end || '07:00';
+      toggleQuiet();
+    }
+
+    function toggleQuiet() {
+      const on = document.getElementById('pref-quiet').checked;
+      document.getElementById('quiet-range').style.display = on ? 'block' : 'none';
+    }
+    document.getElementById('pref-quiet').addEventListener('change', toggleQuiet);
+
+    // 401 means the session expired between page load and the call — the page
+    // shell is server-gated, so send the visitor back through login and return.
+    async function fetchJson(url, opts) {
+      const res = await fetch(url, opts);
+      if (res.status === 401) {
+        window.location.replace('login.html?next=profile.html');
+        return null;
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Request failed.');
+      return data;
+    }
+
+    (async () => {
+      try {
+        // The endpoint lives on the auth router, mounted at /api/auth — the old
+        // page called /api/profile, which no route served (404) and always
+        // showed "Can't load your profile right now."
+        const data = await fetchJson('/api/auth/profile');
+        if (!data) return; // redirecting to login
+        renderProfile(data.profile || {});
+        renderPrefs((data.profile || {}).prefs);
+        loading.style.display = 'none';
+        area.style.display = 'block';
+      } catch (err) {
+        loading.style.display = 'none';
+        notLogged.style.display = 'block';
+        notLogged.textContent = 'Can\u2019t load your profile right now. ' + (err.message || 'Try again later.');
+      }
+    })();
+
+    document.getElementById('save-prefs').addEventListener('click', async () => {
+      const btn = document.getElementById('save-prefs');
+      const body = {
+        inApp: document.getElementById('pref-inapp').checked,
+        email: document.getElementById('pref-email').checked,
+        quietHours: {
+          enabled: document.getElementById('pref-quiet').checked,
+          start: document.getElementById('pref-quiet-start').value,
+          end: document.getElementById('pref-quiet-end').value
         }
-        loadProfile();
-        window.addEventListener('unhandledrejection', (event) => {
-            console.error('Unhandled rejection:', event.reason);
-            const errDiv = document.getElementById('error-message');
-            errDiv.style.display = 'block';
-            errDiv.innerText = 'A critical error occurred. Please try again.';
+      };
+      btn.disabled = true;
+      try {
+        const data = await fetchJson('/api/auth/profile/prefs', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
         });
-    </script>
+        if (!data) return; // redirecting to login
+        renderPrefs(data.prefs);
+        showMessage('Preferences saved.', 'success');
+      } catch (err) {
+        showMessage(err.message || 'Could not save preferences.', 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      const res = await fetch('/api/auth/logout', { method: 'POST' });
+      if (res.ok) window.location.href = 'login.html';
+      else showMessage('Logout failed. Please try again.', 'error');
+    });
+  </script>
 </body>
 </html>
