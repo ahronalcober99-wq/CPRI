@@ -13,12 +13,16 @@
 //     extension or the Content-Type header, and only JPEG, PNG and WebP pass.
 //   • sharp squares the image and resizes it to 512×512 WebP. Metadata (EXIF,
 //     including GPS) is dropped because withMetadata() is never called.
-//   • Object names are random UUIDs under profile-photos/<userId>/, so the
-//     original filename never reaches storage.
 //   • Storage is Supabase Storage (the same adapter the rest of the site uses
-//     for files and event covers) because Render's free plan wipes the local
-//     disk on every restart/redeploy — a file written under
-//     public/assets/uploads would simply disappear.
+//     for files and event covers), so Render's free-plan disk wipe doesn't
+//     destroy photos.
+//   • Photos are stored under `avatars/<userId>/<random>.webp` inside the
+//     configured bucket (SUPABASE_EVENT_BUCKET by default, or SUPABASE_AVATAR_BUCKET
+//     when set). The object prefix keeps them separate from the site's event
+//     images while sharing the same public bucket — no new bucket is required.
+//   • There is no dedicated profile-photo column: the public URL is stored in
+//     the existing `profilePhoto` column, and the front end reads it as
+//     `photoUrl` (server/auth.js already returns both).
 // ============================================================
 import { Router } from 'express';
 import multer from 'multer';
@@ -36,12 +40,28 @@ import { supabaseStorage } from './storage/supabase-storage.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
 const LEGACY_PREFIX = '/assets/uploads/profiles/';
+const env = process.env;
 
-export const MAX_PHOTO_BYTES = 2 * 1024 * 1024;               // 2 MB
-export const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-export const PHOTO_SIZE = 512;                                // 512×512 square
+// Bucket for profile photos. The site's uploads share one Supabase project, so
+// this router reuses the same client — it never reads another bucket.
+//
+// On Render the public `SUPABASE_EVENT_BUCKET` is already configured and
+// verified to exist (log line `[storage] bucket OK`). By default the profile
+// photo router uses that same bucket, so **no new environment variable is
+// required**. Photos land under `avatars/<userId>/<random>.webp` inside that
+// bucket — the object *prefix* keeps them separate from the site's event images
+// while sharing the same public bucket.
+//
+// SUGGESTED (optional, no change needed now): keep `SUPABASE_EVENT_BUCKET`
+// reserved for events and put avatars in their own public bucket by setting
+// `SUPABASE_AVATAR_BUCKET`. When that is set, storage paths are still
+// `avatars/<userId>/<random>.webp`, just under the other bucket. See .env.example.
 export const PROFILE_PHOTO_BUCKET = 'events';                 // the site's public bucket
-export const PROFILE_PHOTO_PREFIX = 'profile-photos';
+export const PROFILE_PHOTO_PREFIX = 'avatars';               // inside whatever bucket is used
+
+const MAX_PHOTO_BYTES = 2 * 1024 * 1024;               // 2 MB
+const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const PHOTO_SIZE = 512;                                // 512×512 square
 
 export const PHOTO_FORMAT_MESSAGE = 'Please choose a JPG, PNG, or WebP image.';
 export const PHOTO_SIZE_MESSAGE = 'That photo is too big — the maximum size is 2 MB.';
@@ -249,9 +269,10 @@ export function createProfilePhotoRouter(dependencies = {}) {
   return router;
 }
 
-// ---------- Schema (additive, safe on existing databases) ----------
-// profilePhoto already exists on every current deployment; this only repairs an
-// older database so the feature can never fail with "Unknown column".
+// ---------- Schema (additive, safe on every existing deployment) ----------
+// profilePhoto already exists on every current deployment (set by the previous
+// feature work). We re-check on startup anyway so the feature can never fail
+// with "Unknown column" if someone reuses an older schema export.
 export async function ensureProfilePhotoColumn(dependencies = {}) {
   const allQuery = dependencies.all || (await import('./server/db/queries.js')).all;
   const runQuery = dependencies.run || (await import('./server/db/queries.js')).run;
@@ -260,6 +281,32 @@ export async function ensureProfilePhotoColumn(dependencies = {}) {
   if (!existing.has('profilephoto')) {
     await runQuery('ALTER TABLE users ADD COLUMN profilePhoto VARCHAR(255) DEFAULT NULL');
   }
+  // The photoUrl read alias the front end prefers. It lives only on the JSON
+  // response (server/auth.js), never in the database — so there is nothing to
+  // migrate here. If an older deployment is missing profilePhoto, this call
+  // already added it; nothing else is needed.
 }
 
-export const profilePhotoRouter = createProfilePhotoRouter();
+// ---------- Startup log (mirrors the existing per-bucket shape) ----------
+// Own log so the admin can see at a glance whether avatars will work, even when
+// the bucket is otherwise healthy for files/events. It never prints a credential.
+async function logProfilePhotoStartup(logger = console) {
+  try {
+    const config = optionalBucketConfiguration(env, PROFILE_PHOTO_BUCKET);
+    if (config) {
+      const host = (() => { try { return new URL(config.baseUrl).host; } catch { return '(invalid URL)'; } })();
+      logger.log(`[storage] avatars: ok, bucket '${config.bucket}' host '${host}'`);
+    } else {
+      logger.log('[storage] avatars: SKIP (no bucket configured)');
+    }
+  } catch (error) {
+    logger.log(`[storage] avatars: SKIP (${error.message})`);
+  }
+}
+
+// ---------- Public API ----------
+// Prefer the router + startup log from the dependency-injected factory (so
+// tests can substitute a fake storage + logger). The module also re-exports
+// processProfilePhoto and removeStoredProfilePhoto for the existing test suite.
+export const { profilePhotoRouter } = createProfilePhotoRouter();
+export { logProfilePhotoStartup };

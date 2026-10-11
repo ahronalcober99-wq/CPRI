@@ -185,6 +185,46 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
     }
   }
 
+  /**
+   * Log the configured state of the profile-photo bucket for this deployment.
+   * Mirrors the existing per-bucket startup log, so the admin can see at a
+   * glance whether avatars will work without touching another Supabase project.
+   */
+  async function logProfilePhotoStartup(logger = console) {
+    try {
+      const config = optionalBucketConfiguration(env, PROFILE_PHOTO_BUCKET);
+      if (config) {
+        const host = (() => { try { return new URL(config.baseUrl).host; } catch { return '(invalid URL)'; } })();
+        logger.log(`[storage] avatars: ok, bucket '${config.bucket}' host '${host}'`);
+      } else {
+        logger.log(`[storage] avatars: SKIP (no bucket configured)`);
+      }
+    } catch (error) {
+      logger.log(`[storage] avatars: SKIP (${error.message})`);
+    }
+  }
+
+
+  /**
+   * Log the configured state of the profile-photo bucket for this deployment.
+   * Mirrors the existing per-bucket startup log, so the admin can see at a
+   * glance whether avatars will work without touching another Supabase project.
+   */
+  async function logProfilePhotoStartup(logger = console) {
+    try {
+      const config = optionalBucketConfiguration(env, PROFILE_PHOTO_BUCKET);
+      if (config) {
+        const host = (() => { try { return new URL(config.baseUrl).host; } catch { return '(invalid URL)'; } })();
+        logger.log(`[storage] avatars: ok, bucket '${config.bucket}' host '${host}'`);
+      } else {
+        logger.log(`[storage] avatars: SKIP (no bucket configured)`);
+      }
+    } catch (error) {
+      logger.log(`[storage] avatars: SKIP (${error.message})`);
+    }
+  }
+
+
   async function uploadObject({ path, buffer, contentType, bucket }) {
     if (!Buffer.isBuffer(buffer)) throw new Error('Storage upload requires a file buffer.');
     const encodedPath = encodePath(path);
@@ -286,6 +326,29 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
     // Public URL → storage path for this bucket (null when it is not ours).
     objectPathFromPublicUrl: (rawUrl, { bucket } = {}) => pathFromPublicObjectUrl(rawUrl, { bucket, env })
   };
-}
+}export const supabaseStorage = createSupabaseStorage();
+
+
+// ---- Public API ----
+// Profile photos reuse the same Supabase project and bucket as the rest of the
+// site, so this file just re-exports the storage client the profile-photo
+// router already imports. The avatar startup log is exported alongside so
+// server.js can print one line like `[storage] avatars: ok` at boot.
 
 export const supabaseStorage = createSupabaseStorage();
+
+// ---- Public API ----
+// Profile photos reuse the same Supabase project and bucket as the rest of the
+// site, so this file just re-exports the storage client the profile-photo
+// router already imports. The avatar startup log is exported alongside so
+// server.js can print one line like `[storage] avatars: ok` at boot.export const supabaseStorage = createSupabaseStorage();
+
+
+// ---- Public API ----
+// Profile photos reuse the same Supabase project and bucket as the rest of the
+// site, so this file just re-exports the storage client the profile-photo
+// router already imports. The avatar startup log is exported alongside so
+// server.js can print one line like `[storage] avatars: ok` at boot.
+
+export { supabaseStorage, logProfilePhotoStartup };
+
