@@ -904,16 +904,18 @@ function phoneChanged(currentValue, nextValue) {
 // formats the user might enter). Returns the trimmed string on success or throws
 // a 400 with a friendly message.
 function normaliseContactNumber(raw) {
-  const s = String(raw).trim();
+  const s = String(raw || '').trim();
   if (!s) return '';
-  if (!/^[-+0-9 ][-\+0-9 ]*$/.test(s)) {
-    throw new Error('Contact number may only contain digits, spaces, +, and -.');
+  let cleaned = s;
+  if (cleaned.startsWith('+63')) cleaned = cleaned.slice(3);
+  else if (cleaned.startsWith('63') && cleaned.length === 12) cleaned = cleaned.slice(2);
+  else if (cleaned.startsWith('09')) cleaned = cleaned.slice(1);
+  const digits = cleaned.replace(/\D/g, '');
+  const fullNumber = '+63' + digits;
+  if (!/^\+639\d{9}$/.test(fullNumber)) {
+    throw new Error('Invalid contact number');
   }
-  const digits = s.replace(/[^\d]/g, '');
-  if (digits.length < 7 || digits.length > 15) {
-    throw new Error('Contact number must have between 7 and 15 digits.');
-  }
-  return s;
+  return fullNumber;
 }
 
 // The update endpoint is intentionally narrow: it can only change the fields that

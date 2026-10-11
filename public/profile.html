@@ -82,9 +82,29 @@
                 <input type="text" id="edit-department" maxlength="120" placeholder="Your department" disabled>
               </div>
 
-              <div class="field-row editable-field">
+              <div class="field-row editable-field phone-field-row">
                 <label class="field-label" for="edit-contactno">Contact No.</label>
-                <input type="tel" id="edit-contactno" maxlength="20" placeholder="09XX XXX XXXX" disabled>
+                <div class="phone-input-container" id="phone-container">
+                  <div class="phone-prefix-box" aria-hidden="true">+63</div>
+                  <input 
+                    type="tel" 
+                    id="edit-contactno" 
+                    inputmode="numeric" 
+                    placeholder="912 345 6789" 
+                    maxlength="12" 
+                    disabled
+                    aria-describedby="phone-hint phone-counter"
+                  >
+                </div>
+                <div class="phone-feedback-wrap">
+                  <div class="phone-hint" id="phone-hint" aria-live="polite"></div>
+                  <div class="phone-status-meta">
+                    <span class="phone-counter" id="phone-counter">0/10</span>
+                  </div>
+                </div>
+                <div class="phone-progress-bar" id="phone-progress" aria-hidden="true">
+                  <div class="phone-progress-fill" id="phone-progress-fill"></div>
+                </div>
               </div>
 
               <!-- Research Interests moved to the Student Researcher Details section
@@ -345,6 +365,93 @@
           return { ok: false, message: 'Contact number must have between 7 and 15 digits.' };
         }
         return { ok: true, value: s };
+      }
+
+      const phoneContainer = document.getElementById('phone-container');
+      const phoneHint = document.getElementById('phone-hint');
+      const phoneCounter = document.getElementById('phone-counter');
+      const phoneProgressFill = document.getElementById('phone-progress-fill');
+
+      function formatPhDigits(digits) {
+        const d = digits.slice(0, 10);
+        if (d.length <= 3) return d;
+        if (d.length <= 6) return `${d.slice(0, 3)} ${d.slice(3)}`;
+        return `${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}`;
+      }
+
+      function normalizeRawPhone(raw) {
+        if (!raw) return '';
+        let s = String(raw).trim();
+        if (s.startsWith('+63')) s = s.slice(3);
+        else if (s.startsWith('63') && s.length === 12) s = s.slice(2);
+        else if (s.startsWith('09')) s = s.slice(1);
+        
+        const digits = s.replace(/\D/g, '');
+        return digits.slice(0, 10);
+      }
+
+      function updatePhoneUI(rawInput, isBlur = false) {
+        if (!editContactNo || editContactNo.disabled) return;
+        const rawStr = rawInput !== undefined ? rawInput : editContactNo.value;
+        const digits = normalizeRawPhone(rawStr);
+        const formatted = formatPhDigits(digits);
+        
+        if (editContactNo.value !== formatted) {
+          editContactNo.value = formatted;
+        }
+
+        const count = digits.length;
+        if (phoneCounter) phoneCounter.textContent = `${count}/10`;
+        const percent = (count / 10) * 100;
+        if (phoneProgressFill) phoneProgressFill.style.width = `${percent}%`;
+
+        if (phoneContainer) phoneContainer.classList.remove('is-valid', 'is-error');
+        if (phoneHint) phoneHint.className = 'phone-hint';
+        if (phoneProgressFill) phoneProgressFill.className = 'phone-progress-fill';
+
+        if (count === 0) {
+          if (phoneHint) phoneHint.textContent = '';
+          if (phoneProgressFill) phoneProgressFill.classList.add('error');
+          return;
+        }
+
+        if (digits[0] !== '9') {
+          if (phoneContainer) phoneContainer.classList.add('is-error');
+          if (phoneHint) {
+            phoneHint.className = 'phone-hint error';
+            phoneHint.textContent = 'The first digit must be 9 (e.g. 912 345 6789)';
+          }
+          if (phoneProgressFill) phoneProgressFill.classList.add('error');
+          return;
+        }
+
+        if (count < 10) {
+          if (phoneProgressFill) phoneProgressFill.classList.add('error');
+          const digitsToGo = 10 - count;
+          if (phoneHint) {
+            phoneHint.textContent = `${digitsToGo} digit${digitsToGo === 1 ? '' : 's'} to go`;
+            if (isBlur) {
+              if (phoneContainer) phoneContainer.classList.add('is-error');
+              phoneHint.className = 'phone-hint error';
+            }
+          }
+        } else if (count === 10) {
+          if (/^9\d{9}$/.test(digits)) {
+            if (phoneContainer) phoneContainer.classList.add('is-valid');
+            if (phoneHint) {
+              phoneHint.className = 'phone-hint valid';
+              phoneHint.innerHTML = '<i class="bi bi-check-circle-fill"></i> Valid +63 number';
+            }
+            if (phoneProgressFill) phoneProgressFill.classList.add('valid');
+          } else {
+            if (phoneContainer) phoneContainer.classList.add('is-error');
+            if (phoneHint) {
+              phoneHint.className = 'phone-hint error';
+              phoneHint.textContent = 'Invalid Philippine mobile number.';
+            }
+            if (phoneProgressFill) phoneProgressFill.classList.add('error');
+          }
+        }
       }
 
       function maxLen(value, max) {
