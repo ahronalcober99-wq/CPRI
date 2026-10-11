@@ -2145,6 +2145,117 @@ textarea { resize: vertical; min-height: 140px; }
   .field-row > div { flex: 1 1 100%; }
   .student-details-section { padding-left: 6px; padding-right: 6px; }
 }
+
+/* ============================================================
+   PROFILE PHOTO (change photo)
+   The card avatar shows the uploaded photo in a circle, or the initials in
+   the maroon gradient when there is none. A small camera button sits on the
+   bottom-right corner of the avatar and a text link sits underneath; both
+   open the change-photo dialog, which becomes a bottom sheet on phones.
+   ============================================================ */
+.avatar-wrap { position: relative; width: 92px; margin: 0 auto 6px; }
+.avatar-wrap .avatar { margin: 0; }
+.avatar-wrap .avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
+.avatar-cam {
+  position: absolute; right: -4px; bottom: -4px; width: 34px; height: 34px;
+  border-radius: 50%; border: 3px solid #fff; background: #2a0a08; color: #fff;
+  display: grid; place-items: center; cursor: pointer; font-size: .82rem;
+  box-shadow: 0 6px 16px rgba(36,0,0,.28);
+  transition: background .2s ease, transform .18s ease;
+}
+.avatar-cam:hover { background: #7a0000; transform: scale(1.06); }
+.avatar-cam:active { transform: scale(.94); }
+.avatar-cam i { line-height: 1; }
+.change-photo-link {
+  display: inline-block; background: none; border: none; padding: 0; margin: 0 0 12px;
+  color: #7a0000; font-family: var(--font-head); font-weight: 700; font-size: .84rem;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+}
+.change-photo-link:hover { color: #a00000; }
+[data-theme="dark"] .change-photo-link { color: var(--gold-soft); }
+/* The dialog owns the screen while it is open, so the page behind must not scroll. */
+body.photo-modal-open { overflow: hidden; }
+
+.photo-modal { position: fixed; inset: 0; z-index: 4600; display: grid; place-items: center; padding: 20px; }
+.photo-modal[hidden] { display: none; }
+.photo-modal-backdrop {
+  position: absolute; inset: 0; background: rgba(20,0,0,.55);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.photo-modal-card {
+  position: relative; width: min(430px, 100%); max-height: calc(100vh - 40px); overflow: auto;
+  background: var(--cpri-card); border: 1px solid var(--cpri-border); border-radius: 22px;
+  box-shadow: 0 24px 60px rgba(20,0,0,.42); padding: 20px 22px 18px;
+  animation: photoCardIn .26s cubic-bezier(.34,1.4,.64,1);
+}
+@keyframes photoCardIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
+.photo-modal-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.photo-modal-head h3 { margin: 0; font-size: 1.1rem; }
+.photo-modal-close {
+  margin-left: auto; width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px;
+  border: 1px solid var(--cpri-border); background: var(--cpri-bg-2); color: var(--cpri-muted);
+  display: grid; place-items: center; cursor: pointer; transition: color .2s, background .2s;
+}
+.photo-modal-close:hover { color: var(--cpri-text); }
+.photo-modal-close:disabled { opacity: .6; cursor: default; }
+
+/* Large circular preview with a thin gold ring */
+.photo-preview {
+  width: 168px; height: 168px; margin: 4px auto 16px; border-radius: 50%; box-sizing: border-box;
+  border: 2px solid #d9a21b; overflow: hidden; display: grid; place-items: center;
+  background: var(--grad-avatar); color: #fff;
+  font-family: var(--font-head); font-weight: 800; font-size: 2.4rem;
+}
+.photo-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-preview img[hidden] { display: none; }
+
+/* Dashed drop area */
+.photo-drop {
+  width: 100%; display: grid; justify-items: center; gap: 4px; text-align: center;
+  padding: 16px 14px; border: 2px dashed var(--cpri-border); border-radius: 16px;
+  background: var(--cpri-bg-2); color: var(--cpri-text); cursor: pointer;
+  transition: border-color .2s ease, background .2s ease;
+}
+.photo-drop i { font-size: 1.5rem; color: #7a0000; }
+[data-theme="dark"] .photo-drop i { color: var(--gold-soft); }
+.photo-drop b { font-family: var(--font-head); font-size: .95rem; }
+.photo-drop small { color: var(--cpri-muted); font-size: .76rem; }
+.photo-drop:hover, .photo-drop.dragover { border-color: #7a0000; background: rgba(122,0,0,.06); }
+.photo-drop.dragover { border-style: solid; }
+.photo-drop:disabled { opacity: .6; cursor: wait; }
+
+.photo-modal-msg { min-height: 20px; margin: 10px 0 0; font-size: .84rem; color: var(--cpri-muted); text-align: center; }
+.photo-modal-msg.error { color: #b23b32; }
+[data-theme="dark"] .photo-modal-msg.error { color: #FCA5A5; }
+.photo-modal-actions { display: grid; gap: 10px; margin-top: 12px; }
+.photo-modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.photo-modal-actions .btn { justify-content: center; padding: 12px 18px; }
+/* Bootstrap paints a disabled .btn transparent; Save stays maroon but dimmed so
+   it still reads as the primary action before a photo is chosen. */
+#photo-save:disabled { background: rgba(122,0,0,.45); border-color: transparent; color: rgba(255,255,255,.85); }
+/* Save button spinner while the upload is in flight */
+#photo-save[aria-busy="true"]::after {
+  content: ""; width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.45); border-top-color: #fff;
+  animation: spin .7s linear infinite;
+}
+
+/* Phones: the dialog slides up as a bottom sheet instead of a centered card */
+@media (max-width: 600px) {
+  .photo-modal { align-items: end; padding: 0; }
+  .photo-modal-card {
+    width: 100%; border-radius: 22px 22px 0 0; max-height: 92vh;
+    padding: 20px 18px calc(20px + env(safe-area-inset-bottom));
+    animation: photoSheetIn .3s cubic-bezier(.32,.72,0,1);
+  }
+  @keyframes photoSheetIn { from { transform: translateY(100%); } to { transform: none; } }
+  .photo-preview { width: 140px; height: 140px; font-size: 2rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .photo-modal-card { animation: none !important; }
+  #photo-save[aria-busy="true"]::after { animation: none; }
+  .avatar-cam { transition: none; }
+}
 .empty-state { padding: 30px; text-align: center; color: var(--cpri-muted); background: var(--cpri-card); border-radius: var(--radius); border: 1px dashed var(--cpri-border); }
 .badge { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: .75rem; font-weight: 700; background: rgba(217,168,43,.14); color: #8a6d1f; margin-bottom: 10px; }
 

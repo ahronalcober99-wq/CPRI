@@ -232,10 +232,26 @@ test('rejects leading slashes, empty/dot segments, spaces, and special character
 });
 
 test('rejects non-HTTPS project URLs', async () => {
-  const insecure = createSupabaseStorage({
-    env: { ...env, SUPABASE_URL: 'http://project.example.test' }
-  });
-  await assert.rejects(insecure.objectExists('private.pdf'), /must be a valid HTTPS URL/);
+  for (const url of ['http://project.example.test', 'http://10.0.0.5:4000', 'ftp://localhost']) {
+    const insecure = createSupabaseStorage({ env: { ...env, SUPABASE_URL: url } });
+    await assert.rejects(insecure.objectExists('private.pdf'), /must be a valid HTTPS URL/, url);
+  }
+});
+
+test('accepts a loopback http URL so uploads can be tested against a local mock only', async () => {
+  for (const url of ['http://localhost:4599', 'http://127.0.0.1:4599', 'http://[::1]:4599']) {
+    const calls = [];
+    const storage = createSupabaseStorage({
+      env: { ...env, SUPABASE_URL: url },
+      fetchImpl: async (requestUrl, init) => {
+        calls.push({ url: requestUrl, init });
+        return response(200);
+      }
+    });
+    assert.equal(storage.isConfigured(), true, url);
+    await storage.uploadObject({ path: 'profile-photos/u/1.webp', buffer: Buffer.from('x'), contentType: 'image/webp' });
+    assert.ok(calls[0].url.startsWith(url.replace(/\/$/, '') + '/storage/v1/object/private-files/'), url);
+  }
 });
 
 test('startup check requests the bucket and logs only safe configuration details', async () => {
@@ -283,4 +299,61 @@ test('startup bucket failures log the response status and message', async () => 
 
   await storage.verifyBucketAtStartup(logger);
   assert.ok(logs.includes('[storage] bucket check failed: HTTP 403: Bucket access denied'));
+});
+
+test('isConfigured reports each bucket separately without throwing', async () => {
+  const complete = createSupabaseStorage({ env: { ...env, SUPABASE_EVENT_BUCKET: 'public-event-images' } });
+  assert.equal(complete.isConfigured(), true);
+  assert.equal(complete.isConfigured({ bucket: 'events' }), true);
+
+  const noEventBucket = createSupabaseStorage({ env });
+  assert.equal(noEventBucket.isConfigured(), true);
+  assert.equal(noEventBucket.isConfigured({ bucket: 'events' }), false);
+
+  const empty = createSupabaseStorage({ env: {} });
+  assert.equal(empty.isConfigured(), false);
+  assert.equal(empty.isConfigured({ bucket: 'events' }), false);
+});
+
+test('objectPathFromPublicUrl maps our own public URLs back to their storage path', async () => {
+  const storage = createSupabaseStorage({ env: { ...env, SUPABASE_EVENT_BUCKET: 'public-event-images' } });
+  const bucket = 'events';
+
+  const path = 'profile-photos/user-1/9f8b.webp';
+  assert.equal(
+    storage.objectPathFromPublicUrl(storage.publicObjectUrl({ path, bucket }), { bucket }),
+    path
+  );
+  // URL-encoded segments decode back to the stored path.
+  assert.equal(
+    storage.objectPathFromPublicUrl(
+      'https://project.example.test/storage/v1/object/public/public-event-images/profile-photos/user-1/a%20b.webp',
+      { bucket }
+    ),
+    null,
+    'a path that could never have been uploaded (space) is not returned'
+  );
+  assert.equal(
+    storage.objectPathFromPublicUrl(
+      'https://project.example.test/storage/v1/object/public/private-files/submissions/file.pdf',
+      { bucket }
+    ),
+    null,
+    'another bucket is not ours'
+  );
+
+  for (const foreign of [
+    'https://lh3.googleusercontent.com/a/photo.jpg',
+    '/assets/uploads/profiles/old.jpg',
+    'https://other.example.test/storage/v1/object/public/public-event-images/profile-photos/user-1/a.webp',
+    'not a url',
+    '',
+    null
+  ]) {
+    assert.equal(storage.objectPathFromPublicUrl(foreign, { bucket }), null, String(foreign));
+  }
+
+  // An unconfigured bucket resolves nothing rather than throwing.
+  const unconfigured = createSupabaseStorage({ env: {} });
+  assert.equal(unconfigured.objectPathFromPublicUrl('https://project.example.test/storage/v1/object/public/x/a.webp', { bucket }), null);
 });

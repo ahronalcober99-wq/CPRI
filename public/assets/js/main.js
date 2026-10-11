@@ -270,6 +270,19 @@ const CPRI = (() => {
     return escapeHtml(fallback);
   }
 
+  // Who is signed in, for the avatar spots rendered by headerHtml/buildMobileNav/
+  // the More sheet. setProfilePhoto() re-renders those spots so the profile page
+  // can show a new photo everywhere without a page reload.
+  const currentUser = { photo: '', name: '' };
+
+  function setProfilePhoto(url) {
+    currentUser.photo = url || '';
+    const html = avatarHtml(currentUser.photo, currentUser.name);
+    document.querySelectorAll('.cpri-avatar, .mo-avatar, .ms-avatar').forEach((el) => {
+      el.innerHTML = html;
+    });
+  }
+
   function headerHtml(active, navItems) {
     const links = navItems.nav.map(item => {
       const icon = item.icon ? `<i class="bi ${item.icon}"></i>` : '';
@@ -467,6 +480,10 @@ const CPRI = (() => {
     const headerEl = document.getElementById('site-header');
     const footerEl = document.getElementById('site-footer');
     getNavItems().then(navItems => {
+      // Remember the signed-in user so setProfilePhoto() can rebuild the
+      // avatar (photo or initials) in every menu after an upload.
+      currentUser.photo = navItems.photo || '';
+      currentUser.name = navItems.name || '';
       // A brand-new Google account must pick a role before using the site.
       if (navItems.needsSetup && active !== 'complete-profile.html') {
         window.location.replace('complete-profile.html');
@@ -2347,6 +2364,7 @@ const CPRI = (() => {
 
   return {
     fetchJson, apiBase, apiUrl, apiFetch, resolveImageUrl, fmtDate, escapeHtml, reveal: initReveal, toast, SITE,
+    setProfilePhoto,
     buildResearch, buildNews, buildResearchers, buildStats,
     buildEvents,
     buildFaqs, initHeroExtras, loadPublicDashboard, loadHeroStats,

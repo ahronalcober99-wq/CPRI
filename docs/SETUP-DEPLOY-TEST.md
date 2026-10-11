@@ -129,6 +129,42 @@ gitignored; `.env.example` contains placeholders only.
 | `MAIL_FROM_NAME` | Optional name shown in the password-reset email content |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | "Continue with Google" (optional) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Bootstrap admin account |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET` | Supabase Storage for persistent uploads (research files — private bucket) |
+| `SUPABASE_EVENT_BUCKET` | Public Supabase bucket for event cover images **and profile photos** |
+
+### Storage: event covers, profile photos, research files
+
+Render's free plan deletes the local disk on every restart and redeploy, so
+nothing that must survive is written to `public/assets/uploads` any more: event
+covers, repository files and profile photos all go to Supabase Storage.
+
+```bash
+# 1. Create a project at https://supabase.com (free plan is enough), then
+#    Storage → New bucket:
+#      • one PUBLIC bucket  → its name is SUPABASE_EVENT_BUCKET
+#        (public-read is required: avatars and covers are plain <img src> URLs)
+#      • one PRIVATE bucket → its name is SUPABASE_BUCKET (research files)
+# 2. Project Settings → API: copy the Project URL and the service_role key.
+# 3. Add every value in Render → your service → Environment:
+#      SUPABASE_URL=https://<project>.supabase.co
+#      SUPABASE_SERVICE_KEY=<service_role key>
+#      SUPABASE_BUCKET=<private bucket name>
+#      SUPABASE_EVENT_BUCKET=<public bucket name>
+# 4. Redeploy, then watch the log for:
+#      [storage] bucket OK
+# 5. Sign in, open My Profile → Change photo. The photo should appear
+#    immediately in the card and in the header avatar.
+```
+
+The service_role key is a server-side secret: it belongs in Render's environment
+only — never in `public/`, never in a commit. No npm package is needed (the
+adapter talks to the Storage REST API with the built-in `fetch`), and no SQL is
+needed (accounts already have a nullable `photoUrl`/`profilePhoto` column).
+
+Without these variables the server still runs; only the upload features answer
+`503` with a message saying storage is not configured. For offline development,
+`node server/dev/mock-supabase-storage.mjs` serves a local mock of the Storage
+API (see the file header for the environment to start the app with).
 
 > **Revoke the old Gmail app password.** It was committed in `.env.example` in
 > the public repository (commit `37e1fca`) and is still in history, so treat it

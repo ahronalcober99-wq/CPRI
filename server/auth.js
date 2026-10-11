@@ -1,8 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
-import multer from 'multer';
 import { fileURLToPath } from 'url';
-import { dirname, join, basename } from 'path';
+import { dirname, join } from 'path';
 import { randomBytes, randomUUID } from 'crypto';
 import { promises as fs, existsSync } from 'fs';
 import { spawn } from 'child_process';
@@ -15,7 +14,6 @@ import { normalizePhone } from './lib/phone.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'profiles');
 
 const router = Router();
 const SALT_ROUNDS = 10;
@@ -145,14 +143,10 @@ const RBAC_PERMISSIONS = {
   public_visitor: ['view_public']
 };
 
-// ---------- File upload config ----------
-const upload = multer({
-  dest: UPLOAD_DIR,
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
-  fileFilter: (req, file, cb) => cb(null, file.mimetype.startsWith('image/'))
-});
-
 // ---------- User store (MySQL) ----------
+// Profile photos are handled by server/profile-photo.js (mounted at
+// /api/profile/photo), which keeps them in Supabase Storage because Render's
+// free plan wipes the local disk on every restart or redeploy.
 async function readUsers() {
   return await all('SELECT * FROM users ORDER BY createdAt DESC');
 }
@@ -166,8 +160,9 @@ function publicUser(u) {
     role: u.role,
     roleLabel: ROLE_META[u.role]?.label || u.role,
     status: u.status,
-    // Profile photo — either a Google OAuth picture URL or a local upload path
-    // (/assets/uploads/profiles/...). Exposed so the navbar can render it.
+    // Profile photo — a Supabase Storage public URL, a Google OAuth picture
+    // URL, or (on older accounts) a legacy /assets/uploads/profiles/... path.
+    // Exposed so the navbar can render it.
     profilePhoto: u.profilePhoto || null,
     // First-time Google sign-ins must complete profile setup (pick a role).
     needsSetup: u.setupPending === 1 || u.setupPending === '1'
@@ -191,7 +186,11 @@ function fullProfile(u) {
     phoneVerified: u.phone_verified === 1 || u.phone_verified === '1',
     phoneVerifiedAt: u.phone_verified_at || null,
     researchInterests: u.researchInterests || '',
+    // profilePhoto is the stored column; photoUrl is the same value under the
+    // name the profile page/photo API use. Both are returned so every existing
+    // consumer (navbar avatar, messages, admin screens) keeps working.
     profilePhoto: u.profilePhoto || null,
+    photoUrl: u.profilePhoto || null,
     researches: u.researches || [],
     prefs: u.user_prefs || DEFAULT_PREFS,
     studentId: u.studentId || '',
@@ -1020,31 +1019,12 @@ router.put('/profile', requireAuth, async (req, res) => {
   res.json({ message: 'Profile updated.', profile: fullProfile(updated) });
 });
 
-// Profile photo upload (images only, max 2 MB)
-router.post('/profile/photo', requireAuth, upload.single('photo'), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'No image uploaded (images only, max 2 MB).' });
-  try {
-    await fs.mkdir(UPLOAD_DIR, { recursive: true });
-  } catch { /* exists */ }
-  const rel = `/assets/uploads/profiles/${req.file.filename}`;
-  await patchUser(req.session.userId, { profilePhoto: rel });
-  res.json({ message: 'Profile photo updated.', profilePhoto: rel });
-});
-
-// Remove profile photo (clears reference + deletes the file if it exists).
-// Remote photos (e.g. a Google OAuth picture URL) are not files on this server,
-// so only the reference is cleared for those.
-router.delete('/profile/photo', requireAuth, async (req, res) => {
-  const user = await get('SELECT * FROM users WHERE id = ?', [req.session.userId]);
-  if (!user) return res.status(401).json({ error: 'Not authenticated.' });
-  if (user.profilePhoto && !/^https?:\/\//.test(user.profilePhoto)) {
-    try {
-      await fs.unlink(join(UPLOAD_DIR, basename(user.profilePhoto)));
-    } catch { /* file may not exist on disk */ }
-  }
-  await patchUser(req.session.userId, { profilePhoto: null });
-  res.json({ message: 'Profile photo removed.' });
-});
+// Profile photo upload/removal used to live here and wrote to the local disk.
+// It now lives in server/profile-photo.js, mounted at /api/profile/photo:
+//   POST   /api/profile/photo   (multipart field "photo") → { url }
+//   DELETE /api/profile/photo                            → clears the photo
+// That module validates by magic bytes, resizes with sharp and stores the file
+// in Supabase Storage, so the photo survives Render's restarts and redeploys.
 
 // ---------- Researches (submitted / completed) ----------
 router.get('/researches', requireAuth, async (req, res) => {

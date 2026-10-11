@@ -16,6 +16,7 @@
     "migrate": "node server/server/seed.mjs",
     "test:dropdowns": "node server/dev/test-dropdowns.mjs",
     "test:phone": "node --test server/dev/test-phone-verification.mjs",
+    "test:photo": "node --test server/dev/test-profile-photo.mjs",
     "test:repository": "node --test server/dev/test-repository-delete.mjs server/dev/test-repository-files.mjs",
     "check:api": "node server/dev/check-api.mjs",
     "doctor": "node server/dev/db-doctor.mjs",

@@ -12,6 +12,7 @@ import compression from 'compression';
 import rateLimit from 'express-rate-limit';
 import { authRouter, initAuth, requireAdmin } from './auth.js';
 import { phoneVerificationRouter, ensurePhoneSchema } from './phone-verification.js';
+import { profilePhotoRouter, ensureProfilePhotoColumn } from './profile-photo.js';
 import { smsProviderInfo } from './lib/sms.js';
 import { usernameRouter } from './username.js';
 import { submissionsRouter } from './submissions.js';
@@ -228,6 +229,8 @@ app.use(session({
 app.use('/api/auth', authRouter);
 // Phone-number (SMS) verification for the profile page.
 app.use('/api/profile/phone', phoneVerificationRouter);
+// Profile photo (avatar) upload/removal for the signed-in user.
+app.use('/api/profile/photo', profilePhotoRouter);
 app.use('/api/username', usernameRouter);
 app.use('/api/submissions', submissionsRouter);
 app.use('/api/repository', repositoryRouter);
@@ -657,6 +660,12 @@ try {
   await ensurePhoneSchema();
 } catch (err) {
   console.error('[phone] schema ensure failed:', err.message);
+}
+
+try {
+  await ensureProfilePhotoColumn();
+} catch (err) {
+  console.error('[profile-photo] schema ensure failed:', err.message);
 }
 
 const server = app.listen(PORT, async () => {

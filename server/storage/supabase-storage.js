@@ -26,17 +26,73 @@ function configuration(env, bucketVariable = 'SUPABASE_BUCKET') {
   } catch {
     throw new Error('SUPABASE_URL must be a valid HTTPS URL.');
   }
-  if (projectUrl.protocol !== 'https:') {
+  // HTTPS is required everywhere except an explicit loopback host, so the
+  // upload paths can be exercised locally against server/dev/mock-supabase-storage.mjs
+  // (the same affordance the database layer gives with DB_SSL_MODE for localhost).
+  if (projectUrl.protocol !== 'https:' && !isLoopbackUrl(projectUrl)) {
     throw new Error('SUPABASE_URL must be a valid HTTPS URL.');
   }
 
   return { baseUrl, serviceKey, bucket };
 }
 
+// http://localhost, http://127.0.0.1 and http://[::1] are the only non-HTTPS
+// project URLs accepted (local development only).
+function isLoopbackUrl(projectUrl) {
+  if (projectUrl.protocol !== 'http:') return false;
+  const host = projectUrl.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+}
+
 function bucketConfiguration(env, bucket) {
   if (bucket === undefined || bucket === 'private') return configuration(env);
   if (bucket === 'events') return configuration(env, 'SUPABASE_EVENT_BUCKET');
   throw new Error('Storage bucket is invalid.');
+}
+
+// Storage is optional in local development: a missing Supabase setup must not
+// stop the server from booting, so callers ask first and report one clean
+// message instead of a crash. (Login, profile editing and every other feature
+// keep working without it.)
+function optionalBucketConfiguration(env, bucket) {
+  try {
+    return bucketConfiguration(env, bucket);
+  } catch {
+    return null;
+  }
+}
+
+// The storage path inside `bucket` for one of this project's own public object
+// URLs (`.../storage/v1/object/public/<bucket>/<path>`). Returns null when the
+// URL belongs somewhere else — a Google OAuth picture, or a legacy file left
+// under /assets/uploads/profiles. Callers use this to delete a replaced photo
+// without storing the object path a second time in the database.
+function pathFromPublicObjectUrl(rawUrl, { bucket, env = process.env } = {}) {
+  const config = optionalBucketConfiguration(env, bucket);
+  if (!config || typeof rawUrl !== 'string' || !rawUrl) return null;
+
+  let url;
+  let projectOrigin;
+  try {
+    url = new URL(rawUrl);
+    projectOrigin = new URL(config.baseUrl).origin;
+  } catch {
+    return null;
+  }
+  if (url.origin !== projectOrigin) return null;
+
+  const prefix = `/storage/v1/object/public/${encodeURIComponent(config.bucket)}/`;
+  if (!url.pathname.startsWith(prefix)) return null;
+  const encoded = url.pathname.slice(prefix.length);
+  if (!encoded) return null;
+
+  try {
+    const objectPath = encoded.split('/').map(decodeURIComponent).join('/');
+    encodePath(objectPath); // reuse the shared path validation
+    return objectPath;
+  } catch {
+    return null;
+  }
 }
 
 function encodePath(path) {
@@ -215,7 +271,21 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
     await responseError(response, 'delete', config.serviceKey);
   }
 
-  return { uploadObject, publicObjectUrl, createSignedDownloadUrl, objectExists, deleteObjects, checkBucket, verifyBucketAtStartup };
+  return {
+    uploadObject,
+    publicObjectUrl,
+    createSignedDownloadUrl,
+    objectExists,
+    deleteObjects,
+    checkBucket,
+    verifyBucketAtStartup,
+    // True when this bucket has a complete Supabase configuration (URL, service
+    // key and bucket name) — used to answer with one friendly message instead
+    // of a stack trace when a deployment has not set the variables yet.
+    isConfigured: ({ bucket } = {}) => Boolean(optionalBucketConfiguration(env, bucket)),
+    // Public URL → storage path for this bucket (null when it is not ours).
+    objectPathFromPublicUrl: (rawUrl, { bucket } = {}) => pathFromPublicObjectUrl(rawUrl, { bucket, env })
+  };
 }
 
 export const supabaseStorage = createSupabaseStorage();

@@ -43,7 +43,16 @@
 
         <div id="profile-area" style="display:none;">
           <div class="card person-card" id="profile-card" style="margin-bottom:22px;">
-            <div class="avatar" id="pf-avatar">—</div>
+            <!-- Photo (circle, object-fit: cover) or the initials avatar;
+                 the camera button and the text link both open the change-photo
+                 dialog. Works for every account type. -->
+            <div class="avatar-wrap">
+              <div class="avatar" id="pf-avatar">—</div>
+              <button class="avatar-cam" id="pf-avatar-cam" type="button" aria-label="Change profile photo" title="Change profile photo">
+                <i class="bi bi-camera" aria-hidden="true"></i>
+              </button>
+            </div>
+            <button class="change-photo-link" id="pf-change-link" type="button">Change photo</button>
             <h3 id="pf-name">—</h3>
             <p class="role" id="pf-role">—</p>
 
@@ -173,6 +182,42 @@
     </section>
   </main>
 
+  <!-- Change profile photo dialog. Centered on desktop, a bottom sheet under
+       600px. Esc, the × button, Cancel and the backdrop all close it. -->
+  <div class="photo-modal" id="photo-modal" role="dialog" aria-modal="true" aria-labelledby="photo-modal-title" hidden>
+    <div class="photo-modal-backdrop" data-photo-close></div>
+    <div class="photo-modal-card" id="photo-modal-card">
+      <div class="photo-modal-head">
+        <h3 id="photo-modal-title">Change profile photo</h3>
+        <button class="photo-modal-close" id="photo-modal-close" type="button" aria-label="Close">
+          <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+      </div>
+
+      <div class="photo-preview" id="photo-preview">
+        <img id="photo-preview-img" alt="" hidden>
+        <span id="photo-preview-initials">?</span>
+      </div>
+
+      <button class="photo-drop" id="photo-drop" type="button">
+        <i class="bi bi-cloud-arrow-up" aria-hidden="true"></i>
+        <b>Choose a photo or drag it here</b>
+        <small>JPG, PNG or WebP &middot; up to 2 MB</small>
+      </button>
+      <input type="file" id="photo-input" accept="image/jpeg,image/png,image/webp" hidden>
+
+      <p class="photo-modal-msg" id="photo-modal-msg" role="status" aria-live="polite"></p>
+
+      <div class="photo-modal-actions">
+        <button class="btn btn-register w-100" id="photo-save" type="button" disabled>Save photo</button>
+        <div class="photo-modal-row">
+          <button class="btn btn-outline-dark" id="photo-remove" type="button">Remove photo</button>
+          <button class="btn btn-outline-dark" id="photo-cancel" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script>
@@ -196,6 +241,28 @@
       const pfName = document.getElementById('pf-name');
       const pfAvatar = document.getElementById('pf-avatar');
       const pfRole = document.getElementById('pf-role');
+
+      // Change-photo dialog
+      const photoModal = document.getElementById('photo-modal');
+      const photoModalCard = document.getElementById('photo-modal-card');
+      const photoOpenCam = document.getElementById('pf-avatar-cam');
+      const photoOpenLink = document.getElementById('pf-change-link');
+      const photoCloseBtn = document.getElementById('photo-modal-close');
+      const photoCancelBtn = document.getElementById('photo-cancel');
+      const photoDrop = document.getElementById('photo-drop');
+      const photoInput = document.getElementById('photo-input');
+      const photoPreviewImg = document.getElementById('photo-preview-img');
+      const photoPreviewInitials = document.getElementById('photo-preview-initials');
+      const photoSaveBtn = document.getElementById('photo-save');
+      const photoRemoveBtn = document.getElementById('photo-remove');
+      const photoMsg = document.getElementById('photo-modal-msg');
+
+      const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+      const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+      let photoFile = null;        // the file the user picked (not yet uploaded)
+      let photoObjectUrl = '';     // local preview URL, revoked on close
+      let photoTrigger = null;     // element that opened the dialog (focus returns here)
+      let photoBusy = false;       // an upload/removal is in flight
       const pfEmail = document.getElementById('pf-email');
       const pfAccountType = document.getElementById('pf-account-type');
       const pfStatus = document.getElementById('pf-status');
@@ -238,6 +305,27 @@
         if (!parts.length) return '?';
         if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
         return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+
+      function escAttr(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      }
+
+      // The card avatar: the photo in a circle (object-fit: cover), or the
+      // maroon-gradient initials when there is none. A broken URL falls back to
+      // the initials instead of showing a broken-image icon.
+      function renderAvatar(photo, name) {
+        const initials = avatarInitials(name);
+        pfAvatar.dataset.initials = initials;
+        if (photo) {
+          pfAvatar.innerHTML = '<img src="' + escAttr(photo) + '" alt="">';
+          const img = pfAvatar.querySelector('img');
+          if (img) img.addEventListener('error', () => { pfAvatar.textContent = initials; });
+        } else {
+          pfAvatar.textContent = initials;
+        }
       }
 
       function shown(v) {
@@ -300,7 +388,7 @@
       function renderProfile(p) {
         const name = p.fullName || p.username || 'My Profile';
         pfName.textContent = name;
-        pfAvatar.textContent = avatarInitials(p.fullName || p.username || '');
+        renderAvatar(p.photoUrl || p.profilePhoto || '', p.fullName || p.username || '');
         pfEmail.textContent = shown(p.email);
         // Account type: use the human-readable role label the server provides.
         const accountType = p.roleLabel || p.role;
@@ -436,9 +524,13 @@
         saveSuccessEl.style.display = 'none';
         saveErrorEl.style.display = 'none';
 
-        const prep = buildSavePayload();
+        // buildSavePayload() is async, so it must be awaited — without the await
+        // `prep` was a Promise (prep.ok undefined) and every Save silently showed
+        // "Please try again." without ever calling the API. Its failure shape is
+        // { error }, so that is what gets shown.
+        const prep = await buildSavePayload();
         if (!prep.ok) {
-          showSaveError(prep.message);
+          showSaveError(prep.error);
           return;
         }
 
@@ -521,6 +613,213 @@
         errorDetailEl.textContent = detail || 'Try again later.';
         errorEl.style.display = 'block';
       }
+
+      // ---- Change photo dialog ----
+      function currentPhotoUrl() {
+        return (currentProfile && (currentProfile.photoUrl || currentProfile.profilePhoto)) || '';
+      }
+
+      function photoMessage(text, kind) {
+        photoMsg.textContent = text || '';
+        photoMsg.className = 'photo-modal-msg' + (kind ? ' ' + kind : '');
+      }
+
+      // The big circular preview: the picked file (local object URL), otherwise
+      // the photo already on the profile, otherwise the initials.
+      function showPhotoPreview(src) {
+        const url = src || currentPhotoUrl();
+        if (url) {
+          photoPreviewImg.src = url;
+          photoPreviewImg.hidden = false;
+          photoPreviewInitials.hidden = true;
+        } else {
+          photoPreviewImg.hidden = true;
+          photoPreviewImg.removeAttribute('src');
+          photoPreviewInitials.hidden = false;
+          photoPreviewInitials.textContent = pfAvatar.dataset.initials || '?';
+        }
+      }
+
+      function setPhotoBusy(busy, label) {
+        photoBusy = busy;
+        photoSaveBtn.disabled = busy || !photoFile;
+        photoRemoveBtn.disabled = busy;
+        photoCancelBtn.disabled = busy;
+        photoCloseBtn.disabled = busy;
+        photoDrop.disabled = busy;
+        photoInput.disabled = busy;
+        photoSaveBtn.textContent = busy ? (label || 'Saving…') : 'Save photo';
+        photoSaveBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+        photoModalCard.classList.toggle('is-busy', busy);
+      }
+
+      function openPhotoModal(trigger) {
+        photoTrigger = trigger || document.activeElement;
+        photoFile = null;
+        photoInput.value = '';
+        if (photoObjectUrl) { URL.revokeObjectURL(photoObjectUrl); photoObjectUrl = ''; }
+        photoRemoveBtn.style.display = currentPhotoUrl() ? '' : 'none';
+        photoMessage('');
+        showPhotoPreview('');
+        setPhotoBusy(false);
+        photoModal.hidden = false;
+        document.body.classList.add('photo-modal-open');
+        photoCloseBtn.focus();
+      }
+
+      function closePhotoModal() {
+        if (photoBusy) return;   // never close mid-upload (the request would be orphaned)
+        photoModal.hidden = true;
+        document.body.classList.remove('photo-modal-open');
+        if (photoObjectUrl) { URL.revokeObjectURL(photoObjectUrl); photoObjectUrl = ''; }
+        photoFile = null;
+        photoInput.value = '';
+        photoMessage('');
+        if (photoTrigger && typeof photoTrigger.focus === 'function') photoTrigger.focus();
+        photoTrigger = null;
+      }
+
+      function photoFocusables() {
+        return Array.from(photoModal.querySelectorAll('button, input, [href], [tabindex]:not([tabindex="-1"])'))
+          .filter(el => !el.disabled && !el.hidden && el.offsetParent !== null);
+      }
+
+      function photoTypeAllowed(file) {
+        const type = String(file.type || '').toLowerCase();
+        if (PHOTO_TYPES.indexOf(type) !== -1) return true;
+        // Some browsers report an empty type for a dragged file — fall back to
+        // the name; the server still verifies the magic bytes either way.
+        return /\.(jpe?g|png|webp)$/i.test(file.name || '');
+      }
+
+      function acceptPhotoFile(file) {
+        if (!file) return;
+        if (!photoTypeAllowed(file)) {
+          photoMessage('That file is not an image. Please choose a JPG, PNG, or WebP photo.', 'error');
+          return;
+        }
+        if (file.size > PHOTO_MAX_BYTES) {
+          photoMessage('That photo is too big — the maximum size is 2 MB.', 'error');
+          return;
+        }
+        photoFile = file;
+        if (photoObjectUrl) URL.revokeObjectURL(photoObjectUrl);
+        photoObjectUrl = URL.createObjectURL(file);
+        showPhotoPreview(photoObjectUrl);
+        photoMessage('Looks good. The photo is cropped to a square automatically when you save.');
+        setPhotoBusy(false);
+      }
+
+      // Shows the new photo on this page AND in the header/mobile menu (no reload).
+      function applyPhoto(url) {
+        const photo = url || null;
+        if (currentProfile) {
+          currentProfile.photoUrl = photo;
+          currentProfile.profilePhoto = photo;
+        }
+        const name = (currentProfile && (currentProfile.fullName || currentProfile.username)) || '';
+        renderAvatar(photo || '', name);
+        try {
+          if (typeof CPRI === 'object' && CPRI && typeof CPRI.setProfilePhoto === 'function') {
+            CPRI.setProfilePhoto(photo || '');
+          }
+        } catch { /* main.js not loaded — the card avatar is already updated */ }
+      }
+
+      async function savePhoto() {
+        if (!photoFile || photoBusy) return;
+        setPhotoBusy(true, 'Saving…');
+        photoMessage('Uploading your photo…');
+        try {
+          const form = new FormData();
+          form.append('photo', photoFile, photoFile.name || 'photo.jpg');
+          const res = await fetchJson('/api/profile/photo', { method: 'POST', body: form });
+          if (!res) return;   // 401 — redirected to the login page
+          const url = (res.data && (res.data.url || res.data.photoUrl)) || '';
+          applyPhoto(url);
+          photoFile = null;
+          setPhotoBusy(false);
+          closePhotoModal();
+          showMessage('Profile photo updated.', 'success');
+        } catch (err) {
+          const msg = (err && err.message) ? String(err.message) : 'Could not save your photo right now. Please try again.';
+          photoMessage(msg, 'error');   // keep the dialog open so the user can retry
+          console.error('[profile] photo upload failed:', msg);
+        } finally {
+          if (!photoModal.hidden) setPhotoBusy(false);
+        }
+      }
+
+      async function removePhoto() {
+        if (photoBusy) return;
+        setPhotoBusy(true, 'Saving…');
+        photoMessage('Removing your photo…');
+        try {
+          const res = await fetchJson('/api/profile/photo', { method: 'DELETE' });
+          if (!res) return;
+          applyPhoto('');
+          photoFile = null;
+          setPhotoBusy(false);
+          closePhotoModal();
+          showMessage('Profile photo removed.', 'success');
+        } catch (err) {
+          const msg = (err && err.message) ? String(err.message) : 'Could not remove your photo right now. Please try again.';
+          photoMessage(msg, 'error');
+          console.error('[profile] photo removal failed:', msg);
+        } finally {
+          if (!photoModal.hidden) setPhotoBusy(false);
+        }
+      }
+
+      photoOpenCam.addEventListener('click', () => openPhotoModal(photoOpenCam));
+      photoOpenLink.addEventListener('click', () => openPhotoModal(photoOpenLink));
+      photoCloseBtn.addEventListener('click', closePhotoModal);
+      photoCancelBtn.addEventListener('click', closePhotoModal);
+      photoModal.querySelectorAll('[data-photo-close]').forEach((el) => el.addEventListener('click', closePhotoModal));
+      photoDrop.addEventListener('click', () => photoInput.click());
+      photoInput.addEventListener('change', () => acceptPhotoFile(photoInput.files && photoInput.files[0]));
+      photoSaveBtn.addEventListener('click', savePhoto);
+      photoRemoveBtn.addEventListener('click', removePhoto);
+
+      // Drag & drop onto the dashed area.
+      ['dragenter', 'dragover'].forEach((evt) => photoDrop.addEventListener(evt, (e) => {
+        e.preventDefault();
+        photoDrop.classList.add('dragover');
+      }));
+      ['dragleave', 'dragend', 'drop'].forEach((evt) => photoDrop.addEventListener(evt, () => photoDrop.classList.remove('dragover')));
+      photoDrop.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const dt = e.dataTransfer;
+        acceptPhotoFile(dt && dt.files && dt.files[0]);
+      });
+      // Dropping elsewhere in the dialog must not make the browser navigate away.
+      photoModal.addEventListener('dragover', (e) => e.preventDefault());
+      photoModal.addEventListener('drop', (e) => {
+        e.preventDefault();
+        const dt = e.dataTransfer;
+        if (dt && dt.files && dt.files[0]) acceptPhotoFile(dt.files[0]);
+      });
+
+      // Esc closes; Tab stays inside the dialog (focus trap).
+      photoModal.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          closePhotoModal();
+          return;
+        }
+        if (e.key !== 'Tab') return;
+        const items = photoFocusables();
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      });
 
       // ---- Event wiring ----
       errorRetryBtn.addEventListener('click', () => { setError('', ''); loadProfile(); });
