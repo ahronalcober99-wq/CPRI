@@ -20,6 +20,7 @@
     "test:photo": "node --test server/dev/test-profile-photo.mjs",
     "test:repository": "node --test server/dev/test-repository-delete.mjs server/dev/test-repository-files.mjs",
     "test:uploads": "node --test server/dev/test-upload-safety.mjs",
+    "test:validator": "node --test server/dev/test-input-validator.mjs",
     "check:api": "node server/dev/check-api.mjs",
     "doctor": "node server/dev/db-doctor.mjs",
     "db:init": "node server/dev/db-init.mjs",

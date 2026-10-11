@@ -57,9 +57,9 @@ const env = process.env;
 // `SUPABASE_AVATAR_BUCKET`. When that is set, storage paths are still
 // `avatars/<userId>/<random>.webp`, just under the other bucket. See .env.example.
 export const PROFILE_PHOTO_BUCKET = 'events';                 // the site's public bucket
-export const PROFILE_PHOTO_PREFIX = 'avatars';               // inside whatever bucket is used
+export const PROFILE_PHOTO_PREFIX = 'profile-photos';        // inside whatever bucket is used
 
-const MAX_PHOTO_BYTES = 2 * 1024 * 1024;               // 2 MB
+export const MAX_PHOTO_BYTES = 2 * 1024 * 1024;               // 2 MB
 const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const PHOTO_SIZE = 512;                                // 512×512 square
 
@@ -308,5 +308,5 @@ async function logProfilePhotoStartup(logger = console) {
 // Prefer the router + startup log from the dependency-injected factory (so
 // tests can substitute a fake storage + logger). The module also re-exports
 // processProfilePhoto and removeStoredProfilePhoto for the existing test suite.
-export const { profilePhotoRouter } = createProfilePhotoRouter();
+export const profilePhotoRouter = createProfilePhotoRouter();
 export { logProfilePhotoStartup };

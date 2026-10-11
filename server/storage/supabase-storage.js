@@ -326,29 +326,8 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
     // Public URL → storage path for this bucket (null when it is not ours).
     objectPathFromPublicUrl: (rawUrl, { bucket } = {}) => pathFromPublicObjectUrl(rawUrl, { bucket, env })
   };
-}export const supabaseStorage = createSupabaseStorage();
-
-
-// ---- Public API ----
-// Profile photos reuse the same Supabase project and bucket as the rest of the
-// site, so this file just re-exports the storage client the profile-photo
-// router already imports. The avatar startup log is exported alongside so
-// server.js can print one line like `[storage] avatars: ok` at boot.
+};
 
 export const supabaseStorage = createSupabaseStorage();
 
-// ---- Public API ----
-// Profile photos reuse the same Supabase project and bucket as the rest of the
-// site, so this file just re-exports the storage client the profile-photo
-// router already imports. The avatar startup log is exported alongside so
-// server.js can print one line like `[storage] avatars: ok` at boot.export const supabaseStorage = createSupabaseStorage();
-
-
-// ---- Public API ----
-// Profile photos reuse the same Supabase project and bucket as the rest of the
-// site, so this file just re-exports the storage client the profile-photo
-// router already imports. The avatar startup log is exported alongside so
-// server.js can print one line like `[storage] avatars: ok` at boot.
-
-export { supabaseStorage, logProfilePhotoStartup };
 
