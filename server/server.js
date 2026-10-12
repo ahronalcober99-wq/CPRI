@@ -10,7 +10,7 @@ import session from 'express-session';
 import helmet from 'helmet';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
-import { authRouter, initAuth, requireAdmin } from './auth.js';
+import { router as authRouter, initAuth, requireAuth, requireAdmin, requireRole, readUsers, ensureUsersSchema } from './auth.js';
 import { phoneVerificationRouter, ensurePhoneSchema } from './phone-verification.js';
 import { profilePhotoRouter, ensureProfilePhotoColumn } from './profile-photo.js';
 import { smsProviderInfo } from './lib/sms.js';
@@ -660,6 +660,12 @@ try {
   await ensurePhoneSchema();
 } catch (err) {
   console.error('[phone] schema ensure failed:', err.message);
+}
+
+try {
+  await ensureUsersSchema();
+} catch (err) {
+  console.error('[users] schema ensure failed:', err.message);
 }
 
 try {

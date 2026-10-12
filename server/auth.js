@@ -1004,9 +1004,14 @@ router.put('/profile', requireAuth, async (req, res) => {
     }
   }
 
-  const updated = await patchUser(req.session.userId, changes);
-  if (!updated) return res.status(401).json({ error: 'Not authenticated.' });
-  res.json({ message: 'Profile updated.', profile: fullProfile(updated) });
+  try {
+    const updated = await patchUser(req.session.userId, changes);
+    if (!updated) return res.status(401).json({ error: 'Not authenticated.' });
+    res.json({ message: 'Profile updated.', profile: fullProfile(updated) });
+  } catch (err) {
+    console.error('[error] PUT /api/auth/profile database error:', err);
+    return res.status(500).json({ error: 'Could not save your profile right now. Please try again.' });
+  }
 });
 
 // Profile photo upload/removal used to live here and wrote to the local disk.
@@ -1135,6 +1140,49 @@ async function initAuth() {
       console.log('[seed] ADMIN_PASSWORD was not set, so this one-time password was generated: ' + adminPassword);
       console.log('[seed] Sign in as admin and change it, or set ADMIN_PASSWORD in the environment and recreate the account.');
     }
+  }
+}
+
+// ---------- Schema (additive, safe on existing databases) ----------
+export async function ensureUsersSchema(dependencies = {}) {
+  const queries = {
+    all: dependencies.all || all,
+    run: dependencies.run || run
+  };
+  const columns = await queries.all('SHOW COLUMNS FROM users');
+  const existing = new Set(columns.map((column) => String(column.Field || column.field || '').toLowerCase()));
+
+  const columnsToAdd = [
+    { name: 'studentId', sql: 'ALTER TABLE users ADD COLUMN studentId VARCHAR(60) DEFAULT \'\'' },
+    { name: 'yearLevel', sql: 'ALTER TABLE users ADD COLUMN yearLevel VARCHAR(30) DEFAULT \'\'' },
+    { name: 'program', sql: 'ALTER TABLE users ADD COLUMN program VARCHAR(180) DEFAULT \'\'' },
+    { name: 'section', sql: 'ALTER TABLE users ADD COLUMN section VARCHAR(60) DEFAULT \'\'' },
+    { name: 'adviser', sql: 'ALTER TABLE users ADD COLUMN adviser VARCHAR(160) DEFAULT \'\'' },
+    { name: 'researchTitle', sql: 'ALTER TABLE users ADD COLUMN researchTitle VARCHAR(255) DEFAULT \'\'' },
+    { name: 'researchArea', sql: 'ALTER TABLE users ADD COLUMN researchArea VARCHAR(80) DEFAULT \'\'' },
+    { name: 'researches', sql: 'ALTER TABLE users ADD COLUMN researches JSON' },
+    { name: 'contactNo', sql: 'ALTER TABLE users ADD COLUMN contactNo VARCHAR(60) NOT NULL DEFAULT \'\'' },
+    { name: 'user_prefs', sql: 'ALTER TABLE users ADD COLUMN user_prefs JSON' },
+    { name: 'setupPending', sql: 'ALTER TABLE users ADD COLUMN setupPending TINYINT(1) DEFAULT 0' }
+  ];
+
+  const added = [];
+  for (const col of columnsToAdd) {
+    if (!existing.has(col.name.toLowerCase())) {
+      try {
+        await queries.run(col.sql);
+        added.push(col.name);
+      } catch (err) {
+        if (!String(err && err.message).includes('Duplicate column name')) {
+          throw err;
+        }
+      }
+    }
+  }
+  if (added.length > 0) {
+    console.log(`[schema] added missing users columns: ${added.join(', ')}`);
+  } else {
+    console.log('[schema] users columns: ok');
   }
 }
 
