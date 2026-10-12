@@ -1186,4 +1186,4 @@ export async function ensureUsersSchema(dependencies = {}) {
   }
 }
 
-export { router as authRouter, initAuth, requireAuth, requireAdmin, requireRole, readUsers };
+export { router, router as authRouter, initAuth, requireAuth, requireAdmin, requireRole, readUsers };
