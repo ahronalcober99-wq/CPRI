@@ -269,11 +269,13 @@ router.get('/research', requireAdmin, async (req, res) => {
       if (!allowedStatuses.includes(status)) {
         return res.status(400).json({ error: `Invalid status parameter: "${status}". Allowed values: ${allowedStatuses.join(', ')}` });
       }
-      if (status === 'approved') {
+      if (status === 'submitted') {
+        // All submissions
+      } else if (status === 'approved') {
         where += " AND status IN ('approved', 'published')";
       } else if (status === 'pending') {
         where += " AND status IN ('submitted', 'under_initial_checking', 'for_revision', 'under_ethics_review')";
-      } else {
+      } else if (status !== 'submitted') {
         where += ' AND status = ?';
         params.push(status);
       }
