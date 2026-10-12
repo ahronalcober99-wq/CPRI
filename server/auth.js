@@ -899,23 +899,19 @@ function phoneChanged(currentValue, nextValue) {
   return String(currentValue ?? '').trim() !== String(nextValue ?? '').trim();
 }
 
-// Normalise a free-text contact number for storage: only digits, spaces, +, and
-// dashes are allowed; between 7 and 15 digits (covers PH mobile and landline
-// formats the user might enter). Returns the trimmed string on success or throws
-// a 400 with a friendly message.
+// Normalise a free-text contact number for storage.
+// Accepts the same shapes as the front end: +63 9XX XXX XXXX, 63 9XX XXX XXXX,
+// 09XX XXX XXXX, 9XX XXX XXXX — spaces, dashes and parentheses allowed.
+// Returns +639XXXXXXXXX on success or throws a 400-friendly Error.
 function normaliseContactNumber(raw) {
   const s = String(raw || '').trim();
   if (!s) return '';
-  let cleaned = s;
-  if (cleaned.startsWith('+63')) cleaned = cleaned.slice(3);
-  else if (cleaned.startsWith('63') && cleaned.length === 12) cleaned = cleaned.slice(2);
-  else if (cleaned.startsWith('09')) cleaned = cleaned.slice(1);
-  const digits = cleaned.replace(/\D/g, '');
-  const fullNumber = '+63' + digits;
-  if (!/^\+639\d{9}$/.test(fullNumber)) {
-    throw new Error('Invalid contact number');
+  // Delegate to the shared phone helper which already implements this rule.
+  const e164 = normalizePhone(s);
+  if (!e164) {
+    throw new Error('Enter a valid Philippine mobile number: +63 followed by 10 digits starting with 9 (for example +63 912 345 6789).');
   }
-  return fullNumber;
+  return e164;
 }
 
 // The update endpoint is intentionally narrow: it can only change the fields that

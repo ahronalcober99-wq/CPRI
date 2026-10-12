@@ -311,11 +311,21 @@
       let pendingStudentValues = null; // tracks student fields across cancel/save
 
       // ---- Helpers ----
+      // Hides ALL states including #profile-area.
+      // Only used during initial page load transitions (loading → profile, loading → error).
+      // Do NOT call this once the profile card is visible — use hideSaveMessages() instead.
       function hideAllStates() {
         loadingEl.style.display = 'none';
         errorEl.style.display = 'none';
         notLoggedEl.style.display = 'none';
         profileArea.style.display = 'none';
+        saveSuccessEl.style.display = 'none';
+        saveErrorEl.style.display = 'none';
+      }
+
+      // Hides only the inline save-result banners inside the card.
+      // Safe to call at any time — does NOT hide #profile-area.
+      function hideSaveMessages() {
         saveSuccessEl.style.display = 'none';
         saveErrorEl.style.display = 'none';
       }
@@ -354,17 +364,30 @@
       }
 
       // ---- Validation ----
+      // Empty is fine (field is optional).
+      // Otherwise accept: +63 9XX XXX XXXX · 63 9XX XXX XXXX · 09XX XXX XXXX · 9XX XXX XXXX
+      // Spaces, dashes and parentheses are allowed as separators.
+      // Output form: +639XXXXXXXXX (E.164).
+      const PH_ERR = 'Enter a valid Philippine mobile number: +63 followed by 10 digits starting with 9 (for example +63 912 345 6789).';
       function validateContactNo(value) {
         const s = (value || '').trim();
         if (!s) return { ok: true, value: '' };
-        if (!/^[-+0-9 ][-\+0-9 ]*$/.test(s)) {
-          return { ok: false, message: 'Contact number may only contain digits, spaces, +, and -.' };
+        // Strip allowed separators, then check what's left.
+        const clean = s.replace(/[\s\-().]/g, '');
+        let digits;
+        if (/^\+639\d{9}$/.test(clean)) {
+          digits = clean.slice(3);           // +63XXXXXXXXXX → 10 digits
+        } else if (/^639\d{9}$/.test(clean)) {
+          digits = clean.slice(2);           // 63XXXXXXXXXX  → 10 digits
+        } else if (/^09\d{9}$/.test(clean)) {
+          digits = clean.slice(1);           // 09XXXXXXXXX   → 10 digits (drop leading 0)
+        } else if (/^9\d{9}$/.test(clean)) {
+          digits = clean;                    // 9XXXXXXXXX    → 10 digits
+        } else {
+          return { ok: false, message: PH_ERR };
         }
-        const digits = s.replace(/[^\d]/g, '');
-        if (digits.length < 7 || digits.length > 15) {
-          return { ok: false, message: 'Contact number must have between 7 and 15 digits.' };
-        }
-        return { ok: true, value: s };
+        // digits must be exactly 10 chars starting with 9 (already guaranteed above).
+        return { ok: true, value: '+63' + digits };
       }
 
       const phoneContainer = document.getElementById('phone-container');
@@ -382,11 +405,13 @@
       function normalizeRawPhone(raw) {
         if (!raw) return '';
         let s = String(raw).trim();
-        if (s.startsWith('+63')) s = s.slice(3);
-        else if (s.startsWith('63') && s.length === 12) s = s.slice(2);
-        else if (s.startsWith('09')) s = s.slice(1);
-        
-        const digits = s.replace(/\D/g, '');
+        // Strip separators first so prefix detection works regardless of spacing.
+        const stripped = s.replace(/[\s\-().]/g, '');
+        let digits = '';
+        if (stripped.startsWith('+63')) digits = stripped.slice(3).replace(/\D/g, '');
+        else if (/^639\d/.test(stripped)) digits = stripped.slice(2).replace(/\D/g, '');
+        else if (stripped.startsWith('09')) digits = stripped.slice(1).replace(/\D/g, '');
+        else digits = stripped.replace(/\D/g, '');
         return digits.slice(0, 10);
       }
 
@@ -627,9 +652,8 @@
       let currentProfile = null;
 
       async function saveProfile(retry) {
-        hideAllStates();
-        saveSuccessEl.style.display = 'none';
-        saveErrorEl.style.display = 'none';
+        // Keep #profile-area visible — only clear the inline save banners.
+        hideSaveMessages();
 
         // buildSavePayload() is async, so it must be awaited — without the await
         // `prep` was a Promise (prep.ok undefined) and every Save silently showed
@@ -652,7 +676,12 @@
 
           currentProfile = res.data.profile;
           renderProfile(currentProfile);
+          // Make sure the card stays visible (renderProfile resets modes but
+          // doesn't need to touch profileArea — we never hid it).
+          profileArea.style.display = 'block';
           showMessage('Profile updated.', 'success');
+          // Auto-dismiss the success banner after 4 seconds.
+          setTimeout(() => { messageEl.style.display = 'none'; messageEl.textContent = ''; }, 4000);
         } catch (err) {
           const msg = err && err.message ? String(err.message) : 'Couldn\'t save your changes.';
           showSaveError(msg);
@@ -661,6 +690,8 @@
       }
 
       function showSaveError(detail) {
+        // Ensure the profile card is visible so the error banner inside it is seen.
+        profileArea.style.display = 'block';
         saveErrorDetailEl.textContent = detail || 'Please try again.';
         saveErrorEl.style.display = 'block';
       }
