@@ -269,7 +269,9 @@ router.get('/research', requireAdmin, async (req, res) => {
       if (!allowedStatuses.includes(status)) {
         return res.status(400).json({ error: `Invalid status parameter: "${status}". Allowed values: ${allowedStatuses.join(', ')}` });
       }
-      if (status === 'pending') {
+      if (status === 'approved') {
+        where += " AND status IN ('approved', 'published')";
+      } else if (status === 'pending') {
         where += " AND status IN ('submitted', 'under_initial_checking', 'for_revision', 'under_ethics_review')";
       } else {
         where += ' AND status = ?';
@@ -1062,8 +1064,37 @@ router.get('/logs', requireAdmin, async (req, res) => {
 
 // ---------- User management (MySQL) ----------
 router.get('/users', requireAdmin, async (req, res) => {
-  const users = await all('SELECT id, username, email, fullName, role, status, createdAt FROM users ORDER BY createdAt DESC');
-  res.json({ users });
+  try {
+    const { active, page, limit } = req.query;
+    let where = '1=1';
+    let params = [];
+    if (active === 'true') {
+      where += " AND status = 'active'";
+    }
+    const countRows = await all(`SELECT COUNT(*) as c FROM users WHERE ${where}`, params);
+    const total = countRows[0] ? Number(countRows[0].c) : 0;
+
+    let sql = 'SELECT id, username, email, fullName, role, status, createdAt FROM users WHERE ' + where + ' ORDER BY createdAt DESC';
+    if (page && limit) {
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+      const offset = (pageNum - 1) * limitNum;
+      sql += ' LIMIT ? OFFSET ?';
+      params.push(limitNum, offset);
+    }
+    const users = await all(sql, params);
+    const data = users.map(u => ({
+      id: u.id,
+      name: u.fullName || u.username,
+      role: u.role,
+      email: u.email,
+      status: u.status
+    }));
+    res.json({ success: true, data, users, total });
+  } catch (err) {
+    console.error('[users] error:', err);
+    res.status(500).json({ error: 'Failed to load users.' });
+  }
 });
 
 router.patch('/users/:id', requireAdmin, async (req, res) => {

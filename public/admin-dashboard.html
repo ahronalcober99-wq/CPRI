@@ -430,6 +430,11 @@
       const showAllBtn = document.getElementById('show-all-btn');
 
       if (cardEl) cardEl.style.display = 'block';
+      if (showAllBtn) {
+        showAllBtn.style.display = 'inline-flex';
+        showAllBtn.innerHTML = `<i class="bi bi-arrow-counterclockwise"></i> Show All (${config.title})`;
+        showAllBtn.onclick = () => fetchAndRenderRecords(filterKey);
+      }
       if (showAllBtn) showAllBtn.style.display = 'inline-flex';
       if (titleEl) titleEl.innerHTML = `<i class="bi bi-table"></i> ${config.title} (Loading...)`;
       if (containerEl) containerEl.innerHTML = `<div style="text-align:center; padding:30px;"><div class="spinner-border text-primary" role="status" style="width:2rem;height:2rem;color:#800000;"></div><p style="margin-top:10px;color:var(--cpri-muted);">Loading records…</p></div>`;
@@ -439,7 +444,7 @@
         const json = await res.json();
         if (!res.ok) throw new Error(json.error || 'Failed to fetch records.');
 
-        const records = json.data || [];
+        const records = json.data || json.users || [];
         const total = json.total !== undefined ? json.total : records.length;
 
         if (titleEl) titleEl.innerHTML = `<i class="bi bi-table"></i> ${config.title} (${total})`;
