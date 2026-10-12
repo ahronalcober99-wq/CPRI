@@ -241,6 +241,7 @@ app.use('/api/researchers', researchersRouter);
 app.use('/api/events-module', eventsModuleRouter);
 app.use('/api/innovation-extension', innovationExtensionRouter);
 app.use('/api/admin', adminDashboardRouter);
+app.use('/api', adminDashboardRouter);
 app.use('/api/admin', adminInsightsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api', notificationsRouter);

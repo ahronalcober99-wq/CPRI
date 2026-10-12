@@ -354,24 +354,212 @@
       if (pwdResolve) { pwdResolve(value); pwdResolve = null; }
     }
 
+    const CARD_CONFIG = {
+      submitted: {
+        filterKey: 'submitted',
+        endpoint: '/api/research?status=submitted',
+        title: 'Total Submitted Research',
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+      },
+      approved: {
+        filterKey: 'approved',
+        endpoint: '/api/research?status=approved',
+        title: 'Total Approved Researches',
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+      },
+      rejected: {
+        filterKey: 'rejected',
+        endpoint: '/api/research?status=rejected',
+        title: 'Total Rejected Researches',
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+      },
+      archived: {
+        filterKey: 'archived',
+        endpoint: '/api/research?status=archived',
+        title: 'Total Archived Researches',
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+      },
+      published: {
+        filterKey: 'published',
+        endpoint: '/api/research?published=true',
+        title: 'Total Published Papers',
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+      },
+      ethics: {
+        filterKey: 'ethics',
+        endpoint: '/api/ethics-applications',
+        title: 'Total Ethics Applications',
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+      },
+      innovation: {
+        filterKey: 'innovation',
+        endpoint: '/api/innovation-projects',
+        title: 'Total Innovation Projects',
+        columns: ['Title', 'Author', 'Department', 'Year', 'Type']
+      },
+      users: {
+        filterKey: 'users',
+        endpoint: '/api/users?active=true',
+        title: 'Total Active Users',
+        columns: ['Name', 'Role', 'Email', 'Status']
+      }
+    };
+
+    let activeFilterKey = null;
+
+    async function fetchAndRenderRecords(filterKey) {
+      activeFilterKey = filterKey;
+      const config = CARD_CONFIG[filterKey];
+      if (!config) return;
+
+      document.querySelectorAll('#dashboard-summary .kpi').forEach(el => {
+        if (el.dataset.filter === filterKey) {
+          el.style.border = '2px solid #6b0000';
+          el.style.background = '#fdf2f2';
+          el.classList.add('active-kpi');
+        } else {
+          el.style.border = '';
+          el.style.background = '';
+          el.classList.remove('active-kpi');
+        }
+      });
+
+      const cardEl = document.getElementById('filtered-records-card');
+      const titleEl = document.getElementById('filtered-table-title');
+      const containerEl = document.getElementById('filtered-table-container');
+      const showAllBtn = document.getElementById('show-all-btn');
+
+      if (cardEl) cardEl.style.display = 'block';
+      if (showAllBtn) showAllBtn.style.display = 'inline-flex';
+      if (titleEl) titleEl.innerHTML = `<i class="bi bi-table"></i> ${config.title} (Loading...)`;
+      if (containerEl) containerEl.innerHTML = `<div style="text-align:center; padding:30px;"><div class="spinner-border text-primary" role="status" style="width:2rem;height:2rem;color:#800000;"></div><p style="margin-top:10px;color:var(--cpri-muted);">Loading records…</p></div>`;
+
+      try {
+        const res = await fetch(config.endpoint);
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed to fetch records.');
+
+        const records = json.data || [];
+        const total = json.total !== undefined ? json.total : records.length;
+
+        if (titleEl) titleEl.innerHTML = `<i class="bi bi-table"></i> ${config.title} (${total})`;
+
+        if (records.length === 0) {
+          if (containerEl) containerEl.innerHTML = `<div class="empty-state" style="padding:40px; text-align:center;"><i class="bi bi-folder2-open" style="font-size:2.5rem; color:var(--cpri-muted);"></i><p style="margin-top:12px; font-weight:600; color:var(--cpri-text);">No records found for this category yet.</p></div>`;
+          return;
+        }
+
+        if (filterKey === 'users') {
+          if (containerEl) containerEl.innerHTML = `
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    ${config.columns.map(c => `<th>${c}</th>`).join('')}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${records.map(u => `
+                    <tr>
+                      <td><b>${escapeHtml(u.name || '')}</b></td>
+                      <td><span class="status-pill active">${escapeHtml(u.role || '')}</span></td>
+                      <td>${escapeHtml(u.email || '')}</td>
+                      <td><span class="status-pill ${u.status === 'active' ? 'active' : 'pending'}">${escapeHtml(u.status || 'active')}</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+        } else {
+          if (containerEl) containerEl.innerHTML = `
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    ${config.columns.map(c => `<th>${c}</th>`).join('')}
+                  </tr>
+                </thead>
+                <tbody>
+                  ${records.map(r => `
+                    <tr>
+                      <td><b>${escapeHtml(r.title || '')}</b></td>
+                      <td>${escapeHtml(r.author || r.authors || '—')}</td>
+                      <td>${escapeHtml(r.department || '—')}</td>
+                      <td>${escapeHtml(String(r.year || '—'))}</td>
+                      <td><span class="status-pill ${['approved','published'].includes(r.status)?'active':['rejected','archived','disapproved'].includes(r.status)?'pending':'active'}">${escapeHtml(r.status || 'submitted')}</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+        if (titleEl) titleEl.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${config.title} (Error)`;
+        if (containerEl) containerEl.innerHTML = `<div class="form-message error" style="display:block; padding:16px;">Failed to load records for this category: ${escapeHtml(err.message)}. Please try again.</div>`;
+      }
+    }
+
     async function loadSummary() {
-      const res = await fetch('/api/admin/summary');
-      if (!res.ok) { accessDenied.style.display = 'block'; return; }
-      const { summary } = await res.json();
-      document.getElementById('dashboard-summary').innerHTML = [
-        { label: 'Total Submitted Research', value: summary.totalSubmissions, i:'bi-send', href:'submissions.html' },
-        { label: 'Total Approved Researches', value: summary.approvedResearches, i:'bi-check2-circle', href:'submissions.html' },
-        { label: 'Total Rejected Researches', value: summary.rejectedResearches, i:'bi-x-circle', href:'submissions.html' },
-        { label: 'Total Archived Researches', value: summary.archivedResearches, i:'bi-archive', href:'submissions.html' },
-        { label: 'Total Published Papers', value: summary.publishedPapers, i:'bi-journal-richtext', href:'publications.html' },
-        { label: 'Total Ethics Applications', value: summary.ethicsApplications, i:'bi-shield-check', href:'ethics.html' },
-        { label: 'Total Innovation Projects', value: summary.innovationProjects, i:'bi-lightbulb', href:'innovation-extension.html' },
-        { label: 'Total Active Users', value: summary.activeUsers, i:'bi-people', href:'#users' }
-      ].map(s => `<a class="kpi" href="${s.href}">
-        <span class="k-ic"><i class="bi ${s.i}"></i></span>
-        <div><div class="k-v">${s.value}</div><div class="k-l">${s.label}</div></div>
-      </a>`).join('');
-      return summary;
+      try {
+        const res = await fetch('/api/dashboard/stats');
+        if (!res.ok) { accessDenied.style.display = 'block'; return null; }
+        const json = await res.json();
+        const stats = json.data || json.summary || {};
+        const kpiItems = [
+          { key: 'submitted', label: 'Total Submitted Research', value: stats.submitted ?? stats.totalSubmissions ?? 0, i: 'bi-send' },
+          { key: 'approved', label: 'Total Approved Researches', value: stats.approved ?? stats.approvedResearches ?? 0, i: 'bi-check2-circle' },
+          { key: 'rejected', label: 'Total Rejected Researches', value: stats.rejected ?? stats.rejectedResearches ?? 0, i: 'bi-x-circle' },
+          { key: 'archived', label: 'Total Archived Researches', value: stats.archived ?? stats.archivedResearches ?? 0, i: 'bi-archive' },
+          { key: 'published', label: 'Total Published Papers', value: stats.published ?? stats.publishedPapers ?? 0, i: 'bi-journal-richtext' },
+          { key: 'ethics', label: 'Total Ethics Applications', value: stats.ethics ?? stats.ethicsApplications ?? 0, i: 'bi-shield-check' },
+          { key: 'innovation', label: 'Total Innovation Projects', value: stats.innovation ?? stats.innovationProjects ?? 0, i: 'bi-lightbulb' },
+          { key: 'users', label: 'Total Active Users', value: stats.users ?? stats.activeUsers ?? 0, i: 'bi-people' }
+        ];
+
+        document.getElementById('dashboard-summary').innerHTML = kpiItems.map(s => `
+          <div class="kpi ${activeFilterKey === s.key ? 'active-kpi' : ''}" data-filter="${s.key}" style="cursor: pointer; transition: transform .2s, box-shadow .2s; ${activeFilterKey === s.key ? 'border: 2px solid #6b0000; background: #fdf2f2;' : ''}">
+            <span class="k-ic"><i class="bi ${s.i}"></i></span>
+            <div><div class="k-v">${s.value}</div><div class="k-l">${s.label}</div></div>
+          </div>
+        `).join('');
+
+        document.querySelectorAll('#dashboard-summary .kpi').forEach(el => {
+          el.addEventListener('click', () => {
+            fetchAndRenderRecords(el.dataset.filter);
+          });
+        });
+
+        let cardEl = document.getElementById('filtered-records-card');
+        if (!cardEl) {
+          const overviewPanel = document.querySelector('[data-panel="overview"]');
+          if (overviewPanel) {
+            const div = document.createElement('div');
+            div.className = 'admin-card';
+            div.id = 'filtered-records-card';
+            div.style.cssText = 'margin-top:24px; display:none;';
+            div.innerHTML = `
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 id="filtered-table-title" style="margin:0;"><i class="bi bi-table"></i> Filtered Records</h3>
+                <button type="button" class="btn btn-outline btn-sm" id="show-all-btn"><i class="bi bi-arrow-counterclockwise"></i> Show All (Submitted Research)</button>
+              </div>
+              <div id="filtered-table-container"></div>
+            `;
+            overviewPanel.insertBefore(div, overviewPanel.children[1]);
+            const showAllBtn = document.getElementById('show-all-btn');
+            if (showAllBtn) {
+              showAllBtn.addEventListener('click', () => fetchAndRenderRecords('submitted'));
+            }
+          }
+        }
+
+        return stats;
+      } catch (err) {
+        console.error('Failed to load summary stats:', err);
+        return null;
+      }
     }
 
     async function loadUserManagement() {

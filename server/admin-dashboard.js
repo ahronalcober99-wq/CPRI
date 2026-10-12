@@ -213,6 +213,154 @@ router.get('/public-summary', async (req, res) => {
   res.json({ summary, public: true });
 });
 
+// ---------- Dashboard Stats & Filtered Records API ----------
+router.get('/dashboard/stats', requireAdmin, async (req, res) => {
+  try {
+    const [
+      subsList, repoList, pubList, ethicsList, innoList, usersList
+    ] = await Promise.all([
+      all('SELECT id, status FROM submissions'),
+      all('SELECT id, status, sourceSubmissionId FROM repository'),
+      all("SELECT id FROM publications WHERE status = 'published'"),
+      all('SELECT id FROM ethics'),
+      all('SELECT id FROM innovation_extension'),
+      all('SELECT id, status FROM users')
+    ]);
+
+    const approvedSubIds = new Set(subsList.filter(s => ['approved', 'published'].includes(s.status)).map(s => s.id));
+    const approved = approvedSubIds.size + repoList.filter(r => r.status === 'approved' && !r.sourceSubmissionId).length;
+
+    const rejectedSubIds = new Set(subsList.filter(s => s.status === 'rejected').map(s => s.id));
+    const rejected = rejectedSubIds.size + repoList.filter(r => r.status === 'rejected' && !r.sourceSubmissionId).length;
+
+    const archivedSubIds = new Set(subsList.filter(s => s.status === 'archived').map(s => s.id));
+    const archived = archivedSubIds.size + repoList.filter(r => r.status === 'archived' && !r.sourceSubmissionId).length;
+
+    const submitted = subsList.length;
+    const published = pubList.length;
+    const ethics = ethicsList.length;
+    const innovation = innoList.length;
+    const users = usersList.filter(u => u.status === 'active').length;
+
+    res.json({
+      success: true,
+      data: { submitted, approved, rejected, archived, published, ethics, innovation, users }
+    });
+  } catch (err) {
+    console.error('[dashboard/stats] error:', err);
+    res.status(500).json({ error: 'Failed to load dashboard stats.' });
+  }
+});
+
+router.get('/research', requireAdmin, async (req, res) => {
+  try {
+    const { status, published, page = 1, limit = 10 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+    const offset = (pageNum - 1) * limitNum;
+
+    let where = '1=1';
+    let params = [];
+
+    if (published === 'true') {
+      where += " AND (status = 'published' OR id IN (SELECT id FROM publications WHERE status = 'published'))";
+    } else if (status) {
+      const allowedStatuses = ['submitted', 'approved', 'rejected', 'archived', 'pending', 'published', 'under_initial_checking', 'for_revision', 'under_ethics_review'];
+      if (!allowedStatuses.includes(status)) {
+        return res.status(400).json({ error: `Invalid status parameter: "${status}". Allowed values: ${allowedStatuses.join(', ')}` });
+      }
+      if (status === 'pending') {
+        where += " AND status IN ('submitted', 'under_initial_checking', 'for_revision', 'under_ethics_review')";
+      } else {
+        where += ' AND status = ?';
+        params.push(status);
+      }
+    }
+
+    const countRows = await all(`SELECT COUNT(*) as c FROM submissions WHERE ${where}`, params);
+    const total = countRows[0] ? Number(countRows[0].c) : 0;
+
+    const queryParams = [...params, limitNum, offset];
+    const rows = await all(`SELECT id, title, authors, program, schoolYear, status, createdAt FROM submissions WHERE ${where} ORDER BY createdAt DESC LIMIT ? OFFSET ?`, queryParams);
+
+    res.json({
+      success: true,
+      data: rows.map(r => ({
+        id: r.id,
+        title: r.title,
+        author: r.authors || 'Unknown',
+        department: r.program || 'General',
+        year: r.schoolYear || (r.createdAt ? new Date(r.createdAt).getFullYear() : ''),
+        status: r.status
+      })),
+      total
+    });
+  } catch (err) {
+    console.error('[research] error:', err);
+    res.status(500).json({ error: 'Failed to load research records.' });
+  }
+});
+
+router.get('/ethics-applications', requireAdmin, async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+    const offset = (pageNum - 1) * limitNum;
+
+    const countRows = await all('SELECT COUNT(*) as c FROM ethics');
+    const total = countRows[0] ? Number(countRows[0].c) : 0;
+
+    const rows = await all('SELECT id, title, researchers, department, status, createdAt FROM ethics ORDER BY createdAt DESC LIMIT ? OFFSET ?', [limitNum, offset]);
+
+    res.json({
+      success: true,
+      data: rows.map(r => ({
+        id: r.id,
+        title: r.title,
+        author: r.researchers || 'Unknown',
+        department: r.department || 'General',
+        year: r.createdAt ? new Date(r.createdAt).getFullYear() : '',
+        status: r.status
+      })),
+      total
+    });
+  } catch (err) {
+    console.error('[ethics-applications] error:', err);
+    res.status(500).json({ error: 'Failed to load ethics applications.' });
+  }
+});
+
+router.get('/innovation-projects', requireAdmin, async (req, res) => {
+  try {
+    const { page = 1, limit = 10 } = req.query;
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
+    const offset = (pageNum - 1) * limitNum;
+
+    const countRows = await all('SELECT COUNT(*) as c FROM innovation_extension');
+    const total = countRows[0] ? Number(countRows[0].c) : 0;
+
+    const rows = await all('SELECT id, title, proponents, department, implementationDate, projectType, createdAt FROM innovation_extension ORDER BY createdAt DESC LIMIT ? OFFSET ?', [limitNum, offset]);
+
+    res.json({
+      success: true,
+      data: rows.map(r => ({
+        id: r.id,
+        title: r.title,
+        author: r.proponents || 'Unknown',
+        department: r.department || 'General',
+        year: r.implementationDate ? r.implementationDate.slice(0, 4) : (r.createdAt ? new Date(r.createdAt).getFullYear() : ''),
+        status: r.projectType
+      })),
+      total
+    });
+  } catch (err) {
+    console.error('[innovation-projects] error:', err);
+    res.status(500).json({ error: 'Failed to load innovation projects.' });
+  }
+});
+
 // ---------- Hero stat chips (public) ----------
 // Feeds the "Publications & briefs" and "Review approval rate" chips on the
 // homepage hero. Uses the same numbers the Research Analytics dashboard shows:
