@@ -26,6 +26,7 @@ import { ensureBackupSchema, startBackupScheduler } from './lib/backup-service.j
 import { researchersRouter } from './researchers.js';
 import { eventsModuleRouter, ensureEventsSchema } from './events-module.js';
 import { innovationExtensionRouter } from './innovation-extension.js';
+import { researchSubmissionsRouter, ensureResearchSubmissionsSchema } from '../cpri-research-submission/server/research-submissions.js';
 import { adminDashboardRouter } from './admin-dashboard.js';
 import { adminInsightsRouter } from './admin-insights.js';
 import { reportsRouter } from './reports.js';
@@ -244,6 +245,8 @@ app.use('/api/gala', galaRouter);
 app.use('/api/admin/backups', backupsRouter);
 app.use('/api/researchers', researchersRouter);
 app.use('/api/events-module', eventsModuleRouter);
+// CPRI research submission module.
+app.use('/api/research-submissions', researchSubmissionsRouter);
 app.use('/api/innovation-extension', innovationExtensionRouter);
 app.use('/api/admin', adminDashboardRouter);
 app.use('/api', adminDashboardRouter);
@@ -268,7 +271,9 @@ const MEMBER_ONLY_PAGES = new Set([
   'submissions.html', 'submission.html', 'submit.html',
   'ethics.html', 'ethics-detail.html', 'ethics-form.html',
   'researcher-form.html', 'publication-form.html', 'innovation-extension-form.html',
-  'event-abstract.html', 'event-registration.html'
+  'event-abstract.html', 'event-registration.html',
+  // Research Submission Module pages (served from the module's own folder).
+  'research-submission.html', 'research-submission-detail.html'
 ]);
 
 app.use(async (req, res, next) => {
@@ -312,6 +317,15 @@ const STATIC_OPTIONS = {
   }
 };
 app.use(express.static(PUBLIC_DIR, STATIC_OPTIONS));
+// The Research Submission Module keeps its own pages next to its back end
+// (cpri-research-submission/public). Mount that folder as an extra static root
+// so /research-submission.html and /research-submission-detail.html are served
+// without copying files. They load the site's shared stylesheet and header, so
+// the maroon theme and layout match every other page. Mounted above the
+// catch-all for the same reason as the mounts above.
+app.use(
+  express.static(join(__dirname, '..', 'cpri-research-submission', 'public'), STATIC_OPTIONS)
+);
 // The GitHub Pages copy is published from the repository ROOT, so its links read
 // /CPRI/public/login.html — i.e. the URL path contains a "public/" segment. This
 // server serves PUBLIC_DIR itself at the root (so /login.html works), which left
@@ -684,6 +698,12 @@ try {
   await ensureGalaSchema();
 } catch (err) {
   console.error('[gala] schema ensure failed:', err.message);
+}
+
+try {
+  await ensureResearchSubmissionsSchema();
+} catch (err) {
+  console.error('[research-submissions] schema ensure failed:', err.message);
 }
 
 try {

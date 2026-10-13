@@ -3,6 +3,9 @@ node_modules/
 server/data/*.json
 server/data/demo-access.key
 server/data/sessions/
+# Uploaded research documents (Research Submission Module) — private, and never
+# served from a public folder. Only the download endpoint may read them.
+server/data/research-submissions/
 backups/
 public/assets/uploads/
 *.log

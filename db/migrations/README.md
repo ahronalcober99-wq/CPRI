@@ -16,6 +16,7 @@ engine allows it; the `ensure*` functions remain the source of truth.
 | 002 | `002_gala_submissions.sql` | `ensureGalaSchema()` — `server/gala.js` |
 | 003 | `003_db_backups.sql` | `ensureBackupSchema()` — `server/lib/backup-service.js` |
 | 004 | `004_publication_monitoring_fields.sql` | `ensurePublicationSchema()` — `server/publications.js` |
+| 005 | `005_research_submissions.sql` | `ensureResearchSubmissionsSchema()` — `cpri-research-submission/server/research-submissions.js` |
 
 ## Order
 
@@ -26,7 +27,7 @@ backup.
 ```bash
 mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" \
   < db/migrations/001_users_role_profile_fields.sql
-# …002, 003, 004
+# …002, 003, 004, 005
 ```
 
 Verified on this project's TiDB Cloud database — the boot log reports each one:

@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Submission | CPRI</title>
+  <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Research Submission</h1>
+        <p>Submit a new research record. The form changes based on your account type and stage.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container" style="max-width:760px;">
+        <div class="form-message" id="message"></div>
+
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to submit research.
+        </div>
+
+        <div id="no-access" class="empty-state" style="display:none;">
+          Your account type cannot submit research through this module.
+        </div>
+
+        <div id="form-area" style="display:none;">
+          <div class="card">
+            <!-- Stage tabs (Initial only for student_researcher & faculty_researcher). -->
+            <div id="stage-tabs" style="display:none;margin-bottom:22px;">
+              <div style="display:flex;gap:4px;margin-bottom:6px;">
+                <button type="button" class="btn btn-outline btn-sm stage-tab" data-stage="initial">Initial Submission</button>
+                <button type="button" class="btn btn-outline btn-sm stage-tab" data-stage="final">Final Submission</button>
+              </div>
+              <p class="form-note" id="stage-note" style="margin:0;"></p>
+            </div>
+
+            <div id="stage-error" class="form-message error" style="display:none;">
+              <div class="error-card">
+                <div class="error-text"><span id="stage-error-text"></span></div>
+              </div>
+            </div>
+
+            <form id="submission-form" novalidate>
+              <h3 id="form-section-title" style="margin:0 0 14px;">Research Details</h3>
+
+              <!-- Fields rendered from /api/research-submissions/form-config. -->
+              <div id="fields-container"></div>
+
+              <!-- File slots (required / conditional / optional) rendered from config. -->
+              <div id="files-section" style="display:none;">
+                <h3 style="margin:28px 0 12px;">File Uploads</h3>
+                <p class="form-note" id="file-policy-note" style="margin:0 0 16px;"></p>
+                <div id="file-slots"></div>
+              </div>
+
+              <!-- Submit row -->
+              <div class="form-group" style="margin-top:24px;border-top:1px solid var(--cpri-border);padding-top:18px;">
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+                  <button type="submit" class="btn btn-primary" id="submit-btn">Submit</button>
+                  <button type="button" class="btn btn-navy" id="draft-btn">Save as draft</button>
+                  <span id="submit-summary" class="form-note" style="margin-left:auto;"></span>
+                </div>
+              </div>
+
+              <!-- Inline field errors (per field). -->
+              <div id="field-errors" style="display:none;margin-top:14px;"></div>
+
+              <!-- Global errors. -->
+              <div id="global-errors" class="form-message error" style="display:none;margin-top:12px;">
+                <div class="error-card">
+                  <div class="error-text" id="global-error-text"></div>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <div class="card" style="margin-top:22px;">
+            <h3 style="margin:0 0 12px;">Status Tracker</h3>
+            <p class="form-note" id="status-tracker-text" style="margin:0;"></p>
+            <div id="status-tracker" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      // ---- DOM refs ----
+      const messageEl = document.getElementById('message');
+      const notLoggedEl = document.getElementById('not-logged');
+      const noAccessEl = document.getElementById('no-access');
+      const formArea = document.getElementById('form-area');
+      const form = document.getElementById('submission-form');
+      const fieldsContainer = document.getElementById('fields-container');
+      const filesSection = document.getElementById('files-section');
+      const fileSlots = document.getElementById('file-slots');
+      const filePolicyNote = document.getElementById('file-policy-note');
+      const submitBtn = document.getElementById('submit-btn');
+      const draftBtn = document.getElementById('draft-btn');
+      const submitSummary = document.getElementById('submit-summary');
+      const fieldErrors = document.getElementById('field-errors');
+      const globalErrors = document.getElementById('global-errors');
+      const globalErrorText = document.getElementById('global-error-text');
+      const stageTabs = document.getElementById('stage-tabs');
+      const stageNote = document.getElementById('stage-note');
+      const stageError = document.getElementById('stage-error');
+      const stageErrorText = document.getElementById('stage-error-text');
+      const formSectionTitle = document.getElementById('form-section-title');
+      const statusTracker = document.getElementById('status-tracker');
+      const statusTrackerText = document.getElementById('status-tracker-text');
+
+      // ---- State ----
+      let currentRole = null;
+      let currentStage = null; // 'initial' or 'final'
+      let config = null;       // the whole /form-config payload
+      let fieldErrorsMap = new Map(); // fieldKey -> message
+      let fileUploads = new Map();     // slotKey -> { file, name, state }
+      let conditionFlags = new Map();  // condition_key -> boolean (checkboxes)
+      let submitting = false;
+
+      // `config` is the payload; the ACTIVE stage's fields and slots are here.
+      // Every renderer and validator goes through this, so there is only one
+      // meaning of "the current form".
+      function activeStage() {
+        if (!config || !config.stages) return null;
+        return config.stages.find(s => s.stage === currentStage) || null;
+      }
+
+      // ---- fetch wrappers ----
+      async function me() {
+        const res = await fetch('/api/research-submissions/me');
+        if (res.status === 401) {
+          window.location.replace('login.html?next=research-submission.html');
+          return null;
+        }
+        if (!res.ok) throw new Error((await res.json()).error || 'Request failed.');
+        return res.json();
+      }
+
+      async function formConfig() {
+        const res = await fetch('/api/research-submissions/form-config');
+        if (res.status === 401) {
+          window.location.replace('login.html?next=research-submission.html');
+          return null;
+        }
+        if (!res.ok) throw new Error((await res.json()).error || 'Request failed.');
+        return res.json();
+      }
+
+      function clearMessages() {
+        messageEl.className = 'form-message';
+        messageEl.textContent = '';
+        stageError.style.display = 'none';
+        globalErrors.style.display = 'none';
+        fieldErrors.style.display = 'none';
+        fieldErrorsMap = new Map();
+        renderFieldErrors();
+      }
+
+      function showGlobalError(text) {
+        globalErrorText.textContent = text;
+        globalErrors.style.display = 'block';
+      }
+
+      function showMessage(text, kind) {
+        messageEl.className = 'form-message ' + (kind || '');
+        messageEl.textContent = text || '';
+      }
+
+      // ---- Render the form from config ----
+      function renderForm(stageConfig) {
+        clearMessages();
+        fieldsContainer.innerHTML = '';
+        fileSlots.innerHTML = '';
+        fileUploads = new Map();
+        fileUploads.set('additional_documents', { file: null, name: '', state: 'none' });
+
+        // Fields
+        const fields = stageConfig.fields;
+        for (const f of fields) {
+          const group = document.createElement('div');
+          group.className = 'form-group';
+          const label = document.createElement('label');
+          label.htmlFor = f.key;
+          label.textContent = f.label + (f.required ? ' *' : '');
+          group.appendChild(label);
+
+          let input;
+          if (f.type === 'textarea') {
+            input = document.createElement('textarea');
+            input.rows = 4;
+          } else if (f.type === 'select') {
+            input = document.createElement('select');
+            for (const opt of f.options) {
+              const o = document.createElement('option');
+              o.value = opt.value;
+              o.textContent = opt.label;
+              input.appendChild(o);
+            }
+          } else {
+            input = document.createElement('input');
+            input.type = 'text';
+          }
+          input.id = f.key;
+          input.name = f.key;
+          if (f.required) input.required = true;
+          if (f.placeholder) input.placeholder = f.placeholder;
+          if (f.maxLength) input.maxLength = f.maxLength;
+          group.appendChild(input);
+          fieldsContainer.appendChild(group);
+        }
+
+        // File slots
+        conditionFlags = new Map();
+        const slots = stageConfig.slots;
+        if (slots.length) {
+          filesSection.style.display = '';
+          const requiredCount = slots.filter(s => s.required && !s.conditional).length;
+          const conditionalCount = slots.filter(s => s.required && s.conditional).length;
+          const optionalCount = slots.filter(s => !s.required).length;
+
+          const parts = [];
+          if (requiredCount) parts.push(requiredCount + ' required');
+          if (conditionalCount) parts.push(conditionalCount + ' conditional');
+          if (optionalCount) parts.push(optionalCount + ' optional');
+          filePolicyNote.textContent = 'Each file must be a PDF or Word document (max 20 MB). ' + parts.join(', ') + '.';
+
+          // Controls for the conditional flags, from the config, so a slot that
+          // depends on "my adviser changed" has a visible switch.
+          const neededFlags = [...new Set(slots.filter(s => s.condition_key).map(s => s.condition_key))];
+          for (const flagKey of neededFlags) {
+            const flagDef = (config.conditionalFlags || []).find(f => f.key === flagKey) || { key: flagKey, label: flagKey };
+            const wrap = document.createElement('div');
+            wrap.className = 'form-group';
+            wrap.style.marginTop = '14px';
+            const row = document.createElement('label');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+            row.style.gap = '8px';
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.id = 'flag-' + flagKey;
+            box.style.width = 'auto';
+            box.addEventListener('change', () => {
+              conditionFlags.set(flagKey, box.checked);
+              updateSubmitSummary();
+            });
+            conditionFlags.set(flagKey, false);
+            const text = document.createElement('span');
+            text.textContent = flagDef.label;
+            row.appendChild(box);
+            row.appendChild(text);
+            wrap.appendChild(row);
+            fileSlots.appendChild(wrap);
+          }
+
+          for (const slot of slots) {
+            const slotGroup = document.createElement('div');
+            slotGroup.className = 'form-group';
+            slotGroup.style.marginTop = slot === slots[0] ? '0' : '14px';
+
+            const label = document.createElement('label');
+            label.textContent = slot.label;
+            if (slot.required) label.style.display = 'inline';
+            else label.style.display = 'inline';
+            label.appendChild(document.createTextNode(' '));
+            const tag = document.createElement('span');
+            tag.style.fontSize = '0.75rem';
+            tag.style.fontWeight = '600';
+            tag.style.verticalAlign = 'middle';
+            tag.style.marginLeft = '6px';
+            tag.style.padding = '1px 6px';
+            tag.style.borderRadius = '999px';
+            tag.style.background = slot.conditional ? '#7C3AED' : (slot.required ? 'var(--cpri-info)' : '#6b7280');
+            tag.style.color = '#fff';
+            tag.textContent = slot.conditional ? 'Conditional' : (slot.required ? 'Required' : 'Optional');
+            label.appendChild(tag);
+            slotGroup.appendChild(label);
+
+            const inputWrap = document.createElement('div');
+            inputWrap.style.cssText = 'position:relative;';
+
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.accept = slot.kind === 'optional' ? '.pdf,.doc,.docx' : (slot.kind === 'word' ? '.doc,.docx' : '.pdf');
+            fileInput.name = slot.slot_key;
+            fileInput.id = 'file-' + slot.slot_key;
+            fileInput.style.cssText = 'max-width:100%;';
+            fileInput.addEventListener('change', () => onFileSelected(slot.slot_key, fileInput));
+            inputWrap.appendChild(fileInput);
+
+            const statusRow = document.createElement('div');
+            statusRow.style.marginTop = '6px';
+            statusRow.style.display = 'flex';
+            statusRow.style.alignItems = 'center';
+            statusRow.style.gap = '8px';
+
+            const nameSpan = document.createElement('span');
+            nameSpan.className = 'form-note';
+            nameSpan.style.fontSize = '0.85rem';
+            nameSpan.textContent = 'No file chosen';
+            statusRow.appendChild(nameSpan);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn btn-outline btn-sm';
+            removeBtn.textContent = 'Remove';
+            removeBtn.style.display = 'none';
+            removeBtn.addEventListener('click', () => onFileRemoved(slot.slot_key, fileInput));
+            statusRow.appendChild(removeBtn);
+
+            const indicator = document.createElement('span');
+            indicator.className = 'form-note';
+            indicator.style.fontSize = '0.75rem';
+            indicator.style.color = 'var(--cpri-muted)';
+            indicator.textContent = '';
+            statusRow.appendChild(indicator);
+
+            inputWrap.appendChild(statusRow);
+            slotGroup.appendChild(inputWrap);
+            fileSlots.appendChild(slotGroup);
+          }
+        } else {
+          filesSection.style.display = 'none';
+        }
+
+        renderFieldErrors();
+        updateSubmitSummary();
+      }
+
+      // ---- File upload state ----
+      function onFileSelected(slotKey, input) {
+        const file = input.files && input.files[0];
+        if (!file) {
+          setFileState(slotKey, null, input);
+          return;
+        }
+        if (!allowedFileForSlot(slotKey, file)) {
+          setFileState(slotKey, { error: 'That file type is not allowed. Please choose a PDF or Word document.' }, input);
+          input.value = '';
+          return;
+        }
+        if (file.size > 20 * 1024 * 1024) {
+          setFileState(slotKey, { error: 'That file is too large. The maximum size is 20 MB.' }, input);
+          input.value = '';
+          return;
+        }
+        setFileState(slotKey, { name: file.name, size: file.size, file }, input);
+      }
+
+      function onFileRemoved(slotKey, input) {
+        setFileState(slotKey, { file: null, name: '', state: 'none' }, input);
+        input.value = '';
+      }
+
+      function setFileState(slotKey, state, input) {
+        fileUploads.set(slotKey, state);
+        const stageConfig = activeStage();
+        const slot = (stageConfig && stageConfig.slots.find(s => s.slot_key === slotKey)) || null;
+        const row = fileSlots.querySelector('#file-' + slotKey)?.parentElement?.parentElement;
+        if (!row) return;
+
+        const nameSpan = row.querySelector('.form-note:first-child');
+        const removeBtn = row.querySelector('button');
+        const indicator = row.querySelector('span:last-child');
+
+        if (state && state.error) {
+          nameSpan.textContent = state.error;
+          nameSpan.style.color = 'var(--cpri-info)';
+          removeBtn.style.display = 'none';
+          indicator.textContent = '';
+          if (input) input.value = '';
+        } else if (state && state.file) {
+          nameSpan.textContent = state.name + (state.size ? ' (' + formatSize(state.size) + ')' : '');
+          nameSpan.style.color = 'var(--cpri-text)';
+          removeBtn.style.display = '';
+          indicator.textContent = 'Selected';
+          indicator.style.color = 'var(--cpri-success)';
+        } else {
+          nameSpan.textContent = 'No file chosen';
+          nameSpan.style.color = 'var(--cpri-muted)';
+          removeBtn.style.display = 'none';
+          const tagText = !slot ? '' : slot.conditional ? 'Conditional' : slot.required ? 'Required' : 'Optional';
+          indicator.textContent = tagText;
+          indicator.style.color = slot && slot.required ? 'var(--cpri-info)' : 'var(--cpri-muted)';
+        }
+      }
+
+      // Same rule the server applies: a conditional slot is required only while
+      // its flag is on.
+      function conditionFlagOn(slot) {
+        if (!slot || !slot.conditional) return false;
+        return Boolean(conditionFlags.get(slot.condition_key));
+      }
+
+      function allowedFileForSlot(slotKey, file) {
+        if (!file) return false;
+        const name = (file.name || '').toLowerCase();
+        const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : '';
+        const stageConfig = activeStage();
+        const kind = (stageConfig && stageConfig.slots.find(s => s.slot_key === slotKey))?.kind;
+        if (kind === 'word') return ext === '.doc' || ext === '.docx';
+        if (kind === 'pdf') return ext === '.pdf';
+        if (kind === 'optional') return ext === '.pdf' || ext === '.doc' || ext === '.docx';
+        return false;
+      }
+
+      function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      }
+
+      // ---- Inline field errors ----
+      function renderFieldErrors() {
+        if (fieldErrorsMap.size === 0) {
+          fieldErrors.style.display = 'none';
+          return;
+        }
+        fieldErrors.innerHTML = '';
+        fieldErrors.style.display = 'block';
+        for (const [key, msg] of fieldErrorsMap) {
+          const row = document.createElement('div');
+          row.className = 'form-message error';
+          row.style.marginBottom = '6px';
+          const label = document.createElement('span');
+          const stageConfig = activeStage();
+          const fieldDef = (stageConfig && stageConfig.fields.find(f => f.key === key)) || null;
+          label.textContent = (fieldDef ? fieldDef.label + ' ' : '') + msg;
+          row.appendChild(label);
+          fieldErrors.appendChild(row);
+        }
+      }
+
+      function setFieldError(key, msg) {
+        if (msg) fieldErrorsMap.set(key, msg);
+        else fieldErrorsMap.delete(key);
+        renderFieldErrors();
+        updateSubmitSummary();
+      }
+
+      // ---- Submit summary (counts of missing required fields + required files) ----
+      function updateSubmitSummary() {
+        const stageConfig = activeStage();
+        if (!stageConfig) { submitSummary.textContent = ''; return; }
+        let missingFields = 0;
+        for (const f of stageConfig.fields) {
+          if (!f.required) continue;
+          const input = document.getElementById(f.key);
+          if (!input) continue;
+          const v = input.value == null ? '' : String(input.value).trim();
+          if (!v) missingFields++;
+        }
+        let missingFiles = 0;
+        for (const slot of stageConfig.slots) {
+          if (!slot.required) continue;
+          // A conditional slot is required only while its flag is on. The flag
+          // is the same one the server checks, and the server is what actually
+          // enforces it.
+          if (slot.conditional && !conditionFlagOn(slot)) continue;
+          const state = fileUploads.get(slot.slot_key);
+          if (!state || !state.file) missingFiles++;
+        }
+        if (missingFields === 0 && missingFiles === 0) {
+          submitSummary.textContent = 'Ready to submit.';
+          submitSummary.style.color = 'var(--cpri-success)';
+        } else {
+          const parts = [];
+          if (missingFields) parts.push(missingFields + ' required field' + (missingFields === 1 ? '' : 's'));
+          if (missingFiles) parts.push(missingFiles + ' required file' + (missingFiles === 1 ? '' : 's'));
+          submitSummary.textContent = parts.join('; ') + ' missing.';
+          submitSummary.style.color = 'var(--cpri-info)';
+        }
+      }
+
+      // ---- Gather body for validation + submit ----
+      function gatherBody(includeFiles = false) {
+        const body = {};
+        const stageConfig = activeStage();
+        if (!stageConfig) return body;
+        for (const f of stageConfig.fields) {
+          const input = document.getElementById(f.key);
+          if (!input) continue;
+          let v;
+          if (f.type === 'textarea') v = input.value;
+          else if (f.type === 'select') v = input.value;
+          else v = input.value;
+          body[f.key] = v == null ? '' : String(v).trim();
+        }
+        body.stage = currentStage;
+        // The role is never sent: the server takes it from the session. The
+        // only client inputs that reach validation are the conditional flags.
+        for (const [key, on] of conditionFlags) body[key] = on ? 'true' : 'false';
+        if (includeFiles) {
+          body._fileStates = Array.from(fileUploads.entries()).map(([k, s]) => ({ slot_key: k, state: s }));
+        }
+        return body;
+      }
+
+      // ---- Stage switching ----
+      function setStage(stage) {
+        if (!config) return;
+        currentStage = stage;
+        const stageConfig = config.stages.find(s => s.stage === stage);
+        if (!stageConfig) {
+          stageError.style.display = '';
+          stageErrorText.textContent = 'This stage is not available for your account type.';
+          return;
+        }
+        currentStage = stage;
+        renderForm(stageConfig);
+        // Update tabs
+        document.querySelectorAll('.stage-tab').forEach(btn => {
+          const isActive = btn.dataset.stage === stage;
+          btn.classList.toggle('active', isActive);
+          if (isActive) btn.style.fontWeight = '600';
+        });
+        // Status tracker
+        renderStatusTracker(stage);
+        clearMessages();
+        updateSubmitSummary();
+      }
+
+      function renderStatusTracker(stage) {
+        const statuses = stage === 'initial'
+          ? [{ value: 'draft', label: 'Draft' }, { value: 'submitted', label: 'Submitted' }, { value: 'under_initial_checking', label: 'Under Initial Checking' }, { value: 'for_revision', label: 'For Revision' }, { value: 'under_ethics_review', label: 'Under Ethics Review' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }]
+          : [{ value: 'draft', label: 'Draft' }, { value: 'submitted', label: 'Submitted' }, { value: 'under_initial_checking', label: 'Under Initial Checking' }, { value: 'for_revision', label: 'For Revision' }, { value: 'approved', label: 'Approved' }, { value: 'published', label: 'Published' }, { value: 'archived', label: 'Archived' }, { value: 'rejected', label: 'Rejected' }];
+        statusTracker.innerHTML = '';
+        statusTrackerText.textContent = 'Workflow: ' + statuses.map(s => s.label.toLowerCase()).join(' → ');
+        for (const s of statuses) {
+          const chip = document.createElement('span');
+          chip.className = 'badge';
+          chip.textContent = s.label;
+          chip.style.opacity = '0.5';
+          statusTracker.appendChild(chip);
+        }
+      }
+
+      // ---- Submit / draft ----
+      async function handleSubmit(asDraft) {
+        if (submitting) return;
+        submitting = true;
+        submitBtn.disabled = true;
+        draftBtn.disabled = true;
+        clearMessages();
+        try {
+          // A draft may be incomplete; a real submission may not. The server
+          // checks both the same way, this is only the fast, local feedback.
+          if (!asDraft) {
+            const body = gatherBody();
+            const missing = validateFields(body);
+            if (missing) {
+              showGlobalError(missing);
+              submitting = false;
+              submitBtn.disabled = false;
+              draftBtn.disabled = false;
+              return;
+            }
+            const fileMissing = validateRequiredFiles(body);
+            if (fileMissing) {
+              showGlobalError(fileMissing);
+              submitting = false;
+              submitBtn.disabled = false;
+              draftBtn.disabled = false;
+              return;
+            }
+          }
+          // Build multipart form.
+          const stageConfig = activeStage();
+          const fd = new FormData();
+          for (const f of stageConfig.fields) {
+            const input = document.getElementById(f.key);
+            if (!input) continue;
+            const v = input.value == null ? '' : String(input.value).trim();
+            fd.append(f.key, v);
+          }
+          fd.append('stage', currentStage);
+          // The conditional flags, so the server applies the same rules.
+          for (const [key, on] of conditionFlags) fd.append(key, on ? 'true' : 'false');
+          // "Save as draft" stores an incomplete record under status 'draft'.
+          if (asDraft) fd.append('as_draft', '1');
+          // Files
+          for (const [slotKey, state] of fileUploads) {
+            if (!state || !state.file) continue;
+            fd.append(slotKey, state.file, state.name || 'document');
+          }
+
+          const res = await fetch('/api/research-submissions', { method: 'POST', body: fd });
+          const out = await res.json();
+          if (!res.ok) {
+            if (res.status === 401) {
+              window.location.replace('login.html?next=research-submission.html');
+              return;
+            }
+            showGlobalError(out.error || 'Submission failed.');
+            return;
+          }
+          // Clear the form FIRST, then report — renderForm() calls
+          // clearMessages(), so a message shown before it was wiped instantly.
+          form.reset();
+          fileUploads.clear();
+          fileUploads.set('additional_documents', { file: null, name: '', state: 'none' });
+          renderForm(activeStage());
+          showMessage(out.message || 'Submission saved.', 'success');
+          submitSummary.textContent = 'Saved.';
+          submitSummary.style.color = 'var(--cpri-success)';
+        } catch (err) {
+          showGlobalError(err.message || 'Submission failed.');
+        } finally {
+          submitting = false;
+          submitBtn.disabled = false;
+          draftBtn.disabled = false;
+        }
+      }
+
+      function validateFields(body) {
+        const stageConfig = activeStage();
+        if (!stageConfig) return null;
+        const missing = [];
+        for (const f of stageConfig.fields) {
+          if (!f.required) continue;
+          const v = body[f.key];
+          if (!v || String(v).trim() === '') {
+            missing.push(f.label + ' is required.');
+          }
+        }
+        // Also check any server-required conditional fields (re-evaluate here).
+        // Our config already marks required slots; fields are all required unless
+        // the config says otherwise. No conditional FIELDS in this config.
+        return missing.length ? missing.join(' ') : null;
+      }
+
+      function validateRequiredFiles(body) {
+        const stageConfig = activeStage();
+        if (!stageConfig) return null;
+        const missing = [];
+        for (const slot of stageConfig.slots) {
+          if (!slot.required) continue;
+          if (slot.conditional && !conditionFlagOn(slot)) continue;
+          const state = fileUploads.get(slot.slot_key);
+          if (!state || !state.file) {
+            missing.push(slot.label + ' is required.');
+          } else if (!allowedFileForSlot(slot.slot_key, state.file)) {
+            missing.push(slot.label + ' must be a ' + (slot.kind === 'word' ? 'PDF or Word' : 'PDF') + ' file.');
+          }
+        }
+        return missing.length ? missing.join(' ') : null;
+      }
+
+      // ---- Boot ----
+      (async function () {
+        try {
+          const meData = await me();
+          if (!meData) return;
+          currentRole = meData.role;
+
+          const cfg = await formConfig();
+          if (!cfg || !cfg.stages || cfg.stages.length === 0) {
+            noAccessEl.style.display = '';
+            return;
+          }
+          config = cfg; // the payload; activeStage() picks the stage out of it
+
+          // Decide initial stage. Presenters: only final. Others: pick initial
+          // if available, else final.
+          const stages = cfg.stages.map(s => s.stage);
+          let initialStage;
+          if (currentRole === 'presenter') {
+            initialStage = 'final';
+          } else if (stages.includes('initial')) {
+            initialStage = 'initial';
+          } else {
+            initialStage = stages[0];
+          }
+          currentStage = initialStage;
+
+          formArea.style.display = '';
+          renderForm(cfg.stages.find(s => s.stage === initialStage));
+          renderStatusTracker(initialStage);
+
+          // Stage tabs
+          stageTabs.style.display = stages.length > 1 ? '' : 'none';
+          document.querySelectorAll('.stage-tab').forEach(btn => {
+            const isActive = btn.dataset.stage === initialStage;
+            btn.classList.toggle('active', isActive);
+            if (isActive) btn.style.fontWeight = '600';
+            btn.addEventListener('click', () => setStage(btn.dataset.stage));
+          });
+
+          // If only one stage, hide tabs.
+          if (stages.length <= 1) stageTabs.style.display = 'none';
+
+          // Submit / draft
+          form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            // We always submit as "submitted" (not draft) unless the user
+            // clicked "Save as draft".
+          });
+          draftBtn.addEventListener('click', () => handleSubmit(true));
+          submitBtn.addEventListener('click', () => handleSubmit(false));
+
+          // Live validation summary
+          const inputs = fieldsContainer.querySelectorAll('input, textarea, select');
+          for (const input of inputs) {
+            input.addEventListener('input', updateSubmitSummary);
+            input.addEventListener('change', updateSubmitSummary);
+          }
+          for (const slot of (activeStage()?.slots || [])) {
+            const input = document.getElementById('file-' + slot.slot_key);
+            if (input) {
+              input.addEventListener('change', () => { updateSubmitSummary(); });
+            }
+          }
+        } catch (err) {
+          if (err.message && err.message.toLowerCase().includes('not authenticated')) {
+            window.location.replace('login.html?next=research-submission.html');
+          } else {
+            showMessage(err.message || 'Could not load the form.', 'error');
+          }
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

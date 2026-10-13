@@ -1441,5 +1441,11 @@ export {
   ROLE_META,
   SELF_REGISTER_ROLES,
   RBAC_PERMISSIONS,
-  ROLE_PROFILE_FIELDS
+  ROLE_PROFILE_FIELDS,
+  // Notification preferences — exported so modules that notify users (e.g. the
+  // research submission module) apply exactly the same inApp / email /
+  // quietHours semantics as the account page, instead of their own copy.
+  DEFAULT_PREFS,
+  normalizePrefs,
+  isValidClock
 };

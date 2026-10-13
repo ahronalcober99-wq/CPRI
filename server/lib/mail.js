@@ -52,3 +52,30 @@ export async function sendVerificationEmail(to, code) {
   );
   console.log('[mail] verification email sent to', to);
 }
+
+/**
+ * A notification email, in the same house style as the reset and verification
+ * mails (navy heading and button).
+ *
+ * The caller is responsible for having checked the recipient's preferences
+ * (see `normalizePrefs` in auth.js) — this only formats and sends. It throws on
+ * a transport failure so the caller can log it; the senders above swallow
+ * errors instead because a failed reset mail must not break the request.
+ */
+export async function sendNotificationEmail(to, { title, message, link, linkLabel = 'Open in CPRI' } = {}) {
+  if (!to || !title) return;
+  const from = process.env.MAIL_FROM_NAME || 'CPRI';
+  const base = (process.env.APP_BASE_URL || 'https://cpri.onrender.com').replace(/\/+$/, '');
+  const href = link ? `${base}${link.startsWith('/') ? '' : '/'}${link}` : '';
+  const html = `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:8px;">
+    <h2 style="margin-top:0;color:#0f172a;">${from} — ${title}</h2>
+    <p style="color:#334155;">${message || ''}</p>
+    ${href ? `<p style="text-align:center;margin:24px 0;">
+      <a href="${href}" style="display:inline-block;background:#1e3a8a;color:#ffffff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:700;">${linkLabel}</a>
+    </p>` : ''}
+    <p style="color:#94a3b8;font-size:12px;margin-top:20px;">You are receiving this because email notifications are on for your CPRI account. You can switch them off on the Email Notifications page.</p>
+  </div>`;
+
+  await sendBrevoEmail(to, `${from} — ${title}`, html);
+  console.log('[mail] notification email sent to', to);
+}
