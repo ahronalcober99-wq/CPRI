@@ -5,7 +5,7 @@
 //  heading in ROUTES.md, and every heading in ROUTES.md must be a real
 //  route. Exits non-zero when they diverge, so it can gate a change.
 //
-//  Run: node cpri-research-submission/check-doc.js
+//  Run: npm run check:research-submissions-doc
 // ============================================================
 import { readFileSync } from 'fs';
 import { dirname, join } from 'path';
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-const source = readFileSync(join(here, 'server', 'research-submissions.js'), 'utf8');
+const source = readFileSync(join(here, '..', '..', 'server', 'research-submissions.js'), 'utf8');
 const doc = readFileSync(join(here, 'ROUTES.md'), 'utf8');
 
 // `router.get('/me', ...)` — and the multi-line form

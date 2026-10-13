@@ -16,7 +16,7 @@ engine allows it; the `ensure*` functions remain the source of truth.
 | 002 | `002_gala_submissions.sql` | `ensureGalaSchema()` — `server/gala.js` |
 | 003 | `003_db_backups.sql` | `ensureBackupSchema()` — `server/lib/backup-service.js` |
 | 004 | `004_publication_monitoring_fields.sql` | `ensurePublicationSchema()` — `server/publications.js` |
-| 005 | `005_research_submissions.sql` | `ensureResearchSubmissionsSchema()` — `cpri-research-submission/server/research-submissions.js` |
+| 005 | `005_research_submissions.sql` | `ensureResearchSubmissionsSchema()` — `server/research-submissions.js` |
 
 ## Order
 

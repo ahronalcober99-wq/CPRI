@@ -31,9 +31,9 @@ Everything is already wired into the existing app — nothing to copy.
    `ensureResearchSubmissionsSchema()`; `db/migrations/005_research_submissions.sql` is the
    hand-written mirror)
 3. `npm start`, then open `http://localhost:3000/research-submission.html` while signed in.
-   The pages are **served from the module's own folder** — `server/server.js` mounts
-   `cpri-research-submission/public` as an extra static root and gates both pages like the
-   other member pages (signed out ⇒ redirect to `login.html?next=...`).
+   The pages live in the site's own `public/` folder, so the normal static mount serves
+   them, and the server-side `MEMBER_ONLY_PAGES` guard gates both like the other member
+   pages (signed out ⇒ redirect to `login.html?next=...`).
 4. Tests: `npm run test:research-submissions` (offline), `npm run test:research-submissions:db`
    (needs the database), `npm run check:research-submissions-doc` (ROUTES.md vs the router).
 

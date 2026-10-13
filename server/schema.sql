@@ -5,14 +5,14 @@
 --  legacy `submissions` table used by the generic submit.html flow.
 --
 --  This file mirrors the DDL in
---  cpri-research-submission/server/research-submissions.js
+--  server/research-submissions.js
 --  (`ensureResearchSubmissionsSchema()`), which applies it on every boot.
 --  Both are written with IF NOT EXISTS so re-running is safe.
 --  `server/dev/test-research-submissions.mjs` asserts the two stay in sync.
 --
 --  Manual apply:
 --    mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -p"$DB_PASSWORD" "$DB_NAME" \
---      < cpri-research-submission/server/schema.sql
+--      < server/schema.sql
 -- ============================================================
 
 CREATE TABLE IF NOT EXISTS research_submissions (

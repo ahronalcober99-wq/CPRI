@@ -26,8 +26,8 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
-import { createResearchSubmissionsRouter, ensureResearchSubmissionsSchema } from './research-submissions.js';
-import { all, get, insert, run } from '../../server/server/db/queries.js';
+import { createResearchSubmissionsRouter, ensureResearchSubmissionsSchema } from '../research-submissions.js';
+import { all, get, insert, run } from '../server/db/queries.js';
 
 // users.id is varchar(36), so the marker has to stay short.
 const PREFIX = `rsub-t-${Date.now().toString(36)}-`;

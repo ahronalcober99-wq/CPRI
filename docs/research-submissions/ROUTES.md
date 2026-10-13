@@ -5,7 +5,7 @@ Prefix: `/api/research-submissions` (paths below are relative to it).
 All endpoints require a valid Express session (`req.session.userId`). The server trusts
 only the session; client-supplied `role` / `owner_id` / `status` are ignored everywhere.
 
-`node cpri-research-submission/check-doc.js` compares the headings in this file with the
+`npm run check:research-submissions-doc` compares the headings in this file with the
 routes registered in `server/research-submissions.js` and exits non-zero if they diverge.
 
 ## Authentication & access control

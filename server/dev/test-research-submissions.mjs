@@ -30,13 +30,13 @@ import { randomUUID } from 'crypto';
 import {
   createResearchSubmissionsRouter,
   ensureResearchSubmissionsSchema
-} from './research-submissions.js';
+} from '../research-submissions.js';
 import {
   FORM_CONFIG,
   HAS_INITIAL_STAGE,
   STUDENT_ONLY_SLOTS,
   WORD_EXTENSIONS
-} from './lib/research-config.js';
+} from '../lib/research-config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1184,7 +1184,7 @@ test('a failing notifier never breaks the request it belongs to', async () => {
 //  Schema: the boot-time DDL and the hand-written migration must agree
 // ===========================================================================
 test('the schema file and the boot-time DDL declare the same tables and columns', async () => {
-  const schemaSql = await readFile(join(__dirname, 'schema.sql'), 'utf8');
+  const schemaSql = await readFile(join(__dirname, '..', 'schema.sql'), 'utf8');
   const migrationSql = await readFile(
     join(__dirname, '..', '..', 'db', 'migrations', '005_research_submissions.sql'),
     'utf8'

@@ -3,7 +3,7 @@
 --
 --  Mirror of the DDL applied at boot by
 --  `ensureResearchSubmissionsSchema()` in
---  cpri-research-submission/server/research-submissions.js
+--  server/research-submissions.js
 --  (the `ensure*` functions remain the source of truth — see README.md).
 --
 --  Adds five tables, all prefixed `research_` so they never collide

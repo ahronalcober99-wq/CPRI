@@ -22,18 +22,37 @@ import { createReadStream } from 'fs';
 import { mkdir, readFile, rm, stat, writeFile } from 'fs/promises';
 import { join } from 'path';
 
+// The module now lives inside server/ alongside the rest of the site, so it
+// shares the SAME database pool and the SAME session guard as every other
+// router — no shim, no second connection, no invented identity.
 import {
   get as defaultGet,
   all as defaultAll,
   insert as defaultInsert,
   update as defaultUpdate,
-  remove as defaultRemove,
+  remove as defaultRemove
+} from './server/db/queries.js';
+import {
   requireAuth as defaultRequireAuth,
-  callerUser as defaultCallerUser
+  normalizePrefs,
+  isValidClock
 } from './auth.js';
-import { notify as defaultNotify } from '../../server/notifications.js';
-import { normalizePrefs, isValidClock } from '../../server/auth.js';
-import { sendNotificationEmail as defaultSendEmail } from '../../server/lib/mail.js';
+import { notify as defaultNotify } from './notifications.js';
+import { sendNotificationEmail as defaultSendEmail } from './lib/mail.js';
+
+// The caller's own user row, resolved from the session only. The router never
+// trusts a role / owner_id sent by the client, so this is the single place
+// where "who is this?" is decided.
+async function defaultCallerUser(req) {
+  const id = req?.session?.userId;
+  if (!id) return null;
+  const user = await defaultGet(
+    'SELECT id, username, email, fullName, role, status FROM users WHERE id = ?',
+    [id]
+  );
+  if (!user || user.status === 'disabled') return null;
+  return user;
+}
 
 import {
   RESEARCHER_ROLES,
@@ -1260,7 +1279,7 @@ const router = createResearchSubmissionsRouter();
 //  db/migrations/005_research_submissions.sql.
 // ---------------------------------------------------------------------------
 export async function ensureResearchSubmissionsSchema(dependencies = {}) {
-  const runQuery = dependencies.run || (await import('../../server/server/db/queries.js')).run;
+  const runQuery = dependencies.run || (await import('./server/db/queries.js')).run;
 
   await runQuery(`
     CREATE TABLE IF NOT EXISTS research_submissions (

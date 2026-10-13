@@ -26,7 +26,7 @@ import { ensureBackupSchema, startBackupScheduler } from './lib/backup-service.j
 import { researchersRouter } from './researchers.js';
 import { eventsModuleRouter, ensureEventsSchema } from './events-module.js';
 import { innovationExtensionRouter } from './innovation-extension.js';
-import { researchSubmissionsRouter, ensureResearchSubmissionsSchema } from '../cpri-research-submission/server/research-submissions.js';
+import { researchSubmissionsRouter, ensureResearchSubmissionsSchema } from './research-submissions.js';
 import { adminDashboardRouter } from './admin-dashboard.js';
 import { adminInsightsRouter } from './admin-insights.js';
 import { reportsRouter } from './reports.js';
@@ -317,15 +317,9 @@ const STATIC_OPTIONS = {
   }
 };
 app.use(express.static(PUBLIC_DIR, STATIC_OPTIONS));
-// The Research Submission Module keeps its own pages next to its back end
-// (cpri-research-submission/public). Mount that folder as an extra static root
-// so /research-submission.html and /research-submission-detail.html are served
-// without copying files. They load the site's shared stylesheet and header, so
-// the maroon theme and layout match every other page. Mounted above the
-// catch-all for the same reason as the mounts above.
-app.use(
-  express.static(join(__dirname, '..', 'cpri-research-submission', 'public'), STATIC_OPTIONS)
-);
+// The Research Submission Module's pages (research-submission.html,
+// research-submission-detail.html) live in PUBLIC_DIR like every other page,
+// so the single mount above serves them — no extra static root needed.
 // The GitHub Pages copy is published from the repository ROOT, so its links read
 // /CPRI/public/login.html — i.e. the URL path contains a "public/" segment. This
 // server serves PUBLIC_DIR itself at the root (so /login.html works), which left
