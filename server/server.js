@@ -18,8 +18,11 @@ import { usernameRouter } from './username.js';
 import { submissionsRouter } from './submissions.js';
 import { repositoryRouter } from './repository.js';
 import { featuredPublicationsRouter } from './featured-publications.js';
-import { publicationsRouter } from './publications.js';
+import { publicationsRouter, ensurePublicationSchema } from './publications.js';
 import { ethicsRouter } from './ethics.js';
+import { galaRouter, ensureGalaSchema } from './gala.js';
+import { backupsRouter } from './backups.js';
+import { ensureBackupSchema, startBackupScheduler } from './lib/backup-service.js';
 import { researchersRouter } from './researchers.js';
 import { eventsModuleRouter, ensureEventsSchema } from './events-module.js';
 import { innovationExtensionRouter } from './innovation-extension.js';
@@ -237,6 +240,8 @@ app.use('/api/repository', repositoryRouter);
 app.use('/api/publications', featuredPublicationsRouter);
 app.use('/api/publications', publicationsRouter);
 app.use('/api/ethics', ethicsRouter);
+app.use('/api/gala', galaRouter);
+app.use('/api/admin/backups', backupsRouter);
 app.use('/api/researchers', researchersRouter);
 app.use('/api/events-module', eventsModuleRouter);
 app.use('/api/innovation-extension', innovationExtensionRouter);
@@ -675,6 +680,24 @@ try {
   console.error('[profile-photo] schema ensure failed:', err.message);
 }
 
+try {
+  await ensureGalaSchema();
+} catch (err) {
+  console.error('[gala] schema ensure failed:', err.message);
+}
+
+try {
+  await ensureBackupSchema();
+} catch (err) {
+  console.error('[backup] schema ensure failed:', err.message);
+}
+
+try {
+  await ensurePublicationSchema();
+} catch (err) {
+  console.error('[publications] schema ensure failed:', err.message);
+}
+
 const server = app.listen(PORT, async () => {
   void supabaseStorage.verifyBucketAtStartup();
   let dbUp = true;
@@ -714,6 +737,13 @@ const server = app.listen(PORT, async () => {
     console.log('[sms] No SMS provider configured — verification codes are delivered by email (Brevo). Set SMS_PROVIDER plus its keys to send SMS instead.');
   } else {
     console.warn(`[sms] SMS_PROVIDER=${smsInfo.id} is missing ${(smsInfo.missing || []).join(', ')} — phone verification codes cannot be sent.`);
+  }
+
+  // Daily database backup. Off only when BACKUP_SCHEDULE_ENABLED=false.
+  try {
+    startBackupScheduler();
+  } catch (err) {
+    console.error('[backup] scheduler failed to start:', err.message);
   }
 
   console.log(`CPRI public website running at http://localhost:${PORT}`);

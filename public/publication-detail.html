@@ -39,8 +39,11 @@
               <div class="contact-row"><span class="label">Journal / Conference</span><span id="d-venue"></span></div>
               <div class="contact-row"><span class="label">Publication Date</span><span id="d-date"></span></div>
               <div class="contact-row"><span class="label">Volume / Issue / Pages</span><span id="d-vol"></span></div>
+              <div class="contact-row"><span class="label">ISSN</span><span id="d-issn"></span></div>
+              <div class="contact-row"><span class="label">ISBN</span><span id="d-isbn"></span></div>
               <div class="contact-row"><span class="label">DOI / Link</span><span id="d-doi"></span></div>
               <div class="contact-row"><span class="label">Indexing</span><span id="d-index"></span></div>
+              <div class="contact-row"><span class="label">Impact Factor</span><span id="d-impact"></span></div>
               <div class="contact-row"><span class="label">Type</span><span id="d-type"></span></div>
               <div class="contact-row"><span class="label">Status</span><span id="d-status"></span></div>
               <div class="contact-row"><span class="label">Author Type</span><span id="d-authType"></span></div>
@@ -59,7 +62,7 @@
                 <form id="edit-form">
                   <div class="form-group">
                     <label for="e-status">Status</label>
-                    <select id="e-status">
+                    <select id="e-status" name="status">
                       <option value="submitted">Submitted</option>
                       <option value="under_review">Under Review</option>
                       <option value="accepted">Accepted</option>
@@ -70,7 +73,7 @@
                   </div>
                   <div class="form-group">
                     <label for="e-type">Type</label>
-                    <select id="e-type">
+                    <select id="e-type" name="pubType">
                       <option value="institutional_journal">Institutional Journal</option>
                       <option value="local_journal">Local Journal</option>
                       <option value="national_journal">National Journal</option>
@@ -80,6 +83,24 @@
                       <option value="research_poster">Research Poster</option>
                       <option value="proceedings_paper">Proceedings Paper</option>
                     </select>
+                  </div>
+                  <div class="grid grid-2" style="gap:12px;">
+                    <div class="form-group">
+                      <label for="e-issn">ISSN</label>
+                      <input type="text" id="e-issn" name="issn" placeholder="e.g. 1234-5678">
+                    </div>
+                    <div class="form-group">
+                      <label for="e-isbn">ISBN</label>
+                      <input type="text" id="e-isbn" name="isbn" placeholder="e.g. 978-3-16-148410-0">
+                    </div>
+                    <div class="form-group">
+                      <label for="e-indexing">Indexing (databases)</label>
+                      <input type="text" id="e-indexing" name="indexing" placeholder="e.g. Scopus, Web of Science">
+                    </div>
+                    <div class="form-group">
+                      <label for="e-impact">Impact factor</label>
+                      <input type="text" id="e-impact" name="impactFactor" placeholder="e.g. 3.42">
+                    </div>
                   </div>
                   <button type="submit" class="btn btn-primary">Save Changes</button>
                   <button type="button" class="btn btn-navy" id="delete-btn" style="margin-left:8px;">Delete</button>
@@ -253,6 +274,12 @@
 
         document.getElementById('e-status').value = publication.status || '';
         document.getElementById('e-type').value = publication.pubType || '';
+        // Publication Monitoring fields: prefill so an admin can add or correct
+        // them from the detail page without opening the full form.
+        document.getElementById('e-issn').value = publication.issn || '';
+        document.getElementById('e-isbn').value = publication.isbn || '';
+        document.getElementById('e-indexing').value = publication.indexing || '';
+        document.getElementById('e-impact').value = publication.impactFactor || '';
         document.getElementById('edit-form').addEventListener('submit', async event => {
           event.preventDefault();
           const formData = new FormData(event.currentTarget);
@@ -264,7 +291,11 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   status: formData.get('status'),
-                  pubType: formData.get('pubType')
+                  pubType: formData.get('pubType'),
+                  issn: formData.get('issn') || '',
+                  isbn: formData.get('isbn') || '',
+                  indexing: formData.get('indexing') || '',
+                  impactFactor: formData.get('impactFactor') || ''
                 })
               }
             );
@@ -323,7 +354,16 @@
         setText('d-date', publication.publicationDate);
         setText('d-vol', `Vol. ${displayValue(publication.volume)} Issue ${displayValue(publication.issue)} pp. ${displayValue(publication.pages)}`);
         renderPublicationLink(publication);
-        setText('d-index', publication.indexingStatus);
+        // Indexing shows the databases (Scopus, WoS, …) with the status as a
+        // suffix when both are present, so one row carries the full picture.
+        const indexingText = [displayValue(publication.indexing), displayValue(publication.indexingStatus)]
+          .map(v => String(v || '').trim())
+          .filter(Boolean)
+          .join(' — ');
+        setText('d-index', indexingText || '—');
+        setText('d-issn', displayValue(publication.issn));
+        setText('d-isbn', displayValue(publication.isbn));
+        setText('d-impact', displayValue(publication.impactFactor));
         setText('d-type', data.pubTypeLabel || TYPE_LABELS[publication.pubType] || publication.pubType);
         setText('d-status', data.statusLabel || STATUS_LABELS[publication.status] || publication.status);
         setText('d-authType', data.authorTypeLabel || AUTHOR_TYPE_LABELS[publication.authorType] || publication.authorType);

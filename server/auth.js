@@ -87,34 +87,61 @@ const ROLES = [
   'admin',
   'cpri_staff',
   'faculty_researcher',
+  'non_teaching_researcher',
   'student_researcher',
+  'presenter',
   'adviser',
   'ethics_reviewer',
   'public_visitor'
 ];
 
+// Roles whose request to join must be confirmed by an admin before the account
+// can sign in. `approve_reviewers` is the permission that gates the approval
+// screen; it now covers CPRI Staff as well as Ethics Reviewers.
 const ROLE_META = {
   admin: { label: 'Administrator', approvable: false, desc: 'Full system control and user management.' },
-  cpri_staff: { label: 'CPRI Staff', approvable: false, desc: 'Center staff managing content and operations.' },
+  cpri_staff: { label: 'CPRI Staff', approvable: true, desc: 'Center staff managing content and operations; self-registration needs admin approval.' },
   faculty_researcher: { label: 'Faculty Researcher', approvable: false, desc: 'Faculty conducting and submitting research.' },
+  non_teaching_researcher: { label: 'Non-Teaching Researcher', approvable: false, desc: 'Non-teaching personnel conducting and submitting research.' },
   student_researcher: { label: 'Student Researcher', approvable: false, desc: 'Students conducting and submitting research.' },
+  presenter: { label: 'Presenter', approvable: false, desc: 'Research Gala presenters submitting abstracts, papers and posters.' },
   adviser: { label: 'Adviser', approvable: false, desc: 'Advises and guides researchers.' },
   ethics_reviewer: { label: 'Ethics Reviewer', approvable: true, desc: 'Reviews research for ethical compliance; requires admin approval.' },
   public_visitor: { label: 'Public Visitor', approvable: false, desc: 'Anonymous public site visitor.' }
 };
 
-// Roles that can self-register through the public form
-const SELF_REGISTER_ROLES = ['faculty_researcher', 'student_researcher', 'adviser', 'ethics_reviewer'];
+// Roles that can self-register through the public form. Everyone whose
+// ROLE_META.approvable is true lands in status 'pending' and waits for an admin
+// (see POST /admin/approvals/:id).
+const SELF_REGISTER_ROLES = [
+  'faculty_researcher',
+  'non_teaching_researcher',
+  'student_researcher',
+  'presenter',
+  'adviser',
+  'cpri_staff',
+  'ethics_reviewer'
+];
 
-// Permission matrix per role
+// Permission matrix per role. non_teaching_researcher mirrors
+// faculty_researcher exactly; presenter gets the Research Gala permission.
 const RBAC_PERMISSIONS = {
-  admin: ['manage_users', 'manage_content', 'approve_reviewers', 'submit_research', 'review_ethics', 'advise', 'view_public'],
+  admin: ['manage_users', 'manage_content', 'approve_reviewers', 'submit_research', 'submit_gala', 'review_ethics', 'advise', 'view_public'],
   cpri_staff: ['manage_content', 'submit_research', 'view_public'],
   faculty_researcher: ['submit_research', 'view_public'],
-  student_researcher: ['submit_research', 'view_public'],
+  non_teaching_researcher: ['submit_research', 'view_public'],
+  student_researcher: ['submit_research', 'submit_gala', 'view_public'],
+  presenter: ['submit_gala', 'view_public'],
   adviser: ['advise', 'submit_research', 'view_public'],
   ethics_reviewer: ['review_ethics', 'view_public'],
   public_visitor: ['view_public']
+};
+
+// Which extra profile columns each role owns. Used by registration, the profile
+// API and the profile page so a role can only ever write its own fields.
+const ROLE_PROFILE_FIELDS = {
+  non_teaching_researcher: ['officeUnit', 'position'],
+  presenter: ['institution', 'nationality']
 };
 
 // ---------- User store (MySQL) ----------
@@ -173,7 +200,13 @@ function fullProfile(u) {
     section: u.section || '',
     adviser: u.adviser || '',
     researchTitle: u.researchTitle || '',
-    researchArea: u.researchArea || ''
+    researchArea: u.researchArea || '',
+    // Role-owned profile fields. Non-Teaching Researchers fill in office/unit
+    // and position; Presenters fill in institution and nationality.
+    officeUnit: u.officeUnit || '',
+    position: u.position || '',
+    institution: u.institution || '',
+    nationality: u.nationality || ''
   };
 }
 
@@ -301,6 +334,44 @@ router.post('/verify-code', async (req, res) => {
 });
 
 // ---------- Registration ----------
+// Self-registration is open to SELF_REGISTER_ROLES. Roles flagged
+// `approvable` (CPRI Staff, Ethics Reviewer) are created with status 'pending'
+// and may not sign in until an admin approves them (POST /admin/approvals/:id).
+const ROLE_FIELD_LIMITS = {
+  officeUnit: 160,
+  position: 120,
+  institution: 180,
+  nationality: 80,
+  department: 120
+};
+
+// Copy only the profile fields the chosen role actually owns (plus department,
+// which every researcher-type role may set) out of a request body.
+function collectRoleProfileFields(role, body) {
+  const allowed = new Set(ROLE_PROFILE_FIELDS[role] || []);
+  if (['faculty_researcher', 'non_teaching_researcher', 'student_researcher', 'adviser', 'cpri_staff'].includes(role)) {
+    allowed.add('department');
+  }
+  const values = {};
+  for (const name of Object.keys(ROLE_FIELD_LIMITS)) {
+    if (!allowed.has(name)) continue;
+    if (body[name] === undefined) continue;
+    const raw = String(body[name]).trim();
+    if (raw.length > ROLE_FIELD_LIMITS[name]) {
+      values[`__error_${name}`] = `${name} must be ${ROLE_FIELD_LIMITS[name]} characters or fewer.`;
+      continue;
+    }
+    values[name] = raw;
+  }
+  return values;
+}
+
+// Human-readable list of the roles a visitor may pick, so the validation error
+// never goes stale as roles are added.
+function selfRegisterRoleLabels() {
+  return SELF_REGISTER_ROLES.map(role => ROLE_META[role]?.label || role).join(', ');
+}
+
 router.post('/register', async (req, res) => {
   const { username, email, password, fullName, role } = req.body || {};
   if (!username || !email || !password) {
@@ -312,7 +383,12 @@ router.post('/register', async (req, res) => {
   }
   const normalizedUsername = normalizeUsername(username);
   if (!SELF_REGISTER_ROLES.includes(role)) {
-    return res.status(400).json({ error: 'Invalid role. Choose Faculty Researcher, Student Researcher, Adviser, or Ethics Reviewer.' });
+    return res.status(400).json({ error: `Invalid role. Choose ${selfRegisterRoleLabels()}.` });
+  }
+  const roleFields = collectRoleProfileFields(role, req.body || {});
+  const roleFieldError = Object.keys(roleFields).find(key => key.startsWith('__error_'));
+  if (roleFieldError) {
+    return res.status(400).json({ error: roleFields[roleFieldError] });
   }
   if (String(password).length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' });
@@ -345,6 +421,29 @@ router.post('/register', async (req, res) => {
 
   const hash = await bcrypt.hash(password, SALT_ROUNDS);
   const needsApproval = ROLE_META[role]?.approvable;
+
+  // A Presenter never submits a research record through the normal flow, but
+  // the contact number and research interests they give at sign-up are part of
+  // their profile, so keep them when those columns are supplied.
+  let contactNumber = '';
+  let researchInterests = '';
+  if (ROLE_PROFILE_FIELDS[role]?.includes('institution')) {
+    if (req.body?.contactNumber !== undefined) {
+      try {
+        contactNumber = normaliseContactNumber(req.body.contactNumber);
+      } catch (err) {
+        return res.status(400).json({ error: err.message });
+      }
+    }
+    if (req.body?.researchInterests !== undefined) {
+      const ri = String(req.body.researchInterests).trim();
+      if (ri.length > 500) {
+        return res.status(400).json({ error: 'Research interests must be 500 characters or fewer.' });
+      }
+      researchInterests = ri;
+    }
+  }
+
   const user = {
     id: randomUUID(),
     username: normalizedUsername,
@@ -353,15 +452,22 @@ router.post('/register', async (req, res) => {
     role,
     passwordHash: hash,
     status: needsApproval ? 'pending' : 'active',
-    department: '',
-    contactNumber: '',
-    researchInterests: '',
+    department: roleFields.department || '',
+    contactNumber,
+    researchInterests,
     profilePhoto: null,
     researches: JSON.stringify([]),
     user_prefs: JSON.stringify(DEFAULT_PREFS),
     resetToken: null,
     resetTokenExpiry: null,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    // Role-owned profile columns (office/unit + position for Non-Teaching
+    // Researchers, institution + nationality for Presenters). Only the columns
+    // this role owns are ever written here.
+    officeUnit: roleFields.officeUnit || '',
+    position: roleFields.position || '',
+    institution: roleFields.institution || '',
+    nationality: roleFields.nationality || ''
   };
   try {
     await insert('users', user);
@@ -386,8 +492,27 @@ router.post('/register', async (req, res) => {
   }
 
   if (needsApproval) {
+    const roleLabel = ROLE_META[role]?.label || role;
+    // Tell the admins a request is waiting (in-app), and record it in the audit
+    // trail so an approval can be traced to the account it came from.
+    try {
+      const admins = await all("SELECT id FROM users WHERE role = 'admin' AND status = 'active'");
+      const displayName = user.fullName || user.username;
+      await Promise.all(admins.map(a => notify(
+        a.id,
+        'account_pending',
+        `New ${roleLabel} account awaiting approval`,
+        `${displayName} registered as ${roleLabel} and needs approval before signing in.`,
+        'admin-dashboard.html#approvals'
+      )));
+    } catch (err) {
+      console.error('[auth] pending-account admin notify failed:', err.message);
+    }
+    await addLog('account_registered_pending', `${ROLE_META[role]?.label || role} account "${user.username}" registered and is pending approval.`, req);
     return res.status(202).json({
-      message: 'Your Ethics Reviewer account is pending admin approval. You will be notified once approved.'
+      pendingApproval: true,
+      role,
+      message: `Your ${roleLabel} account is pending admin approval. You will be able to sign in once an administrator approves it.`
     });
   }
   res.status(201).json({ message: 'Registration successful. You may now log in.', user: publicUser(user) });
@@ -843,7 +968,7 @@ router.put('/profile/prefs', requireAuth, async (req, res) => {
 // Lets a brand-new Google account pick its role (student / faculty / adviser)
 // and optional department/name. Only usable while setupPending is set, so a
 // user can't keep self-upgrading their role afterward.
-const SETUP_ROLES = ['student_researcher', 'faculty_researcher', 'adviser'];
+const SETUP_ROLES = ['student_researcher', 'faculty_researcher', 'non_teaching_researcher', 'adviser', 'presenter'];
 router.put('/profile/setup', requireAuth, async (req, res) => {
   const { role, fullName, department } = req.body || {};
   if (!SETUP_ROLES.includes(role)) {
@@ -1004,6 +1129,42 @@ router.put('/profile', requireAuth, async (req, res) => {
     }
   }
 
+  // Non-Teaching Researcher-only fields: office/unit and position.
+  if (user.role === 'non_teaching_researcher') {
+    if (body.officeUnit !== undefined) {
+      const office = String(body.officeUnit).trim();
+      if (office.length > ROLE_FIELD_LIMITS.officeUnit) {
+        return res.status(400).json({ error: `Office / unit must be ${ROLE_FIELD_LIMITS.officeUnit} characters or fewer.` });
+      }
+      changes.officeUnit = office;
+    }
+    if (body.position !== undefined) {
+      const position = String(body.position).trim();
+      if (position.length > ROLE_FIELD_LIMITS.position) {
+        return res.status(400).json({ error: `Position must be ${ROLE_FIELD_LIMITS.position} characters or fewer.` });
+      }
+      changes.position = position;
+    }
+  }
+
+  // Presenter-only fields: institution and nationality.
+  if (user.role === 'presenter') {
+    if (body.institution !== undefined) {
+      const institution = String(body.institution).trim();
+      if (institution.length > ROLE_FIELD_LIMITS.institution) {
+        return res.status(400).json({ error: `Institution must be ${ROLE_FIELD_LIMITS.institution} characters or fewer.` });
+      }
+      changes.institution = institution;
+    }
+    if (body.nationality !== undefined) {
+      const nationality = String(body.nationality).trim();
+      if (nationality.length > ROLE_FIELD_LIMITS.nationality) {
+        return res.status(400).json({ error: `Nationality must be ${ROLE_FIELD_LIMITS.nationality} characters or fewer.` });
+      }
+      changes.nationality = nationality;
+    }
+  }
+
   try {
     const updated = await patchUser(req.session.userId, changes);
     if (!updated) return res.status(401).json({ error: 'Not authenticated.' });
@@ -1055,13 +1216,82 @@ router.delete('/researches/:id', requireAuth, async (req, res) => {
   res.json({ message: 'Research removed.' });
 });
 
-// ---------- Admin: list pending ethics reviewers ----------
+// ---------- Admin: pending self-registrations ----------
+// Every role whose self-registration needs confirming (CPRI Staff, Ethics
+// Reviewer) lands here in status 'pending'. The list powers the Approvals tab
+// of the admin dashboard and is the single source of truth for who is waiting.
+router.get('/admin/approvals/pending', requireAdmin, async (req, res) => {
+  const pendingRoles = Object.keys(ROLE_META).filter(role => ROLE_META[role].approvable);
+  const placeholders = pendingRoles.map(() => '?').join(', ');
+  const users = await all(
+    `SELECT * FROM users WHERE status = 'pending' AND role IN (${placeholders}) ORDER BY createdAt ASC`,
+    pendingRoles
+  );
+  res.json(users.map(u => ({
+    ...publicUser(u),
+    department: u.department || '',
+    officeUnit: u.officeUnit || '',
+    position: u.position || '',
+    institution: u.institution || '',
+    nationality: u.nationality || '',
+    createdAt: u.createdAt || null
+  })));
+});
+
+// ---------- Admin: approve / reject a pending account ----------
+// Covers every approvable role (CPRI Staff and Ethics Reviewer), records the
+// decision in the audit trail, and notifies the applicant either way.
+router.post('/admin/approvals/:id', requireAdmin, async (req, res) => {
+  const { action, note } = req.body || {};
+  if (!['approve', 'reject'].includes(action)) {
+    return res.status(400).json({ error: 'Action must be approve or reject.' });
+  }
+  const pendingRoles = Object.keys(ROLE_META).filter(role => ROLE_META[role].approvable);
+  const placeholders = pendingRoles.map(() => '?').join(', ');
+  const user = await get(
+    `SELECT * FROM users WHERE id = ? AND status = 'pending' AND role IN (${placeholders})`,
+    [req.params.id, ...pendingRoles]
+  );
+  if (!user) {
+    return res.status(404).json({ error: 'No pending account found for that id.' });
+  }
+
+  const newStatus = action === 'approve' ? 'active' : 'disabled';
+  await update('users', user.id, { status: newStatus });
+  const updated = await get('SELECT * FROM users WHERE id = ?', [user.id]);
+  const roleLabel = ROLE_META[user.role]?.label || user.role;
+  const displayName = user.fullName || user.username;
+
+  await addLog(
+    action === 'approve' ? 'account_approved' : 'account_rejected',
+    `${roleLabel} account "${user.username}" (${displayName}) was ${action === 'approve' ? 'approved' : 'rejected'}.${note ? ` Note: ${String(note).trim()}` : ''}`,
+    req
+  );
+
+  await notify(
+    user.id,
+    action === 'approve' ? 'account_approved' : 'account_rejected',
+    action === 'approve' ? 'Your account was approved' : 'Your account request was declined',
+    action === 'approve'
+      ? `Your ${roleLabel} account is active. You can sign in now.`
+      : `Your ${roleLabel} account request was declined by an administrator.`,
+    action === 'approve' ? 'login.html' : ''
+  ).catch(err => console.error('[auth] approval notify failed:', err.message));
+
+  res.json({
+    message: `${roleLabel} ${action === 'approve' ? 'approved' : 'rejected'}.`,
+    user: publicUser(updated)
+  });
+});
+
+// ---------- Admin: reviewer-only compatibility endpoints ----------
+// Kept so older clients keep working; both delegate to the same rules as the
+// new /admin/approvals routes.
 router.get('/admin/reviewers/pending', requireAdmin, async (req, res) => {
   const users = await all("SELECT * FROM users WHERE role = 'ethics_reviewer' AND status = 'pending'");
   res.json(users.map(publicUser));
 });
 
-// ---------- Admin: approve / reject ethics reviewer ----------
 router.post('/admin/reviewers/:id', requireAdmin, async (req, res) => {
   const { action } = req.body || {};
   if (!['approve', 'reject'].includes(action)) {
@@ -1074,6 +1304,11 @@ router.post('/admin/reviewers/:id', requireAdmin, async (req, res) => {
   const newStatus = action === 'approve' ? 'active' : 'disabled';
   await update('users', user.id, { status: newStatus });
   const updated = await get('SELECT * FROM users WHERE id = ?', [user.id]);
+  await addLog(
+    action === 'approve' ? 'account_approved' : 'account_rejected',
+    `Ethics Reviewer account "${user.username}" was ${action === 'approve' ? 'approved' : 'rejected'}.`,
+    req
+  );
   res.json({ message: `Ethics reviewer ${action === 'approve' ? 'approved' : 'rejected'}.`, user: publicUser(updated) });
 });
 
@@ -1163,7 +1398,15 @@ export async function ensureUsersSchema(dependencies = {}) {
     { name: 'researches', sql: 'ALTER TABLE users ADD COLUMN researches JSON' },
     { name: 'contactNo', sql: 'ALTER TABLE users ADD COLUMN contactNo VARCHAR(60) NOT NULL DEFAULT \'\'' },
     { name: 'user_prefs', sql: 'ALTER TABLE users ADD COLUMN user_prefs JSON' },
-    { name: 'setupPending', sql: 'ALTER TABLE users ADD COLUMN setupPending TINYINT(1) DEFAULT 0' }
+    { name: 'setupPending', sql: 'ALTER TABLE users ADD COLUMN setupPending TINYINT(1) DEFAULT 0' },
+    // Role-owned profile fields added by the gap-analysis work:
+    // Non-Teaching Researcher (office/unit, position) and Presenter
+    // (institution, nationality). VARCHAR keeps them filterable in reports and
+    // the defaults make them safe to SELECT on existing rows.
+    { name: 'officeUnit', sql: "ALTER TABLE users ADD COLUMN officeUnit VARCHAR(160) NOT NULL DEFAULT ''" },
+    { name: 'position', sql: "ALTER TABLE users ADD COLUMN position VARCHAR(120) NOT NULL DEFAULT ''" },
+    { name: 'institution', sql: "ALTER TABLE users ADD COLUMN institution VARCHAR(180) NOT NULL DEFAULT ''" },
+    { name: 'nationality', sql: "ALTER TABLE users ADD COLUMN nationality VARCHAR(80) NOT NULL DEFAULT ''" }
   ];
 
   const added = [];
@@ -1186,4 +1429,17 @@ export async function ensureUsersSchema(dependencies = {}) {
   }
 }
 
-export { router, router as authRouter, initAuth, requireAuth, requireAdmin, requireRole, readUsers };
+export {
+  router,
+  router as authRouter,
+  initAuth,
+  requireAuth,
+  requireAdmin,
+  requireRole,
+  readUsers,
+  ROLES,
+  ROLE_META,
+  SELF_REGISTER_ROLES,
+  RBAC_PERMISSIONS,
+  ROLE_PROFILE_FIELDS
+};

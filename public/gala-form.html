@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Gala Submission | CPRI</title>
+  <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+  <style>
+    .gala-status { display:inline-block; padding:2px 10px; border-radius:999px; font-size:.75rem; font-weight:600; }
+    .gala-status[data-status="submitted"] { background:#e0e7ff; color:#3730a3; }
+    .gala-status[data-status="under_review"] { background:#fef3c7; color:#92400e; }
+    .gala-status[data-status="accepted"] { background:#d1fae5; color:#065f46; }
+    .gala-status[data-status="rejected"] { background:#fee2e2; color:#991b1b; }
+    [data-theme="dark"] .gala-status[data-status="submitted"] { background:#312e81; color:#e0e7ff; }
+    [data-theme="dark"] .gala-status[data-status="under_review"] { background:#78350f; color:#fef3c7; }
+    [data-theme="dark"] .gala-status[data-status="accepted"] { background:#064e3b; color:#d1fae5; }
+    [data-theme="dark"] .gala-status[data-status="rejected"] { background:#7f1d1d; color:#fee2e2; }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Research Gala Submission</h1>
+        <p>Present your research at the annual Research Gala.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="form-message" id="message"></div>
+
+        <div id="loading" class="empty-state">Loading…</div>
+
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to submit a Research Gala entry.
+        </div>
+
+        <div id="form-area" style="display:none;max-width:900px;">
+          <p><a href="presenter-dashboard.html">&larr; My Gala submissions</a></p>
+
+          <div class="card">
+            <h3 style="margin-top:0;" id="form-title">New Research Gala Submission</h3>
+            <form id="gala-form">
+              <div class="grid grid-2" style="gap:16px;">
+                <div class="form-group">
+                  <label for="f-event">Research Gala event</label>
+                  <select id="f-event" name="eventId">
+                    <option value="">— Not linked to an event —</option>
+                  </select>
+                  <p class="form-note" id="event-note"></p>
+                </div>
+                <div class="form-group">
+                  <label for="f-type">Presentation type *</label>
+                  <select id="f-type" name="presentationType" required>
+                    <option value="oral">Oral Presentation</option>
+                    <option value="poster">Poster Presentation</option>
+                    <option value="both">Oral and Poster</option>
+                  </select>
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                  <label for="f-title">Research title *</label>
+                  <input type="text" id="f-title" name="title" maxlength="255" required>
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                  <label for="f-authors">Author/s *</label>
+                  <input type="text" id="f-authors" name="authors" maxlength="255" required placeholder="Separate multiple authors with commas">
+                </div>
+                <div class="form-group">
+                  <label for="f-institution">Institution / Affiliation *</label>
+                  <input type="text" id="f-institution" name="institution" maxlength="180" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-nationality">Nationality *</label>
+                  <input type="text" id="f-nationality" name="nationality" maxlength="80" required>
+                </div>
+                <div class="form-group">
+                  <label for="f-contact">Contact number</label>
+                  <input type="tel" id="f-contact" name="contactNumber" maxlength="60" placeholder="+63 912 345 6789">
+                </div>
+                <div class="form-group">
+                  <label for="f-strand">Strand / Track</label>
+                  <input type="text" id="f-strand" name="strand" maxlength="120" placeholder="e.g. Education, Health">
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                  <label for="f-keywords">Keywords</label>
+                  <input type="text" id="f-keywords" name="keywords" maxlength="255" placeholder="Comma-separated keywords">
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                  <label for="f-interests">Research interests</label>
+                  <textarea id="f-interests" name="researchInterests" rows="2" maxlength="500" placeholder="Your broader research interests"></textarea>
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                  <label for="f-abstract">Abstract *</label>
+                  <textarea id="f-abstract" name="abstractText" rows="8" required placeholder="Paste your abstract (aim for 200–300 words)"></textarea>
+                  <p class="form-note">Your entry starts as <strong>Submitted</strong> and is then reviewed by the organizers.</p>
+                </div>
+                <div class="form-group" style="grid-column:1 / -1;">
+                  <label for="f-file">Abstract file (optional)</label>
+                  <input type="file" id="f-file" name="abstractFile" accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.png,.jpg,.jpeg,.webp">
+                  <p class="form-note">PDF, Word, OpenDocument, text or image — up to 15 MB.</p>
+                </div>
+              </div>
+
+              <div id="existing-file" style="display:none;margin-top:12px;"></div>
+
+              <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;">
+                <button type="submit" class="btn btn-primary" id="submit-btn">Submit entry</button>
+                <a class="btn btn-navy" href="presenter-dashboard.html">My submissions</a>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    const message = document.getElementById('message');
+    const loading = document.getElementById('loading');
+    const notLogged = document.getElementById('not-logged');
+    const formArea = document.getElementById('form-area');
+    const form = document.getElementById('gala-form');
+    const eventSelect = document.getElementById('f-event');
+    const eventNote = document.getElementById('event-note');
+    const submitBtn = document.getElementById('submit-btn');
+    const existingFile = document.getElementById('existing-file');
+
+    const ALLOWED_ROLES = ['presenter', 'student_researcher', 'faculty_researcher', 'non_teaching_researcher', 'adviser', 'admin'];
+    let editId = new URLSearchParams(location.search).get('edit');
+    let currentUser = null;
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text || '';
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Events are optional; a failure to load them must not block the form.
+    async function loadEvents() {
+      try {
+        const res = await fetch('/api/events-module');
+        if (!res.ok) throw new Error('events unavailable');
+        const data = await res.json();
+        // Only Events-module rows can be linked: the server validates the id
+        // against events_module, so content-only events are left out here.
+        const events = (data.events || []).filter(e => e.source === 'module');
+        events.forEach(e => {
+          const opt = document.createElement('option');
+          opt.value = e.id;
+          opt.textContent = e.title + (e.dateTime ? ' — ' + String(e.dateTime).slice(0, 10) : '');
+          eventSelect.appendChild(opt);
+        });
+        eventNote.textContent = events.length
+          ? 'Pick the Research Gala this entry is for.'
+          : 'No events are published yet — you can still submit your entry and link it later.';
+      } catch {
+        eventNote.textContent = 'Could not load events right now — you can still submit your entry.';
+      }
+    }
+
+    async function loadExisting() {
+      const res = await fetch('/api/gala/' + encodeURIComponent(editId));
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || 'Submission not found.');
+      const s = out.submission;
+      document.getElementById('form-title').textContent = 'Edit Research Gala Submission';
+      submitBtn.textContent = 'Save changes';
+      const fields = {
+        eventId: 'f-event', presentationType: 'f-type', title: 'f-title', authors: 'f-authors',
+        institution: 'f-institution', nationality: 'f-nationality', contactNumber: 'f-contact',
+        strand: 'f-strand', keywords: 'f-keywords', researchInterests: 'f-interests', abstractText: 'f-abstract'
+      };
+      Object.entries(fields).forEach(([key, id]) => {
+        const el = document.getElementById(id);
+        if (el && s[key] !== undefined && s[key] !== null) el.value = s[key];
+      });
+      const file = (s.files || [])[0];
+      if (file) {
+        existingFile.style.display = 'block';
+        existingFile.innerHTML = `<p class="form-note">Current file:
+          <a href="/api/gala/${encodeURIComponent(s.id)}/file/${encodeURIComponent(file.filename)}">${escapeHtml(file.originalName)}</a>
+          — uploading a new file replaces it.</p>`;
+      }
+      if (['accepted', 'rejected'].includes(s.status)) {
+        showMsg('error', 'This submission has already been decided and can no longer be edited.');
+        submitBtn.disabled = true;
+      }
+    }
+
+    (async () => {
+      try {
+        const meRes = await fetch('/api/auth/me');
+        if (!meRes.ok) { loading.style.display = 'none'; notLogged.style.display = 'block'; return; }
+        const { user } = await meRes.json();
+        currentUser = user;
+        if (!ALLOWED_ROLES.includes(user.role)) {
+          loading.style.display = 'none';
+          notLogged.style.display = 'block';
+          notLogged.innerHTML = 'Your account type is not allowed to submit a Research Gala entry.';
+          return;
+        }
+        await loadEvents();
+        if (editId) {
+          try { await loadExisting(); }
+          catch (err) { showMsg('error', err.message); editId = null; }
+        } else {
+          // Prefill the presenter's own profile details. /api/auth/me returns the
+          // short public user, so the institution/nationality the Presenter
+          // registered with have to come from the full profile endpoint.
+          try {
+            const profileRes = await fetch('/api/auth/profile', { credentials: 'include' });
+            if (profileRes.ok) {
+              const { profile } = await profileRes.json();
+              document.getElementById('f-institution').value = profile?.institution || '';
+              document.getElementById('f-nationality').value = profile?.nationality || '';
+              document.getElementById('f-contact').value = profile?.contactNumber || '';
+              document.getElementById('f-interests').value = profile?.researchInterests || '';
+            }
+          } catch { /* the fields simply stay empty and can be typed in */ }
+        }
+        loading.style.display = 'none';
+        formArea.style.display = 'block';
+      } catch (err) {
+        loading.textContent = 'Could not load this page: ' + err.message;
+      }
+    })();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      showMsg('', '');
+      const fd = new FormData(form);
+      // The visible textarea is the abstract; keep it as the required field.
+      if (!String(fd.get('abstractText') || '').trim()) {
+        showMsg('error', 'An abstract is required.');
+        return;
+      }
+      submitBtn.disabled = true;
+      const label = submitBtn.textContent;
+      submitBtn.textContent = 'Submitting…';
+      try {
+        const res = await fetch('/api/gala' + (editId ? '/' + encodeURIComponent(editId) : ''), {
+          method: editId ? 'PATCH' : 'POST',
+          body: fd
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'The submission could not be saved.');
+        showMsg('success', out.message || 'Saved.');
+        if (!editId) {
+          form.reset();
+          setTimeout(() => { window.location.href = 'presenter-dashboard.html'; }, 1200);
+        }
+      } catch (err) {
+        showMsg('error', err.message);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = label;
+      }
+    });
+  </script>
+</body>
+</html>

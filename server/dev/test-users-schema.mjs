@@ -17,8 +17,14 @@ test('ensureUsersSchema adds only missing columns and does nothing when all exis
     }
   });
 
-  assert.equal(queriesRun.length, 11, 'should add all 11 missing columns');
+  // 11 original columns + the 4 role-profile columns added with the
+  // Non-Teaching Researcher / Presenter roles.
+  assert.equal(queriesRun.length, 15, 'should add all 15 missing columns');
   assert.ok(queriesRun.some(sql => sql.includes('studentId')));
+  assert.ok(queriesRun.some(sql => sql.includes('officeUnit')));
+  assert.ok(queriesRun.some(sql => sql.includes('position')));
+  assert.ok(queriesRun.some(sql => sql.includes('institution')));
+  assert.ok(queriesRun.some(sql => sql.includes('nationality')));
 
   // Case 2: All columns already exist
   queriesRun = [];
@@ -36,7 +42,11 @@ test('ensureUsersSchema adds only missing columns and does nothing when all exis
     { Field: 'researches' },
     { Field: 'contactNo' },
     { Field: 'user_prefs' },
-    { Field: 'setupPending' }
+    { Field: 'setupPending' },
+    { Field: 'officeUnit' },
+    { Field: 'position' },
+    { Field: 'institution' },
+    { Field: 'nationality' }
   ];
 
   await ensureUsersSchema({

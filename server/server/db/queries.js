@@ -79,6 +79,11 @@ export async function insert(table, obj) {
 
 export async function update(table, id, obj) {
   const cols = Object.keys(obj);
+  // An empty change set used to build "UPDATE t SET  WHERE id = ?", which the
+  // server rejects with a syntax error. Callers legitimately end up with no
+  // changes (a profile PUT that only contained fields the role does not own),
+  // so treat it as a no-op instead of a 500.
+  if (cols.length === 0) return;
   const sql = `UPDATE ${table} SET ${cols.map(c => `${c} = ?`).join(',')} WHERE id = ?`;
   const vals = [...Object.values(obj).map(toDbValue), id];
   await pool.query(sql, vals);

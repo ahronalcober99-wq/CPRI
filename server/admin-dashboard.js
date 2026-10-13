@@ -700,25 +700,12 @@ router.get('/reports/events-participation', requireAdmin, async (req, res) => {
   }
 });
 
-router.get('/reports/publications-monitoring', requireAdmin, async (req, res) => {
-  try {
-    const pubs = await all('SELECT title, authors, journalOrConference, pubType, status, publicationDate, doi, department, schoolYear FROM publications');
-    const report = pubs.map(p => ({
-      title: p.title,
-      authors: p.authors,
-      journalOrConference: p.journalOrConference,
-      pubType: p.pubType,
-      status: p.status,
-      publicationDate: p.publicationDate,
-      doi: p.doi || '',
-      department: p.department || '',
-      schoolYear: p.schoolYear || ''
-    }));
-    res.json({ report });
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to generate report.' });
-  }
-});
+// NOTE: GET /reports/publications-monitoring used to be duplicated here as well
+// as in server/reports.js. Because this router is mounted on '/api' BEFORE
+// '/api/reports', the copy in this file shadowed the one in reports.js — so the
+// report the admin page and the CSV/Excel/PDF exports produced was always the
+// older, narrower one. The duplicate has been removed; server/reports.js is now
+// the single implementation (and it is the one the exporters call).
 
 router.get('/reports/research-output', requireAdmin, async (req, res) => {
   try {

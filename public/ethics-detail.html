@@ -315,24 +315,38 @@
         rows.appendChild(row);
       });
 
-      if (a.certificate) {
-        const certSection = document.getElementById('cert-section');
-        certSection.style.display = 'block';
+      // "Download Certificate" is only offered once the application reached
+      // 'certificate_issued', and only to the applicant or a reviewer (admin /
+      // CPRI staff / ERB member). The server enforces the same rule on the route,
+      // so hiding the button here is presentation, not security.
+      const certSection = document.getElementById('cert-section');
+      const isApplicant = user && a.submitterId === user.id;
+      const canSeeCertificate = isApplicant || isReviewer;
+      const certificateReady = a.status === 'certificate_issued' && !!a.certificate;
+
+      if (certificateReady && canSeeCertificate) {
         const c = a.certificate;
+        certSection.style.display = 'block';
         document.getElementById('cert-detail').innerHTML = `
           <div class="contact-row"><span class="label">Certificate Number</span><span id="cert-num-out"></span></div>
           <div class="contact-row"><span class="label">Approved Title</span><span id="cert-title-out"></span></div>
           <div class="contact-row"><span class="label">Principal Investigator</span><span id="cert-pi-out"></span></div>
           <div class="contact-row"><span class="label">Date Issued</span><span id="cert-date-out"></span></div>
           <div class="contact-row"><span class="label">Validity Period</span><span id="cert-valid-out"></span></div>
-          <a class="btn btn-primary" id="download-cert" style="margin-top:10px;display:inline-block;">Download Certificate</a>
+          <a class="btn btn-primary" id="download-cert" style="margin-top:10px;display:inline-block;" href="/api/ethics/${encodeURIComponent(a.id)}/certificate.pdf">Download Certificate</a>
+          <p class="form-note" style="margin-top:8px;">The certificate downloads as a PDF. Each download is recorded in the audit log.</p>
         `;
-        document.getElementById('cert-num-out').textContent = c.certificateNumber;
-        document.getElementById('cert-title-out').textContent = c.approvedTitle;
-        document.getElementById('cert-pi-out').textContent = c.principalInvestigator;
-        document.getElementById('cert-date-out').textContent = c.dateIssued;
-        document.getElementById('cert-valid-out').textContent = c.validityPeriod;
-        document.getElementById('download-cert').href = '/api/ethics/' + a.id + '/certificate';
+        document.getElementById('cert-num-out').textContent = c.certificateNumber || '—';
+        document.getElementById('cert-title-out').textContent = c.approvedTitle || a.title || '—';
+        document.getElementById('cert-pi-out').textContent = c.principalInvestigator || a.researchers || '—';
+        document.getElementById('cert-date-out').textContent = c.dateIssued || '—';
+        document.getElementById('cert-valid-out').textContent = c.validityPeriod || '—';
+      } else if (canSeeCertificate) {
+        // Empty state: explain why there is nothing to download yet.
+        certSection.style.display = 'block';
+        document.getElementById('cert-detail').innerHTML = '<p class="form-note">' +
+          'No certificate yet. The downloadable certificate appears here once the Ethics Review Board marks this application as <strong>Certificate Issued</strong>.' +
+          '</p>';
       }
 
       const commentsEl = document.getElementById('comments');
@@ -345,12 +359,6 @@
       });
       if (!(a.comments || []).length) commentsEl.innerHTML = '<p class="form-note">No comments yet.</p>';
 
-      if (isReviewer) {
-        const dl = document.createElement('div');
-        dl.style.cssText = 'margin-top:10px;';
-        dl.innerHTML = '<a class="btn btn-navy" href="/api/ethics/' + a.id + '/certificate.pdf">Download Certificate PDF</a>';
-        document.getElementById('cert-section').appendChild(dl);
-      }
     })();
 
     function escapeHtml(text) {

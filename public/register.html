@@ -88,7 +88,7 @@
     <section class="page-header">
       <div class="container">
         <h1>Create an Account</h1>
-        <p>Register as faculty, student, adviser, or reviewer.</p>
+        <p>Register as faculty, non-teaching researcher, student, presenter, adviser, staff, or reviewer.</p>
       </div>
     </section>
 
@@ -133,11 +133,36 @@
             <select id="role" name="role" required disabled>
               <option value="">Select…</option>
               <option value="faculty_researcher">Faculty Researcher</option>
+              <option value="non_teaching_researcher">Non-Teaching Researcher</option>
               <option value="student_researcher">Student Researcher</option>
+              <option value="presenter">Presenter (Research Gala)</option>
               <option value="adviser">Adviser</option>
+              <option value="cpri_staff">CPRI Staff (subject to admin approval)</option>
               <option value="ethics_reviewer">Ethics Reviewer (subject to admin approval)</option>
             </select>
             <p class="form-note" style="margin-top:6px;">Verify your email first to choose an account type.</p>
+          </div>
+
+          <!-- Role-specific fields. Only the block matching the chosen account
+               type is shown and validated; the rest are left empty. -->
+          <div class="form-group" id="role-fields-non-teaching" style="display:none;">
+            <label for="officeUnit">Office / Unit</label>
+            <input type="text" id="officeUnit" name="officeUnit" maxlength="160" placeholder="e.g. Office of Research and Development">
+            <label for="position" style="margin-top:12px;display:block;">Position</label>
+            <input type="text" id="position" name="position" maxlength="120" placeholder="e.g. Research Assistant">
+            <p class="form-note" style="margin-top:6px;">Non-Teaching Researchers give the office/unit and position they research under.</p>
+          </div>
+
+          <div class="form-group" id="role-fields-presenter" style="display:none;">
+            <label for="institution">Institution / Affiliation</label>
+            <input type="text" id="institution" name="institution" maxlength="180" placeholder="e.g. State University">
+            <label for="nationality" style="margin-top:12px;display:block;">Nationality</label>
+            <input type="text" id="nationality" name="nationality" maxlength="80" placeholder="e.g. Filipino">
+            <label for="reg-contact" style="margin-top:12px;display:block;">Contact Number</label>
+            <input type="tel" id="reg-contact" name="contactNumber" inputmode="tel" placeholder="+63 912 345 6789">
+            <label for="reg-interests" style="margin-top:12px;display:block;">Research Interests</label>
+            <textarea id="reg-interests" name="researchInterests" rows="3" maxlength="500" placeholder="e.g. Public policy, climate adaptation"></textarea>
+            <p class="form-note" style="margin-top:6px;">Presenters use these details on their Research Gala entries.</p>
           </div>
           <div class="form-group">
             <!-- .field-row--split: label left / small button right, stacked on
@@ -201,6 +226,42 @@
     const verifyCodeInput = document.getElementById('verify-code');
     const verifyBtn = document.getElementById('verify-btn');
     const roleSelect = document.getElementById('role');
+    // Conditional blocks per account type. Each entry maps a role to the block
+    // of fields that role owns (mirrors ROLE_PROFILE_FIELDS on the server).
+    const roleFieldBlocks = {
+      non_teaching_researcher: {
+        el: document.getElementById('role-fields-non-teaching'),
+        required: [['officeUnit', 'Office / unit is required.'], ['position', 'Position is required.']]
+      },
+      presenter: {
+        el: document.getElementById('role-fields-presenter'),
+        required: [['institution', 'Institution / affiliation is required.'], ['nationality', 'Nationality is required.']]
+      }
+    };
+
+    function syncRoleFields() {
+      const role = roleSelect.value;
+      Object.entries(roleFieldBlocks).forEach(([roleKey, block]) => {
+        block.el.style.display = role === roleKey ? '' : 'none';
+      });
+    }
+
+    // Returns the first client-side problem with the role-specific fields, or null.
+    function validateRoleFields(data) {
+      const block = roleFieldBlocks[data.role];
+      if (!block) return null;
+      for (const [field, message] of block.required) {
+        if (!String(data[field] || '').trim()) return message;
+      }
+      if (data.contactNumber && !/^[+0-9][0-9\s().-]{6,}$/.test(String(data.contactNumber).trim())) {
+        return 'Enter a valid contact number (digits, spaces, +, -, and parentheses only).';
+      }
+      return null;
+    }
+
+    roleSelect.addEventListener('change', syncRoleFields);
+    syncRoleFields();
+
     const usernameInput = document.getElementById('username');
     const fullNameInput = document.getElementById('fullName');
     const usernameStatus = document.getElementById('username-status');
@@ -734,6 +795,13 @@
           return;
         }
         data.username = usernameValidation.username;
+        const roleFieldProblem = validateRoleFields(data);
+        if (roleFieldProblem) {
+          message.className = 'form-message error';
+          message.textContent = roleFieldProblem;
+          syncRoleFields();
+          return;
+        }
         btn.textContent = 'Registering…';
         const { res, data: out } = await CPRI.apiFetch('/api/auth/register', {
           method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },

@@ -75,6 +75,9 @@
               <button type="button" class="atab active" data-tab="overview"><i class="bi bi-speedometer2"></i> Overview</button>
               <button type="button" class="atab" data-tab="users"><i class="bi bi-people"></i> Users</button>
               <button type="button" class="atab" data-tab="content"><i class="bi bi-sliders"></i> Content</button>
+              <button type="button" class="atab" data-tab="approvals"><i class="bi bi-person-check"></i> Approvals</button>
+              <button type="button" class="atab" data-tab="gala"><i class="bi bi-mic"></i> Research Gala</button>
+              <button type="button" class="atab" data-tab="backups"><i class="bi bi-hdd-stack"></i> Backups</button>
               <button type="button" class="atab" data-tab="logs"><i class="bi bi-activity"></i> Logs</button>
             </div>
 
@@ -218,6 +221,51 @@
                   </form>
                 </div>
               </div>
+              </div>
+            </div>
+
+            <!-- Pending self-registrations (CPRI Staff, Ethics Reviewer) waiting for an admin decision. -->
+            <div class="admin-panel" data-panel="approvals">
+              <div class="admin-card">
+                <h3><i class="bi bi-person-check"></i> Pending Account Approvals <span class="status-pill pending">Admin</span></h3>
+                <p class="form-note">CPRI Staff and Ethics Reviewer accounts created through the public registration form wait here until an administrator approves or rejects them. Every decision is written to the audit log.</p>
+                <button class="btn btn-navy btn-sm" id="refresh-approvals" style="margin-bottom:14px;"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                <div id="approvals-table"></div>
+              </div>
+            </div>
+
+            <!-- Research Gala review queue. -->
+            <div class="admin-panel" data-panel="gala">
+              <div class="admin-card">
+                <h3><i class="bi bi-mic"></i> Research Gala Submissions <span class="status-pill active">Review</span></h3>
+                <div class="quick-actions" style="margin-bottom:14px;">
+                  <div class="form-group" style="margin:0;">
+                    <label for="gala-status-filter">Filter by status</label>
+                    <select id="gala-status-filter">
+                      <option value="">All</option>
+                      <option value="submitted">Submitted</option>
+                      <option value="under_review">Under Review</option>
+                      <option value="accepted">Accepted</option>
+                      <option value="rejected">Rejected</option>
+                    </select>
+                  </div>
+                  <button class="btn btn-navy btn-sm" id="refresh-gala" style="align-self:flex-end;"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                </div>
+                <div id="gala-table"></div>
+              </div>
+            </div>
+
+            <!-- Database backups. -->
+            <div class="admin-panel" data-panel="backups">
+              <div class="admin-card">
+                <h3><i class="bi bi-hdd-stack"></i> Database Backups <span class="status-pill active">Admin</span></h3>
+                <p class="form-note" id="backup-config"></p>
+                <div style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;">
+                  <button class="btn btn-primary" id="backup-now"><i class="bi bi-cloud-arrow-down"></i> Backup now</button>
+                  <button class="btn btn-navy btn-sm" id="refresh-backups"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+                </div>
+                <div id="backup-message"></div>
+                <div id="backups-table"></div>
               </div>
             </div>
 
@@ -1016,6 +1064,9 @@
       overview: { title: 'Operations Overview', sub: 'Real-time research management metrics' },
       users: { title: 'User Management', sub: 'Roles, access and account status' },
       content: { title: 'Content Management', sub: 'Publish events and featured research' },
+      approvals: { title: 'Account Approvals', sub: 'Approve or reject pending staff and reviewer accounts' },
+      gala: { title: 'Research Gala', sub: 'Review Research Gala submissions and set their status' },
+      backups: { title: 'Database Backups', sub: 'Take, list and download database backups' },
       logs: { title: 'System Logs', sub: 'Audit trail of administrative actions' }
     };
     let chartInstances = [];
@@ -1044,6 +1095,226 @@
       if (TAB_META[t]) switchAdminTab(t);
     });
 
+    // ---- Account approvals (CPRI Staff, Ethics Reviewer) ----
+    // New roles are driven by the server's ROLE_META, so this table shows
+    // whatever role needs confirming without a matching front-end change.
+    function accountDetailLine(u) {
+      const parts = [];
+      if (u.officeUnit) parts.push('Office/Unit: ' + u.officeUnit);
+      if (u.position) parts.push('Position: ' + u.position);
+      if (u.institution) parts.push('Institution: ' + u.institution);
+      if (u.nationality) parts.push('Nationality: ' + u.nationality);
+      if (u.department) parts.push('Department: ' + u.department);
+      return parts.length ? parts.join(' · ') : '—';
+    }
+
+    async function loadApprovals() {
+      const box = document.getElementById('approvals-table');
+      if (!box) return;
+      box.innerHTML = '<p class="form-note">Loading pending accounts…</p>';
+      try {
+        const res = await fetch('/api/auth/admin/approvals/pending', { credentials: 'include' });
+        const out = await res.json().catch(() => []);
+        if (!res.ok) throw new Error(out.error || 'Could not load pending accounts.');
+        const rows = Array.isArray(out) ? out : [];
+        if (!rows.length) {
+          box.innerHTML = '<div class="empty-state">No accounts are waiting for approval.</div>';
+          return;
+        }
+        box.innerHTML = `<div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Account type</th><th>Details</th><th>Registered</th><th>Action</th></tr></thead>
+          <tbody>${rows.map(u => `<tr>
+            <td><b>${escapeHtml(u.fullName || u.username || '')}</b></td>
+            <td>${escapeHtml(u.username || '')}</td>
+            <td>${escapeHtml(u.email || '')}</td>
+            <td><span class="status-pill pending">${escapeHtml(u.roleLabel || u.role || '')}</span></td>
+            <td>${escapeHtml(accountDetailLine(u))}</td>
+            <td>${u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '—'}</td>
+            <td style="white-space:nowrap;">
+              <button class="btn btn-primary approve-account" data-id="${u.id}" data-name="${escapeHtml(u.fullName || u.username || '')}" style="padding:6px 12px;font-size:.85rem;">Approve</button>
+              <button class="btn btn-outline reject-account" data-id="${u.id}" data-name="${escapeHtml(u.fullName || u.username || '')}" style="padding:6px 12px;font-size:.85rem;border-color:#b23b32;color:#b23b32;">Reject</button>
+            </td></tr>`).join('')}</tbody></table></div>`;
+      } catch (err) {
+        box.innerHTML = `<div class="form-message error" style="display:block;padding:16px;">Failed to load pending accounts: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function decideAccount(id, name, action) {
+      const ok = await adminConfirmDialog(
+        action === 'approve'
+          ? `Approve ${name}? The account will be able to sign in immediately.`
+          : `Reject ${name}? The account stays disabled and cannot sign in.`,
+        action === 'approve' ? 'Approve' : 'Reject'
+      );
+      if (!ok) return;
+      try {
+        const res = await fetch('/api/auth/admin/approvals/' + encodeURIComponent(id), {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'The decision could not be saved.');
+        await loadApprovals();
+        await loadLogs();
+      } catch (err) {
+        const box = document.getElementById('approvals-table');
+        box.insertAdjacentHTML('afterbegin', `<div class="form-message error" style="display:block;padding:12px;">${escapeHtml(err.message)}</div>`);
+      }
+    }
+
+    // ---- Research Gala review ----
+    async function loadGala() {
+      const box = document.getElementById('gala-table');
+      if (!box) return;
+      const filter = document.getElementById('gala-status-filter');
+      const status = filter ? filter.value : '';
+      box.innerHTML = '<p class="form-note">Loading Research Gala submissions…</p>';
+      try {
+        const res = await fetch('/api/gala' + (status ? '?status=' + encodeURIComponent(status) : ''), { credentials: 'include' });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'Could not load submissions.');
+        const rows = out.submissions || [];
+        if (!rows.length) {
+          box.innerHTML = '<div class="empty-state">No Research Gala submissions' + (status ? ' with that status' : '') + ' yet.</div>';
+          return;
+        }
+        box.innerHTML = `<div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Title</th><th>Presenter</th><th>Event</th><th>Type</th><th>Status</th><th>Submitted</th><th>Decision</th></tr></thead>
+          <tbody>${rows.map(s => `<tr>
+            <td><b>${escapeHtml(s.title || '')}</b><div class="form-note">${escapeHtml(s.authors || '')}</div></td>
+            <td>${escapeHtml(s.submitterName || '')}</td>
+            <td>${escapeHtml(s.eventTitle || '—')}</td>
+            <td>${escapeHtml(s.presentationTypeLabel || s.presentationType || '')}</td>
+            <td><span class="status-pill ${['accepted'].includes(s.status) ? 'active' : ['rejected'].includes(s.status) ? 'pending' : 'active'}">${escapeHtml(s.statusLabel || s.status)}</span></td>
+            <td>${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}</td>
+            <td>
+              <select class="gala-status-select" data-id="${s.id}" style="margin-bottom:6px;">
+                <option value="submitted" ${s.status === 'submitted' ? 'selected' : ''}>Submitted</option>
+                <option value="under_review" ${s.status === 'under_review' ? 'selected' : ''}>Under Review</option>
+                <option value="accepted" ${s.status === 'accepted' ? 'selected' : ''}>Accepted</option>
+                <option value="rejected" ${s.status === 'rejected' ? 'selected' : ''}>Rejected</option>
+              </select>
+              <input type="text" class="gala-note" data-id="${s.id}" placeholder="Note (optional)" style="margin-bottom:6px;">
+              <button class="btn btn-navy save-gala" data-id="${s.id}" style="padding:6px 12px;font-size:.85rem;">Save</button>
+            </td></tr>`).join('')}</tbody></table></div>`;
+      } catch (err) {
+        box.innerHTML = `<div class="form-message error" style="display:block;padding:16px;">Failed to load submissions: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function saveGalaStatus(id) {
+      const row = document.querySelector(`.gala-status-select[data-id="${id}"]`);
+      const noteEl = document.querySelector(`.gala-note[data-id="${id}"]`);
+      const btn = document.querySelector(`.save-gala[data-id="${id}"]`);
+      if (!row) return;
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        const res = await fetch('/api/gala/' + encodeURIComponent(id) + '/status', {
+          method: 'PATCH', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: row.value, note: noteEl ? noteEl.value : '' })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'The status could not be saved.');
+        await loadGala();
+      } catch (err) {
+        const box = document.getElementById('gala-table');
+        box.insertAdjacentHTML('afterbegin', `<div class="form-message error" style="display:block;padding:12px;">${escapeHtml(err.message)}</div>`);
+        if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+      }
+    }
+
+    // ---- Database backups ----
+    function formatBytes(bytes) {
+      const n = Number(bytes || 0);
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+      return (n / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    async function loadBackups() {
+      const box = document.getElementById('backups-table');
+      const configEl = document.getElementById('backup-config');
+      if (!box) return;
+      box.innerHTML = '<p class="form-note">Loading backups…</p>';
+      try {
+        const [listRes, configRes] = await Promise.all([
+          fetch('/api/admin/backups', { credentials: 'include' }),
+          fetch('/api/admin/backups/config', { credentials: 'include' })
+        ]);
+        const out = await listRes.json().catch(() => ({}));
+        if (!listRes.ok) throw new Error(out.error || 'Could not load the backup list.');
+        const config = await configRes.json().catch(() => ({}));
+        if (configEl) {
+          configEl.textContent = config.enabled
+            ? `Automatic backups run every ${config.intervalHours}h and the newest ${config.keep} are kept. A backup can also be taken on demand.`
+            : 'Automatic backups are turned off (BACKUP_SCHEDULE_ENABLED=false). Backups can still be taken on demand.';
+        }
+        const rows = out.backups || [];
+        if (!rows.length) {
+          box.innerHTML = '<div class="empty-state">No backups yet. Use “Backup now” to create the first one.</div>';
+          return;
+        }
+        box.innerHTML = `<div class="table-wrap"><table class="data-table">
+          <thead><tr><th>Date</th><th>Size</th><th>Tables</th><th>Rows</th><th>Storage</th><th>Created by</th><th>Download</th></tr></thead>
+          <tbody>${rows.map(b => `<tr>
+            <td>${b.createdAt ? new Date(b.createdAt).toLocaleString() : '—'}</td>
+            <td>${escapeHtml(formatBytes(b.bytes))}</td>
+            <td>${escapeHtml(String(b.tableCount))}</td>
+            <td>${escapeHtml(String(b.rowCount))}</td>
+            <td>${escapeHtml(b.storage)}${b.triggerSource === 'scheduled' ? ' (auto)' : ''}</td>
+            <td>${escapeHtml(b.createdBy || '—')}</td>
+            <td><a class="btn btn-navy" style="padding:6px 12px;font-size:.85rem;" href="/api/admin/backups/${encodeURIComponent(b.id)}/download">Download</a></td>
+          </tr>`).join('')}</tbody></table></div>`;
+      } catch (err) {
+        box.innerHTML = `<div class="form-message error" style="display:block;padding:16px;">Failed to load backups: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function createBackup() {
+      const btn = document.getElementById('backup-now');
+      const msg = document.getElementById('backup-message');
+      if (!btn) return;
+      btn.disabled = true;
+      const label = btn.innerHTML;
+      btn.textContent = 'Backing up…';
+      if (msg) msg.innerHTML = '<p class="form-note">Reading every table and writing the backup file…</p>';
+      try {
+        const res = await fetch('/api/admin/backups', { method: 'POST', credentials: 'include' });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'The backup could not be created.');
+        if (msg) msg.innerHTML = `<div class="form-message success" style="display:block;padding:12px;">${escapeHtml(out.message || 'Backup created.')} ${escapeHtml(out.note || '')}</div>`;
+        await loadBackups();
+        await loadLogs();
+      } catch (err) {
+        if (msg) msg.innerHTML = `<div class="form-message error" style="display:block;padding:12px;">${escapeHtml(err.message)}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = label;
+      }
+    }
+
+    // ---- Wiring for the new panels ----
+    document.getElementById('refresh-approvals')?.addEventListener('click', loadApprovals);
+    document.getElementById('refresh-gala')?.addEventListener('click', loadGala);
+    document.getElementById('refresh-backups')?.addEventListener('click', loadBackups);
+    document.getElementById('backup-now')?.addEventListener('click', createBackup);
+    document.getElementById('gala-status-filter')?.addEventListener('change', loadGala);
+
+    // Delegated clicks so the tables keep working after every re-render.
+    document.getElementById('approvals-table')?.addEventListener('click', (e) => {
+      const approve = e.target.closest('.approve-account');
+      if (approve) return decideAccount(approve.dataset.id, approve.dataset.name, 'approve');
+      const reject = e.target.closest('.reject-account');
+      if (reject) return decideAccount(reject.dataset.id, reject.dataset.name, 'reject');
+      return undefined;
+    });
+    document.getElementById('gala-table')?.addEventListener('click', (e) => {
+      const save = e.target.closest('.save-gala');
+      if (save) saveGalaStatus(save.dataset.id);
+    });
+
     (async () => {
       const summary = await loadSummary();
       if (!summary) return;
@@ -1052,6 +1323,9 @@
       loadLogs();
       loadEventsList();
       loadResearchList();
+      loadApprovals();
+      loadGala();
+      loadBackups();
       const profile = await (await fetch('/api/site')).json();
       if (profile) {
         document.getElementById('h-tagline').value = profile.tagline || '';

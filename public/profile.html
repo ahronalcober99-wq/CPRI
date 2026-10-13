@@ -183,6 +183,36 @@
               </div>
             </div>
 
+            <!-- Role-specific details for Non-Teaching Researchers (office/unit,
+                 position) and Presenters (institution, nationality). Exactly one
+                 of the two rows is shown, matching the signed-in account type. -->
+            <div class="student-details-section" id="role-details-section" style="display:none;">
+              <div class="field-section-head">
+                <h4 class="student-details-title" id="role-details-title">Role Details</h4>
+                <span class="student-details-tag" id="role-details-tag"></span>
+              </div>
+              <div class="field-row" id="role-field-office" style="display:none;">
+                <div>
+                  <label class="field-label" for="edit-officeunit">Office / Unit</label>
+                  <input type="text" id="edit-officeunit" maxlength="160" placeholder="Office or unit" disabled>
+                </div>
+                <div>
+                  <label class="field-label" for="edit-position">Position</label>
+                  <input type="text" id="edit-position" maxlength="120" placeholder="Position" disabled>
+                </div>
+              </div>
+              <div class="field-row" id="role-field-institution" style="display:none;">
+                <div>
+                  <label class="field-label" for="edit-institution">Institution / Affiliation</label>
+                  <input type="text" id="edit-institution" maxlength="180" placeholder="Institution" disabled>
+                </div>
+                <div>
+                  <label class="field-label" for="edit-nationality">Nationality</label>
+                  <input type="text" id="edit-nationality" maxlength="80" placeholder="Nationality" disabled>
+                </div>
+              </div>
+            </div>
+
             <div class="card-foot" style="margin-top:16px;border-top:1px solid var(--cpri-border);padding-top:14px;">
               <button class="btn btn-primary" id="edit-btn" type="button">Edit profile</button>
               <button class="btn btn-navy" id="logout-btn" type="button" style="margin-left:auto;">Log Out</button>
@@ -287,6 +317,11 @@
       const pfAccountType = document.getElementById('pf-account-type');
       const pfStatus = document.getElementById('pf-status');
       const studentDetailsSection = document.getElementById('student-details-section');
+      const roleDetailsSection = document.getElementById('role-details-section');
+      const roleDetailsTitle = document.getElementById('role-details-title');
+      const roleDetailsTag = document.getElementById('role-details-tag');
+      const roleFieldOffice = document.getElementById('role-field-office');
+      const roleFieldInstitution = document.getElementById('role-field-institution');
 
       // Editable field inputs (shared between view + edit modes)
       const editDepartment = document.getElementById('edit-department');
@@ -300,6 +335,10 @@
       const editResearchTitle = document.getElementById('edit-researchtitle');
       const editResearchArea = document.getElementById('edit-researcharea');
       const editInterestsStudent = document.getElementById('edit-interests-student');
+      const editOfficeUnit = document.getElementById('edit-officeunit');
+      const editPosition = document.getElementById('edit-position');
+      const editInstitution = document.getElementById('edit-institution');
+      const editNationality = document.getElementById('edit-nationality');
 
       const editBtn = document.getElementById('edit-btn');
       const logoutBtn = document.getElementById('logout-btn');
@@ -497,7 +536,11 @@
           adviser: editAdviser.value,
           researchTitle: editResearchTitle.value,
           researchArea: editResearchArea.value,
-          interestsStudent: editInterestsStudent.value
+          interestsStudent: editInterestsStudent.value,
+          officeUnit: editOfficeUnit.value,
+          position: editPosition.value,
+          institution: editInstitution.value,
+          nationality: editNationality.value
         };
       }
 
@@ -514,6 +557,10 @@
         editResearchTitle.value = snap.researchTitle;
         editResearchArea.value = snap.researchArea;
         editInterestsStudent.value = snap.interestsStudent;
+        editOfficeUnit.value = snap.officeUnit;
+        editPosition.value = snap.position;
+        editInstitution.value = snap.institution;
+        editNationality.value = snap.nationality;
       }
 
       // ---- Render ----
@@ -551,6 +598,27 @@
           editInterestsStudent.value = p.researchInterests || '';
         }
 
+        // Non-Teaching Researcher / Presenter details. Exactly one row is shown,
+        // and only for the account type that owns those fields.
+        roleDetailsSection.style.display = 'none';
+        roleFieldOffice.style.display = 'none';
+        roleFieldInstitution.style.display = 'none';
+        if (p.role === 'non_teaching_researcher') {
+          roleDetailsSection.style.display = '';
+          roleDetailsTitle.textContent = 'Non-Teaching Researcher Details';
+          roleDetailsTag.textContent = 'Non-Teaching Researcher';
+          roleFieldOffice.style.display = '';
+          editOfficeUnit.value = p.officeUnit || '';
+          editPosition.value = p.position || '';
+        } else if (p.role === 'presenter') {
+          roleDetailsSection.style.display = '';
+          roleDetailsTitle.textContent = 'Presenter Details';
+          roleDetailsTag.textContent = 'Research Gala';
+          roleFieldInstitution.style.display = '';
+          editInstitution.value = p.institution || '';
+          editNationality.value = p.nationality || '';
+        }
+
         setMode('view');
       }
 
@@ -564,7 +632,8 @@
           editDepartment, editContactNo,
           editInterestsNonStudent,
           editStudentId, editYearLevel, editProgram, editSection, editAdviser,
-          editResearchTitle, editResearchArea, editInterestsStudent
+          editResearchTitle, editResearchArea, editInterestsStudent,
+          editOfficeUnit, editPosition, editInstitution, editNationality
         ];
         inputs.forEach(el => {
           if (!el) return;
@@ -598,10 +667,11 @@
         if (mode === 'edit') {
           // Focus the first editable field so the user can start typing right away.
           const first = [
-            editDepartment, editContactNo,
+            editDepartment, editContactNo, editOfficeUnit, editPosition,
+            editInstitution, editNationality,
             editStudentId, editYearLevel, editProgram, editSection, editAdviser,
             editResearchTitle, editResearchArea, editInterestsNonStudent, editInterestsStudent
-          ].find(el => el && el.style.display !== 'none');
+          ].find(el => el && el.offsetParent !== null);
           if (first) first.focus();
         }
       }
@@ -644,6 +714,17 @@
           payload.adviser = maxLen(editAdviser.value, 160);
           payload.researchTitle = maxLen(editResearchTitle.value, 255);
           payload.researchArea = editResearchArea.value || '';
+        }
+
+        // Role-owned fields. The server only accepts these for the matching
+        // role, so sending them for anyone else is harmless.
+        const role = currentProfile && currentProfile.role;
+        if (role === 'non_teaching_researcher') {
+          payload.officeUnit = maxLen(editOfficeUnit.value, 160);
+          payload.position = maxLen(editPosition.value, 120);
+        } else if (role === 'presenter') {
+          payload.institution = maxLen(editInstitution.value, 180);
+          payload.nationality = maxLen(editNationality.value, 80);
         }
 
         return { ok: true, payload };

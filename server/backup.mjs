@@ -22,7 +22,7 @@ import { promisify } from 'util';
 import { promises as fs } from 'fs';
 import { createWriteStream } from 'fs';
 import { join, dirname, basename } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const execFileAsync = promisify(execFile);
 
@@ -32,6 +32,11 @@ const ROOT = join(__dirname, '..');
 const DATA_DIR = join(__dirname, 'data');
 const BACKUPS_DIR = join(ROOT, 'backups');
 const DEFAULT_KEEP = 10;
+
+// The paths and helpers below are reused by the admin Backups API
+// (server/lib/backup-service.js), so the CLI itself only runs when this file is
+// executed directly (`npm run backup`) rather than imported.
+export { BACKUPS_DIR, DATA_DIR, DEFAULT_KEEP };
 
 const DB = {
   host: process.env.DB_HOST || 'localhost',
@@ -60,14 +65,14 @@ async function findMysqldump() {
   return null;
 }
 
-function timestamp() {
+export function timestamp() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
   // Milliseconds prevent same-second collisions when backups run back-to-back.
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}_${p(d.getMilliseconds())}`;
 }
 
-async function pruneBackups(keep) {
+export async function pruneBackups(keep) {
   const entries = await fs.readdir(BACKUPS_DIR, { withFileTypes: true }).catch(() => []);
   const dirs = entries
     .filter(e => e.isDirectory())
@@ -116,7 +121,7 @@ async function dumpDatabase(mysqldump, destFile) {
   });
 }
 
-async function copyJsonFiles(destDir) {
+export async function copyJsonFiles(destDir) {
   const files = await fs.readdir(DATA_DIR).catch(() => []);
   const jsonFiles = files.filter(f => f.endsWith('.json'));
   await fs.mkdir(destDir, { recursive: true });
@@ -185,7 +190,14 @@ async function main() {
   console.log('[backup] Restore:  mysql -u <user> cpri < backups/<folder>/cpri.sql');
 }
 
-main().catch((err) => {
-  console.error('[backup] Failed:', err);
-  process.exit(1);
-});
+// Only run the CLI when invoked directly: importing this module (the admin
+// Backups API does) must never kick off a database dump.
+const invokedDirectly = process.argv[1]
+  && import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error('[backup] Failed:', err);
+    process.exit(1);
+  });
+}

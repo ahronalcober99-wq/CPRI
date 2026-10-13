@@ -176,7 +176,8 @@ const CPRI = (() => {
         { section: 'Get involved', items: [
           { label: 'Student Researcher Portal', href: 'student-researchers.html', icon: 'bi-mortarboard', desc: 'Submit capstone and research outputs' },
           { label: 'Submissions', href: 'submissions.html', icon: 'bi-send', desc: 'Submit research' },
-          { label: 'Ethics Review', href: 'ethics.html', icon: 'bi-shield-check', desc: 'Ethics clearance' }
+          { label: 'Ethics Review', href: 'ethics.html', icon: 'bi-shield-check', desc: 'Ethics clearance' },
+          { label: 'Research Gala', href: 'gala-form.html', icon: 'bi-mic', desc: 'Present at the Research Gala' }
         ]},
         { section: 'Explore', items: [
           { label: 'Repository', href: 'repository.html', icon: 'bi-archive', desc: 'Open repository' },
@@ -220,8 +221,12 @@ const CPRI = (() => {
           auth.push({ label: 'Dashboard', href: 'admin-dashboard.html', primary: true });
         }
         // Direct messaging is for all registered roles — mirror the server's DM gate.
-        if (['admin','cpri_staff','faculty_researcher','adviser','ethics_reviewer','student_researcher','public_visitor'].includes(me.user.role)) {
+        if (['admin','cpri_staff','faculty_researcher','non_teaching_researcher','adviser','ethics_reviewer','student_researcher','presenter','public_visitor'].includes(me.user.role)) {
           auth.push({ label: 'Messages', href: 'messages.html' });
+        }
+        // A Presenter gets a one-click route to their own Gala dashboard.
+        if (me.user.role === 'presenter') {
+          auth.push({ label: 'My Gala Submissions', href: 'presenter-dashboard.html' });
         }
         auth.push({ label: 'My Account', href: 'account.html' });
         auth.push({ label: 'Logout', href: '#', action: 'logout' });
@@ -636,6 +641,7 @@ const CPRI = (() => {
         { label: 'Repository', href: 'repository.html', icon: 'bi-archive' },
         { label: 'Researchers', href: 'researchers.html', icon: 'bi-people' },
         { label: 'Ethics Review', href: 'ethics.html', icon: 'bi-shield-check' },
+        { label: 'Research Gala', href: 'gala-form.html', icon: 'bi-mic' },
         { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb' },
         { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph' },
         { label: 'Contact', href: 'contact.html', icon: 'bi-envelope' }
@@ -1678,7 +1684,7 @@ const CPRI = (() => {
       renderNotifications(notifications.filter(notification => !pendingIds.has(String(notification.id))));
       // Direct messages are for all registered roles — mirror the server DM gate.
       const npMessages = document.getElementById('npMessages');
-      if (npMessages) npMessages.style.display = (!notifPublic && ['admin','cpri_staff','faculty_researcher','adviser','ethics_reviewer','student_researcher','public_visitor'].includes(data.role)) ? '' : 'none';
+      if (npMessages) npMessages.style.display = (!notifPublic && ['admin','cpri_staff','faculty_researcher','non_teaching_researcher','adviser','ethics_reviewer','student_researcher','presenter','public_visitor'].includes(data.role)) ? '' : 'none';
     } catch { /* keep last known state */ }
   }
 

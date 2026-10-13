@@ -191,12 +191,14 @@
                 </div>
                 <div class="card">
                   <h3 style="margin-top:0;">9. Publication Monitoring Report</h3>
-                  <p class="form-note">Publications with journal/conference, type, status, DOI, and school year.</p>
+                  <p class="form-note">Publications with journal/conference, volume, issue, ISSN/ISBN, indexing databases, impact factor, DOI and school year.</p>
                   <div style="display:flex;gap:8px;flex-wrap:wrap;">
                     <a class="btn btn-primary" href="/api/reports/export/publications-monitoring?format=csv" target="_blank">Export CSV</a>
                     <a class="btn btn-navy" href="/api/reports/export/publications-monitoring?format=excel" target="_blank">Export Excel</a>
                     <a class="btn btn-outline" href="/api/reports/export/publications-monitoring?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+                    <button type="button" class="btn btn-soft" id="load-report9">Preview on page</button>
                   </div>
+                  <div id="report9-preview" style="margin-top:14px;"></div>
                 </div>
                 <div class="card">
                   <h3 style="margin-top:0;">10. Institutional Research Repository Inventory</h3>
@@ -341,7 +343,34 @@
       }
       document.getElementById('analytics-area').style.display = 'block';
       loadAnalytics();
+      document.getElementById('load-report9').addEventListener('click', loadReport9);
     })();
+
+    // Report 9 on-page preview: the same rows the CSV/Excel/PDF exports use,
+    // including the bibliographic fields (volume, issue, ISSN/ISBN, indexing,
+    // impact factor). Loading, empty and error states are all handled here.
+    async function loadReport9() {
+      const box = document.getElementById('report9-preview');
+      box.innerHTML = '<p class="form-note">Loading Report 9…</p>';
+      try {
+        const res = await fetch('/api/reports/publications-monitoring');
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'Could not load the report.');
+        const rows = out.report || [];
+        if (!rows.length) {
+          box.innerHTML = '<div class="empty-state">No publications recorded yet, so Report 9 has no rows.</div>';
+          return;
+        }
+        const columns = ['title', 'authors', 'journalOrConference', 'volume', 'issue', 'issn', 'isbn', 'indexing', 'impactFactor', 'doi', 'pubType', 'status', 'publicationDate', 'department', 'schoolYear'];
+        const cell = (v) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        box.innerHTML = `<div class="table-wrap"><table class="data-table">
+          <thead><tr>${columns.map(c => `<th>${cell(c)}</th>`).join('')}</tr></thead>
+          <tbody>${rows.slice(0, 100).map(r => `<tr>${columns.map(c => `<td>${cell(r[c])}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table></div>${rows.length > 100 ? '<p class="form-note">Showing the first 100 rows — use an export for the full report.</p>' : ''}`;
+      } catch (err) {
+        box.innerHTML = `<div class="form-message error" style="display:block;padding:14px;">Could not load Report 9: ${err.message}</div>`;
+      }
+    }
   </script>
 </body>
 </html>

@@ -67,8 +67,24 @@
                   <input type="text" id="f-doi" name="doi" placeholder="e.g. 10.1234/example">
                 </div>
                 <div class="form-group">
+                  <label for="f-issn">ISSN</label>
+                  <input type="text" id="f-issn" name="issn" placeholder="e.g. 1234-5678">
+                </div>
+                <div class="form-group">
+                  <label for="f-isbn">ISBN</label>
+                  <input type="text" id="f-isbn" name="isbn" placeholder="e.g. 978-3-16-148410-0">
+                </div>
+                <div class="form-group">
+                  <label for="f-indexing-db">Indexing (databases)</label>
+                  <input type="text" id="f-indexing-db" name="indexing" placeholder="e.g. Scopus, Web of Science, DOAJ">
+                </div>
+                <div class="form-group">
+                  <label for="f-impact">Impact factor</label>
+                  <input type="text" id="f-impact" name="impactFactor" placeholder="e.g. 3.42">
+                </div>
+                <div class="form-group">
                   <label for="f-indexing">Indexing status</label>
-                  <input type="text" id="f-indexing" name="indexingStatus" placeholder="e.g. Scopus, Web of Science">
+                  <input type="text" id="f-indexing" name="indexingStatus" placeholder="e.g. Indexed, Not indexed">
                 </div>
                 <div class="form-group">
                   <label for="f-pubLink">Publication link</label>
@@ -201,7 +217,9 @@
             publicationDate: 'f-date', volume: 'f-volume', issue: 'f-issue',
             pages: 'f-pages', doi: 'f-doi', publicationLink: 'f-pubLink',
             indexingStatus: 'f-indexing', pubType: 'f-type', status: 'f-status',
-            authorType: 'f-author-type', department: 'f-dept', schoolYear: 'f-sy'
+            authorType: 'f-author-type', department: 'f-dept', schoolYear: 'f-sy',
+            // Publication Monitoring fields.
+            issn: 'f-issn', isbn: 'f-isbn', indexing: 'f-indexing-db', impactFactor: 'f-impact'
           };
           for (const [key, elId] of Object.entries(map)) {
             const el = document.getElementById(elId);

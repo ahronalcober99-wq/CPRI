@@ -50,6 +50,36 @@ const PROOF_TYPES = {
 
 const STAFF_ROLES = ['admin', 'cpri_staff'];
 
+// ---------- Schema (additive, safe on every existing deployment) ----------
+// The publication record already carried title, authors, journalOrConference
+// (the journal/conference name), volume, issue, pages, DOI, publicationLink and
+// indexingStatus. The Publication Monitoring report also needs the ISSN/ISBN,
+// the indexing databases and the impact factor, so those three are added here.
+export async function ensurePublicationSchema(dependencies = {}) {
+  const runQuery = dependencies.run || (await import('./server/db/queries.js')).run;
+  const allQuery = dependencies.all || (await import('./server/db/queries.js')).all;
+  const columns = await allQuery('SHOW COLUMNS FROM publications');
+  const existing = new Set(columns.map(c => String(c.Field || c.field || '').toLowerCase()));
+  const columnsToAdd = [
+    { name: 'issn', sql: "ALTER TABLE publications ADD COLUMN issn VARCHAR(40) NOT NULL DEFAULT ''" },
+    { name: 'isbn', sql: "ALTER TABLE publications ADD COLUMN isbn VARCHAR(40) NOT NULL DEFAULT ''" },
+    { name: 'indexing', sql: "ALTER TABLE publications ADD COLUMN indexing VARCHAR(255) NOT NULL DEFAULT ''" },
+    { name: 'impactFactor', sql: "ALTER TABLE publications ADD COLUMN impactFactor VARCHAR(40) NOT NULL DEFAULT ''" }
+  ];
+  const added = [];
+  for (const col of columnsToAdd) {
+    if (existing.has(col.name.toLowerCase())) continue;
+    try {
+      await runQuery(col.sql);
+      added.push(col.name);
+    } catch (err) {
+      if (!String(err && err.message).includes('Duplicate column name')) throw err;
+    }
+  }
+  if (added.length) console.log(`[schema] added missing publications columns: ${added.join(', ')}`);
+  return added;
+}
+
 async function caller(req) {
   const users = await readUsers();
   return users.find(u => u.id === req.session.userId) || null;
@@ -140,9 +170,14 @@ export function createPublicationsRouter(dependencies = {}) {
         authorTypeLabel: AUTHOR_TYPES[p.authorType] || p.authorType,
         sourceSubmissionId: p.sourceSubmissionId || null,
         indexingStatus: p.indexingStatus,
+        indexing: p.indexing || '',
         volume: p.volume,
         issue: p.issue,
         pages: p.pages,
+        issn: p.issn || '',
+        isbn: p.isbn || '',
+        impactFactor: p.impactFactor || '',
+        doi: p.doi || '',
         submitterName: p.submitterName
       }))
     });
@@ -196,6 +231,10 @@ export function createPublicationsRouter(dependencies = {}) {
       doi: p.doi,
       publicationLink: p.publicationLink,
       indexingStatus: p.indexingStatus,
+      indexing: p.indexing || '',
+      issn: p.issn || '',
+      isbn: p.isbn || '',
+      impactFactor: p.impactFactor || '',
       pubType: p.pubType,
       status: p.status,
       authorType: p.authorType,
@@ -240,6 +279,11 @@ export function createPublicationsRouter(dependencies = {}) {
       doi: b.doi ? String(b.doi).trim() : '',
       publicationLink: b.publicationLink ? String(b.publicationLink).trim() : '',
       indexingStatus: b.indexingStatus ? String(b.indexingStatus).trim() : '',
+      // Publication Monitoring fields (ISSN/ISBN, indexing databases, impact factor).
+      issn: b.issn ? String(b.issn).trim() : '',
+      isbn: b.isbn ? String(b.isbn).trim() : '',
+      indexing: b.indexing ? String(b.indexing).trim() : '',
+      impactFactor: b.impactFactor ? String(b.impactFactor).trim() : '',
       pubType: String(b.pubType).trim(),
       status: String(b.status).trim(),
       authorType: b.authorType || (STAFF_ROLES.includes(me.role) ? 'faculty' : (['student_researcher'].includes(me.role) ? 'student' : 'other')),
@@ -323,7 +367,9 @@ export function createPublicationsRouter(dependencies = {}) {
       'title', 'authors', 'journalOrConference', 'publicationDate',
       'volume', 'issue', 'pages', 'doi', 'publicationLink',
       'indexingStatus', 'pubType', 'status', 'authorType',
-      'department', 'schoolYear'
+      'department', 'schoolYear',
+      // Publication Monitoring fields.
+      'issn', 'isbn', 'indexing', 'impactFactor'
     ];
     for (const f of editable) {
       if (b[f] !== undefined) changes[f] = (typeof b[f] === 'string') ? b[f].trim() : b[f];
