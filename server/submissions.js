@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
+import { Readable } from 'stream';
 import { requireAuth, requireAdmin, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove, withTransaction } from './server/db/queries.js';
 import { addLog } from './audit.js';
@@ -98,7 +99,75 @@ async function caller(req) {
 }
 
 function canAccess(me, sub) {
-  return !me || me.id === sub.submitterId || REVIEW_ROLES.includes(me.role);
+  // A session whose user no longer resolves (deleted or renamed account) must
+  // never be treated as "no caller": caller() returns undefined for it, and
+  // the old `!me ||` short-circuit handed that stale session access to every
+  // submission. Requiring a real user closes it without changing any
+  // legitimate owner/reviewer behaviour.
+  if (!me) return false;
+  return me.id === sub.submitterId || REVIEW_ROLES.includes(me.role);
+}
+
+// Roles allowed to open a submission file in the preview modal.
+// The owner, reviewers, and CPRI staff/admin always can. An adviser only can
+// when they are the one named on the record: `submissions.adviser` stores a
+// person's name (not a user id), so the match is by name and only for accounts
+// that actually hold the adviser role — this is deliberately narrower than
+// letting every adviser read every submission.
+const FILE_VIEW_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer'];
+
+function canViewFile(me, sub) {
+  if (!me) return false;
+  if (me.id === sub.submitterId) return true;
+  if (FILE_VIEW_ROLES.includes(me.role)) return true;
+  if (me.role !== 'adviser' || !sub.adviser) return false;
+
+  const assigned = String(sub.adviser).trim().toLowerCase();
+  if (assigned.length < 4) return false;
+  return [me.fullName, me.username]
+    .filter(Boolean)
+    .map(name => String(name).trim().toLowerCase())
+    .filter(name => name.length >= 4)
+    .some(name => name === assigned || assigned.includes(name));
+}
+
+// Which stored object a /file request points at, shared by the download and
+// the view route so the two can never drift apart (same key, docId and version
+// semantics, same "no longer available" answer).
+// Returns { meta } on success, or { status, kind, message } on failure.
+function resolveRequestedFile(sub, { key, docId, version } = {}) {
+  let fileSet = sub;
+  if (version) {
+    const versions = sub.versions || [];
+    const v = versions.find(x => String(x.version) === String(version));
+    if (!v) return { status: 404, kind: 'version', message: 'Version not found.' };
+    fileSet = v;
+  }
+
+  let meta = null;
+  if (key === 'additional') {
+    const additionalDocs = fileSet.additionalDocs || [];
+    meta = additionalDocs.find(d => d.id === docId);
+  } else if (key) {
+    const files = fileSet.files || {};
+    meta = files[key];
+  }
+  if (!meta || !meta.storage_path) {
+    return {
+      status: 404,
+      kind: 'missing',
+      message: 'The file is no longer available. Please ask the author to upload it again.'
+    };
+  }
+  return { meta };
+}
+
+// Content-Disposition: inline, with a CRLF/quote-safe filename. The ASCII
+// fallback keeps old browsers working; filename* carries the real name.
+function inlineContentDisposition(filename) {
+  const name = String(filename || 'file');
+  const ascii = name.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '_');
+  return `inline; filename="${ascii || 'file'}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
 // ---------- Private file upload config ----------
@@ -422,29 +491,13 @@ router.get('/:id/file', requireAuth, async (req, res) => {
   if (!sub) return res.status(404).json({ error: 'Submission not found.' });
   if (!canAccess(me, sub)) return res.status(403).json({ error: 'Access denied.' });
 
-  const { key, docId, version } = req.query;
-  let fileSet = sub;
-  if (version) {
-    const versions = sub.versions || [];
-    const v = versions.find(x => String(x.version) === String(version));
-    if (!v) return res.status(404).json({ error: 'Version not found.' });
-    fileSet = v;
+  const resolved = resolveRequestedFile(sub, req.query);
+  if (resolved.status) {
+    return resolved.kind === 'version'
+      ? res.status(resolved.status).json({ error: resolved.message })
+      : res.status(resolved.status).json({ ok: false, message: resolved.message });
   }
-
-  let meta = null;
-  if (key === 'additional') {
-    const additionalDocs = fileSet.additionalDocs || [];
-    meta = additionalDocs.find(d => d.id === docId);
-  } else if (key) {
-    const files = fileSet.files || {};
-    meta = files[key];
-  }
-  if (!meta || !meta.storage_path) {
-    return res.status(404).json({
-      ok: false,
-      message: 'The file is no longer available. Please ask the author to upload it again.'
-    });
-  }
+  const meta = resolved.meta;
 
   try {
     if (!await supabaseStorage.objectExists(meta.storage_path)) {
@@ -464,9 +517,62 @@ router.get('/:id/file', requireAuth, async (req, res) => {
     return res.status(502).json({ ok: false, message: 'Could not prepare the file download. Please try again.' });
   }
 });
+
+// ---------- Inline file preview (the "View" button) ----------
+// Same file, same parameters and the same authorization gate as the download
+// route above — the only difference is how the bytes are delivered. They are
+// streamed through this server with Content-Disposition: inline so a browser
+// can render a PDF or an image inside the preview modal. Downloading stays on
+// /file, which still forces an attachment, so nothing about that flow changes.
+//
+// Streaming (rather than redirecting to a 60-second signed URL) means the
+// authorization check runs on every single request and no shareable link
+// survives in the browser's history or referrer.
+router.get('/:id/file/view', requireAuth, async (req, res) => {
+  const me = await caller(req);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
+  if (!sub) return res.status(404).json({ error: 'Submission not found.' });
+  if (!canViewFile(me, sub)) return res.status(403).json({ error: 'Access denied.' });
+
+  const resolved = resolveRequestedFile(sub, req.query);
+  if (resolved.status) {
+    return resolved.kind === 'version'
+      ? res.status(resolved.status).json({ error: resolved.message })
+      : res.status(resolved.status).json({ ok: false, message: resolved.message });
+  }
+  const meta = resolved.meta;
+
+  try {
+    const object = await supabaseStorage.downloadObject({ path: meta.storage_path });
+    if (!object) {
+      return res.status(404).json({
+        ok: false,
+        message: 'The file is no longer available. Please ask the author to upload it again.'
+      });
+    }
+
+    const length = object.headers?.get?.('content-length');
+    res.status(200);
+    res.setHeader('Content-Type', meta.mime_type || 'application/octet-stream');
+    res.setHeader('Content-Disposition', inlineContentDisposition(meta.original_name));
+    // The modal only ever points its <iframe>/<img> at this route, and uploads
+    // are already content-validated, so serve the declared type as-is and stop
+    // browsers from sniffing a different one.
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-store');
+    if (length && Number.isFinite(Number(length))) res.setHeader('Content-Length', String(Number(length)));
+
+    // fetch() hands back a web ReadableStream, which has no pipe(); wrap it
+    // exactly like the research module's own streaming download does.
+    (object.body ? Readable.fromWeb(object.body) : Readable.from([])).pipe(res);
+  } catch (error) {
+    console.error('[storage] submission preview failed:', error.message);
+    return res.status(502).json({ ok: false, message: 'Could not open the file for preview. Please try again.' });
+  }
+});
 // ---------- Revisions Side-by-Side Comparison ----------
 router.get('/:id/revisions/compare', requireAuth, async (req, res) => {
-  const me = await currentUser(req);
+  const me = await caller(req);
   const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
   if (!sub) return res.status(404).json({ error: 'Submission not found.' });
   if (!canAccess(me, sub)) return res.status(403).json({ error: 'Access denied.' });

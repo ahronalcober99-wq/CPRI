@@ -2918,3 +2918,160 @@ main { animation: pageIn .45s ease both; }
     linear-gradient(to right, rgba(0,0,0,.12), transparent 20px) 0 0 / 20px 100% no-repeat scroll,
     linear-gradient(var(--cpri-card), var(--cpri-card)) 0 0 / 100% 100% no-repeat local;
 }
+
+/* ============================================================
+   DOCUMENT PREVIEW MODAL (Submission Detail — "View" button)
+   ============================================================
+   Sits next to the existing Download button without touching it: the pill
+   below is the only new control, and the modal reuses the same backdrop
+   treatment as .confirm-overlay so both dialogs feel like one system.
+
+   Light mode follows the brief exactly — white fill, maroon border and ink.
+   Dark mode keeps the maroon identity but swaps the fill for the card
+   surface, because #800000 ink on a #240000 card would be unreadable; the
+   rose below is the same one the sheet already uses for dark-mode errors. */
+.btn-view {
+  background: #fff;
+  border: 2px solid var(--maroon);
+  color: var(--maroon);
+}
+.btn-view:hover {
+  background: var(--maroon);
+  color: #fff;
+}
+.btn-view:focus-visible {
+  outline: 2px solid var(--maroon);
+  outline-offset: 2px;
+}
+[data-theme="dark"] .btn-view {
+  background: transparent;
+  border-color: var(--maroon-hover);
+  color: #FCA5A5;
+}
+[data-theme="dark"] .btn-view:hover {
+  background: var(--maroon-hover);
+  color: #fff;
+}
+.btn-view svg { flex: 0 0 auto; }
+
+.file-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2100;              /* above .confirm-overlay's 2000 */
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.file-preview-modal[hidden] { display: none; }
+.file-preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20,0,0,.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: confirmFade .18s ease;
+}
+.file-preview-box {
+  position: relative;
+  width: min(820px, 100%);
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  background: var(--cpri-card, #fff);
+  border: 1px solid var(--cpri-border, #eadedc);
+  border-radius: var(--radius-lg, 18px);
+  box-shadow: 0 24px 60px rgba(20,0,0,.35);
+  overflow: hidden;
+  animation: confirmPop .22s cubic-bezier(.34, 1.56, .64, 1);
+}
+.file-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--maroon);
+  color: #fff;
+}
+.file-preview-head h3 {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 1rem;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.file-preview-close {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255,255,255,.16);
+  color: #fff;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .18s ease;
+}
+.file-preview-close:hover { background: rgba(255,255,255,.3); }
+.file-preview-body {
+  flex: 1 1 auto;
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: var(--cpri-bg);
+  overflow: auto;
+}
+.file-preview-body iframe {
+  width: 100%;
+  height: min(64vh, 620px);
+  border: 0;
+  background: #fff;
+  border-radius: var(--radius, 12px);
+}
+.file-preview-body img {
+  max-width: 100%;
+  max-height: min(64vh, 620px);
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius, 12px);
+  background: #fff;
+}
+.file-preview-unsupported {
+  text-align: center;
+  max-width: 420px;
+}
+.file-preview-unsupported p {
+  margin: 0 0 16px;
+  color: var(--cpri-muted);
+  font-size: .95rem;
+}
+.file-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  padding: 16px 18px;
+  border-top: 1px solid var(--cpri-border);
+}
+body.file-preview-open { overflow: hidden; }
+
+@media (max-width: 640px) {
+  .file-preview-modal { padding: 10px; }
+  .file-preview-box { max-height: calc(100vh - 20px); }
+  .file-preview-body { min-height: 200px; padding: 12px; }
+  .file-preview-body iframe { height: 55vh; }
+  .file-preview-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 12px;
+  }
+  .file-preview-actions .btn { justify-content: center; width: 100%; }
+}

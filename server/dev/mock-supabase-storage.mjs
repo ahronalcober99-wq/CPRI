@@ -87,6 +87,19 @@ const server = createServer(async (req, res) => {
     return send(res, 200, object.buffer, object.contentType);
   }
 
+  // /storage/v1/object/sign/<bucket>/<path...> — createSignedDownloadUrl.
+  // The submission download route redirects to this URL with ?download=<name>
+  // appended by the adapter, which is what forces an attachment. Must be
+  // matched before the upload handler below, which would otherwise read
+  // "sign" as a bucket name. The signed GET itself is served by the private
+  // object handler above, which ignores the query string.
+  if (req.method === 'POST' && segments[1] === 'v1' && segments[2] === 'object' && segments[3] === 'sign') {
+    const bucket = segments[4];
+    const objectPath = segments.slice(5).map(decodeURIComponent).join('/');
+    if (!buckets.get(bucket)?.has(objectPath)) return send(res, 404, { message: 'Object not found' });
+    return send(res, 200, { signedURL: `/storage/v1/object/${encodeURIComponent(bucket)}/${objectPath}` });
+  }
+
   // /storage/v1/object/<bucket>/<path...> — upload
   if (req.method === 'POST' && segments[1] === 'v1' && segments[2] === 'object') {
     const bucket = segments[3];

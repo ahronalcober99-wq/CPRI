@@ -116,6 +116,23 @@
   </main>
 
   <div id="site-footer"></div>
+
+  <!-- Document preview — opened by the View buttons in Uploaded Documents -->
+  <div class="file-preview-modal" id="file-preview" hidden>
+    <div class="file-preview-backdrop" data-fv-close></div>
+    <div class="file-preview-box" role="dialog" aria-modal="true" aria-labelledby="fv-title">
+      <div class="file-preview-head">
+        <h3 id="fv-title">Document</h3>
+        <button type="button" class="file-preview-close" data-fv-close aria-label="Close preview">&#10005;</button>
+      </div>
+      <div class="file-preview-body" id="fv-body"></div>
+      <div class="file-preview-actions">
+        <a class="btn btn-navy" id="fv-download" href="#">Download</a>
+        <a class="btn btn-view" id="fv-open" href="#" target="_blank" rel="noopener">Open in new tab</a>
+        <button type="button" class="btn btn-view" id="fv-close-btn" data-fv-close>Close</button>
+      </div>
+    </div>
+  </div>
   <script src="assets/js/main.js"></script>
   <script>
     const message = document.getElementById('message');
@@ -139,6 +156,104 @@
       similarityReport: 'Similarity Report', adviserEndorsement: 'Adviser Endorsement',
       panelApproval: 'Panel Approval Sheet', publicationProof: 'Publication Proof'
     };
+
+    // ---- Document preview modal ----
+    const previewModal = document.getElementById('file-preview');
+    const previewBody = document.getElementById('fv-body');
+    const previewTitle = document.getElementById('fv-title');
+    const previewDownload = document.getElementById('fv-download');
+    const previewOpen = document.getElementById('fv-open');
+    let lastPreviewTrigger = null;
+
+    // Escapes for both text nodes and double-quoted attributes: file names
+    // come from whoever uploaded the document.
+    function esc(text) {
+      const div = document.createElement('div');
+      div.textContent = text == null ? '' : String(text);
+      return div.innerHTML;
+    }
+    function attr(text) {
+      return esc(text).replace(/"/g, '&quot;');
+    }
+
+    const EYE_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+
+    // What the preview pane can render for a stored file.
+    function previewKind(mime, name) {
+      const type = String(mime || '').toLowerCase();
+      const ext = String(name || '').toLowerCase().split('.').pop();
+      if (type === 'application/pdf' || ext === 'pdf') return 'pdf';
+      if (/^image\/(jpeg|jpg|png|webp)$/.test(type) || ['jpg', 'jpeg', 'png', 'webp'].includes(ext)) return 'image';
+      return 'unsupported';
+    }
+
+    // View + Download for one stored file. Both hit the same submission with
+    // the same key/docId/version — only the route differs, so the preview can
+    // never point at a different file than the download next to it.
+    function fileActions(sub, meta, key, docId, version) {
+      const qs = new URLSearchParams({ key });
+      if (docId) qs.set('docId', docId);
+      if (version) qs.set('version', String(version));
+      const id = encodeURIComponent(sub.id);
+      const download = `/api/submissions/${id}/file?${qs}`;
+      const view = `/api/submissions/${id}/file/view?${qs}`;
+      const name = meta.original_name || 'Document';
+      return `<button type="button" class="btn btn-view" data-fv-href="${attr(view)}" data-fv-download="${attr(download)}" data-fv-name="${attr(name)}" data-fv-type="${attr(meta.mime_type || '')}">${EYE_ICON} View</button>
+        <a class="btn btn-navy" href="${attr(download)}">Download</a>`;
+    }
+
+    function closePreview() {
+      if (previewModal.hidden) return;
+      previewBody.innerHTML = '';   // drop the iframe so it stops loading
+      previewModal.hidden = true;
+      document.body.classList.remove('file-preview-open');
+      if (lastPreviewTrigger) {
+        lastPreviewTrigger.focus();
+        lastPreviewTrigger = null;
+      }
+    }
+
+    function openPreview(trigger) {
+      const href = trigger.getAttribute('data-fv-href');
+      // The attachment route — what the modal's own Download button uses. It
+      // defaults to the preview URL for buttons rendered without it.
+      const downloadHref = trigger.getAttribute('data-fv-download') || href;
+      const name = trigger.getAttribute('data-fv-name') || 'Document';
+      const kind = previewKind(trigger.getAttribute('data-fv-type'), name);
+
+      lastPreviewTrigger = trigger;
+      previewTitle.textContent = name;
+      previewTitle.title = name;
+      // Download forces a save (attachment); "Open in new tab" reuses the
+      // inline route so the browser renders it instead of saving it.
+      previewDownload.href = downloadHref;
+      previewOpen.href = href;
+
+      if (kind === 'pdf') {
+        previewBody.innerHTML = `<iframe src="${attr(href)}" title="Preview of ${attr(name)}"></iframe>`;
+      } else if (kind === 'image') {
+        previewBody.innerHTML = `<img src="${attr(href)}" alt="Preview of ${attr(name)}">`;
+      } else {
+        previewBody.innerHTML = `<div class="file-preview-unsupported">
+          <p>This file type can't be previewed. Download it to open it on your device.</p>
+          <a class="btn btn-navy" href="${attr(downloadHref)}">Download</a>
+        </div>`;
+      }
+
+      previewModal.hidden = false;
+      document.body.classList.add('file-preview-open');
+      document.getElementById('fv-close-btn').focus();
+    }
+
+    // Delegated so the buttons work no matter when the table is rendered.
+    document.addEventListener('click', (e) => {
+      const opener = e.target.closest('[data-fv-href]');
+      if (opener) { e.preventDefault(); openPreview(opener); return; }
+      if (e.target.closest('[data-fv-close]')) closePreview();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closePreview();
+    });
 
     (async () => {
       const meRes = await fetch('/api/auth/me');
@@ -170,13 +285,18 @@
         `<li><strong>${STATUS_LABELS[h.status] || h.status}</strong> — ${new Date(h.at).toLocaleString()} by ${h.by}${h.note ? ' (' + h.note + ')' : ''}</li>`
       ).join('');
 
-      // Files
-      const fileRows = [];
-      for (const [key, meta] of Object.entries(s.files || {})) {
-        if (meta) fileRows.push(`<tr><td>${DOC_LABELS[key] || key}</td><td><a class="btn btn-navy" href="/api/submissions/${s.id}/file?key=${key}">Download</a></td></tr>`);
-      }
+      // Files — one row per known document slot: the buttons when the file
+      // exists, "Not uploaded" when it does not.
+      const fileRows = Object.keys(DOC_LABELS).map(key => {
+        const meta = (s.files || {})[key];
+        if (!meta) return `<tr><td>${DOC_LABELS[key]}</td><td><span class="form-note">Not uploaded</span></td></tr>`;
+        return `<tr><td>${DOC_LABELS[key]}</td><td>${fileActions(s, meta, key)}</td></tr>`;
+      });
       (s.additionalDocs || []).forEach(d => {
-        fileRows.push(`<tr><td>Additional: ${d.originalName}</td><td><a class="btn btn-navy" href="/api/submissions/${s.id}/file?key=additional&docId=${d.id}">Download</a></td></tr>`);
+        // Stored as original_name (snake_case) by the upload route; the old
+        // camelCase lookup rendered the literal "undefined" here.
+        const name = d.original_name || d.originalName || 'Additional document';
+        fileRows.push(`<tr><td>Additional: ${esc(name)}</td><td>${fileActions(s, d, 'additional', d.id)}</td></tr>`);
       });
       document.getElementById('files').innerHTML = fileRows.join('') || '<tr><td colspan="2">No files uploaded.</td></tr>';
 
