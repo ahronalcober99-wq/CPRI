@@ -52,10 +52,18 @@ Final papers: `submitted` → checking → `approved` → `published` → `archi
 - Auth: `requireAuth`.
 - Returns the fields + file slots for the caller's role and stage only.
 - `role` is taken from the session user. Presenters receive only the Final stage.
-- Shape: `{ role, roleLabel, stages: [{ stage, stageLabel, fields, slots }], conditionalFlags }`.
+- Shape: `{ role, roleLabel, stages: [{ stage, stageLabel, fields, slots }], conditionalFlags, links }`.
 - Each slot is published as `{ slot_key, label, kind, required, conditional, condition_key }` —
   `conditional` is a boolean and `condition_key` names the flag that turns it on, because
   functions cannot cross JSON. `conditionalFlags` lists those flags with labels.
+- Each field is published as `{ key, label, type, required, conditional, condition_key }`,
+  plus `options` for the selects. `type` is `text`, `textarea`, `select` or `url`; a `url`
+  field is validated as an http(s) link (see `missingRequirements()`).
+- A conditional **field** works like a conditional slot: it is only required while its flag
+  is true. `adviser_eval_link` (students, both stages) is required at the end of the semester.
+- `links` carries the buttons the page should offer, currently
+  `{ adviserEvalForm }` — the value of `ADVISER_EVAL_FORM_URL`, or `null` when the deployment
+  has not set one (the field is still there to paste a link into).
 - No stages for the caller → 403 ("Your account type cannot submit research through this module.").
 
 ### GET /:id/form-config
@@ -73,12 +81,16 @@ Final papers: `submitted` → checking → `approved` → `published` → `archi
 - Presenter + `initial` → 403. A role without that stage in `FORM_CONFIG` → 403.
 - `as_draft=1` stores an incomplete record under status `draft`: required fields and
   required slots are **not** enforced (slot legality, extension, MIME and size always are).
-- Otherwise the shared completeness check runs: required text fields → 400 with
-  `{ error, field }`; required slots (including conditional ones whose flag is true) → 400
-  with `{ error, slot }`.
+- Otherwise the shared completeness check runs: required fields (including conditional ones
+  whose flag is true) → 400 with `{ error, field }`; a `url` field that is not an http(s) link
+  → 400 with `{ error, field }`; required slots (including conditional ones whose flag is
+  true) → 400 with `{ error, slot }`.
+- A field only that role+stage declares is ever stored: the student-only
+  `adviser_eval_link` is dropped from a faculty or presenter request.
 - Any uploaded slot not allowed for the role+stage → 400.
 - Creates the submission (`draft` or `submitted`), a status-history row, and one file row
-  per uploaded slot (random disk path, never overwrites an older version).
+  per uploaded slot (random name, never overwrites an older version; the row records the
+  storage backend that holds it — see File storage below).
 - Returns `201` with `{ message, submission, files }`.
 
 ### GET /
@@ -206,11 +218,15 @@ older uploads readable. The boot log states the live choice:
 - Accepted types per slot: `.pdf` for PDF slots, `.doc`/`.docx` for Word slots,
   `.pdf`/`.doc`/`.docx` for `additional_documents`. Unknown extensions are rejected.
 
-## Conditional slots
+## Conditional fields and slots
 
-Two slots are conditional for students (both stages):
-- `form_g` → required only when `adviser_changed` is true.
-- `adviser_eval` → required only when `end_of_semester` is true.
+One slot and one field are conditional for students (both stages):
+- `form_g` (a file) → required only when `adviser_changed` is true.
+- `adviser_eval_link` (a link) → required only when `end_of_semester` is true.
+
+The adviser evaluation is filled in through a designated Google Form, so the end-of-semester
+requirement is the **link**, not a document; `adviser_eval` remains available as an optional
+scanned copy. Both the field and the slot read the same flag, so they cannot disagree.
 
 The form posts the flags as multipart text fields; only the exact string values
 `true` / `1` / `yes` / `on` count (`"false"` is not truthy). The server re-evaluates the

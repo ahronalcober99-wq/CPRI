@@ -273,7 +273,7 @@ const MEMBER_ONLY_PAGES = new Set([
   'researcher-form.html', 'publication-form.html', 'innovation-extension-form.html',
   'event-abstract.html', 'event-registration.html',
   // Research Submission Module pages (served from public/ like every other page).
-  'research-submission.html', 'research-submission-detail.html'
+  'research-submission.html', 'research-submission-detail.html', 'my-submissions.html'
 ]);
 
 app.use(async (req, res, next) => {

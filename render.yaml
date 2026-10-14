@@ -70,3 +70,10 @@ services:
         sync: false
       - key: SUPABASE_EVENT_BUCKET
         sync: false
+
+      # Optional: the designated Google Form for the researchers' evaluation of
+      # their research adviser. With it set, the submission form offers an
+      # "Open the Google Form" button beside the link field; left empty, the
+      # button is hidden and students still paste the link they were given.
+      - key: ADVISER_EVAL_FORM_URL
+        value: ''

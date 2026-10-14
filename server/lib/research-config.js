@@ -101,7 +101,7 @@ const makeSlot = (key, label, kind, required, conditional = null, conditionKey =
 // slot is introduced: the router and the form pages both read this list.
 export const CONDITIONAL_FLAGS = [
   { key: 'adviser_changed', label: 'My adviser changed' },
-  { key: 'end_of_semester', label: 'End of semester (adviser evaluation attached)' }
+  { key: 'end_of_semester', label: 'End of semester (adviser evaluation due)' }
 ];
 
 // Student — Initial stage slots
@@ -117,7 +117,10 @@ const STUDENT_INITIAL_SLOTS = [
   makeSlot('form_g',           'Form G',              'pdf',      true,   (ctx) => ctx.data?.adviser_changed, 'adviser_changed'),
   makeSlot('defense_photos',   'Defense Photos',      'pdf',      true),
   makeSlot('official_receipt', 'Official Receipt',   'pdf',      true),
-  makeSlot('adviser_eval',     'Adviser Evaluation',  'pdf',      true,   (ctx) => ctx.data?.end_of_semester, 'end_of_semester'),
+  // The adviser evaluation is filled in through a Google Form, so what the
+  // student owes at the end of the semester is its LINK (the conditional url
+  // field below), not a document. A scanned copy can still be attached here.
+  makeSlot('adviser_eval',     'Adviser Evaluation (optional copy)', 'pdf', false),
   makeSlot('additional_documents', 'Additional Documents', 'optional', false)
 ];
 
@@ -136,7 +139,9 @@ const STUDENT_FINAL_SLOTS = [
   makeSlot('form_i',           'Form I',              'pdf',      true),
   makeSlot('defense_photos',   'Defense Photos',      'pdf',      true),
   makeSlot('official_receipt', 'Official Receipt',   'pdf',      true),
-  makeSlot('adviser_eval',     'Adviser Evaluation',  'pdf',      true,   (ctx) => ctx.data?.end_of_semester, 'end_of_semester'),
+  // See STUDENT_INITIAL_SLOTS: the end-of-semester requirement is the Google
+  // Form LINK; this stays available as an optional attachment.
+  makeSlot('adviser_eval',     'Adviser Evaluation (optional copy)', 'pdf', false),
   makeSlot('data_instruments', 'Data and Instruments (PDF)', 'pdf', true),
   makeSlot('additional_documents', 'Additional Documents', 'optional', false)
 ];
@@ -246,6 +251,39 @@ export const SEMESTERS = [
   { value: 'summer', label: 'Summer' }
 ];
 
+// ---------------------------------------------------------------------------
+//  Link fields
+//
+//  The adviser evaluation is a Google Form the researchers fill in themselves,
+//  so the form collects the LINK to it rather than a file. It is a real field
+//  (its own column) because a URL is not a document: nothing is uploaded, so no
+//  slot or storage backend is involved. It is required at the end of the
+//  semester, which is the flag that used to make the adviser_eval file slot
+//  mandatory: the link IS the evidence, so a student no longer has to print an
+//  online form to PDF as well. The file slot stays available as an optional
+//  attachment for a scanned copy.
+// ---------------------------------------------------------------------------
+const adviserEvalLinkField = {
+  key: 'adviser_eval_link',
+  label: "Researchers' Evaluation of Adviser (Google Form link)",
+  type: 'url',
+  required: true,
+  conditional: (ctx) => ctx.data?.end_of_semester,
+  condition_key: 'end_of_semester'
+};
+
+// A link is only accepted when it really is one: javascript: and data: URLs are
+// rejected, which matters because the value is rendered back as a clickable
+// link on the detail page.
+export function isHttpUrl(value) {
+  try {
+    const url = new URL(String(value ?? '').trim());
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 // ---- Roles, stages, fields ----
 // One source of truth for /api/research-submissions/form-config.
 // The front end renders ONLY what this returns for the current caller.
@@ -262,7 +300,9 @@ export const FORM_CONFIG = {
         { key: 'semester',        label: 'Semester',                              type: 'select', required: true, options: SEMESTERS },
         // Student-only fields
         { key: 'adviser',         label: 'Adviser',                               type: 'text',  required: true },
-        { key: 'facilitator',     label: 'Facilitator',                           type: 'text',  required: true }
+        { key: 'facilitator',     label: 'Facilitator',                           type: 'text',  required: true },
+        // Required only at the end of the semester (see adviserEvalLinkField).
+        { ...adviserEvalLinkField }
       ],
       slots: STUDENT_INITIAL_SLOTS
     },
@@ -280,7 +320,9 @@ export const FORM_CONFIG = {
         { key: 'facilitator',     label: 'Facilitator',                           type: 'text',  required: true },
         // Final-only fields
         { key: 'abstract',        label: 'Abstract',                              type: 'textarea', required: true },
-        { key: 'keywords',        label: 'Keywords',                              type: 'text',  required: true }
+        { key: 'keywords',        label: 'Keywords',                              type: 'text',  required: true },
+        // Required only at the end of the semester (see adviserEvalLinkField).
+        { ...adviserEvalLinkField }
       ],
       slots: STUDENT_FINAL_SLOTS
     }
@@ -509,15 +551,31 @@ export function missingRequirements({ role, stage, data = {}, haveFiles = new Se
   }
 
   const problems = [];
+  // Built first: a conditional field — and a conditional slot — needs it to know
+  // whether it is required right now.
+  const context = buildValidationContext(stage, role, data);
+
   for (const field of stageConfig.fields) {
-    if (!field.required) continue;
-    const value = data[field.key];
-    if (value === undefined || value === null || String(value).trim() === '') {
-      problems.push({ error: `Required field is missing: ${field.label}.`, field: field.key });
+    if (field.required && (!field.conditional || field.conditional(context))) {
+      const value = data[field.key];
+      if (value === undefined || value === null || String(value).trim() === '') {
+        problems.push({ error: `Required field is missing: ${field.label}.`, field: field.key });
+      }
+    }
+    // A link field has to look like a link. Checked only when a value was given:
+    // an optional link may be left blank, and a conditional one whose flag is off
+    // was already skipped above.
+    if (field.type === 'url') {
+      const value = String(data[field.key] ?? '').trim();
+      if (value && !isHttpUrl(value)) {
+        problems.push({
+          error: `"${field.label}" must be a link starting with http:// or https://.`,
+          field: field.key
+        });
+      }
     }
   }
 
-  const context = buildValidationContext(stage, role, data);
   for (const slot of stageConfig.slots) {
     if (!slot.required) continue;
     if (slot.conditional && !slot.conditional(context)) continue;
@@ -526,6 +584,23 @@ export function missingRequirements({ role, stage, data = {}, haveFiles = new Se
     }
   }
   return problems;
+}
+
+// Serialisable description of a field for the front ends. Mirrors describeSlot:
+// functions cannot cross JSON, so `conditional` becomes a boolean and the
+// deciding flag is published as `condition_key`. `options` only travels for the
+// fields that have them (the selects).
+export function describeField(field) {
+  const described = {
+    key: field.key,
+    label: field.label,
+    type: field.type || 'text',
+    required: Boolean(field.required),
+    conditional: Boolean(field.conditional),
+    condition_key: field.condition_key || null
+  };
+  if (field.options) described.options = field.options.map(o => ({ ...o }));
+  return described;
 }
 
 // Serialisable description of a slot for the front ends. Functions cannot cross

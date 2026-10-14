@@ -7,10 +7,16 @@
   collide with the legacy `submissions` table used by the generic submit.html.
 - `server/research-submissions.js` — Express router mounted at `/api/research-submissions/*`,
   plus `ensureResearchSubmissionsSchema()` (the tables are created on boot).
-- `server/research-submissions.test.mjs` — offline suite (no database needed).
-- `server/research-submissions.db.test.mjs` — the same rules against the real database.
-- `public/research-submission.html` — the form page.
-- `public/research-submission-detail.html` — the detail/comment/version page.
+- `server/lib/research-storage.js` — where the uploaded bytes actually live (Supabase
+  Storage when the deployment has it configured, the local disk otherwise).
+- `server/dev/test-research-submissions.mjs` — offline suite (no database needed).
+- `server/dev/test-research-submissions-db.mjs` — the same rules against the real database.
+- `public/submit.html` — the form page: the site's existing **Submit Research** page,
+  now driven by the module's role+stage config.
+- `public/my-submissions.html` — your own records: status badges, status timeline,
+  documents and versions, comments.
+- `public/research-submission-detail.html` — the single-submission detail page.
+- `public/research-submission.html` — kept only as a redirect to `submit.html`.
 - `ROUTES.md` — endpoint reference; `check-doc.js` proves it matches the router.
 - `MANUAL_TESTING.md` — this file.
 
@@ -20,8 +26,10 @@
 - Same tokens as submit.html, contact.html, profile.html:
   `skip-link`, `page-header`, `section`, `container`, `card`, `form-message`,
   `empty-state`, `form-group`, `btn-primary`, `btn-navy`, `badge`, `contact-row`.
-- Form fields render from `/api/research-submissions/form-config` — only the caller's
-  role+stage is shown; the user never picks their role.
+- `submit.html` is the module's front door and keeps its original page header, card and
+  button styling. Every field and document slot is rendered from
+  `/api/research-submissions/form-config`, so only the caller's role+stage is ever shown;
+  the user never picks their role.
 
 ## Local run
 Everything is already wired into the existing app — nothing to copy.
@@ -30,7 +38,8 @@ Everything is already wired into the existing app — nothing to copy.
 2. `npm run db:init` (or just start the server: the module's tables are created on boot by
    `ensureResearchSubmissionsSchema()`; `db/migrations/005_research_submissions.sql` is the
    hand-written mirror)
-3. `npm start`, then open `http://localhost:3000/research-submission.html` while signed in.
+3. `npm start`, then open `http://localhost:3000/submit.html` (the form) and
+   `http://localhost:3000/my-submissions.html` (your records) while signed in.
    The pages live in the site's own `public/` folder, so the normal static mount serves
    them, and the server-side `MEMBER_ONLY_PAGES` guard gates both like the other member
    pages (signed out ⇒ redirect to `login.html?next=...`).
@@ -39,7 +48,7 @@ Everything is already wired into the existing app — nothing to copy.
 
 ## Auth requirement
 - Every endpoint requires a valid Express session (`req.session.userId`). If you are
-  signed out, the form page redirects to `login.html?next=research-submission.html`.
+  signed out, the form page redirects to `login.html?next=submit.html`.
 - The form's `/api/research-submissions/me` returns `{ id, name, role }` from the session.
   Client-supplied role / owner_id / status are ignored everywhere (only the session is trusted).
 
@@ -61,12 +70,17 @@ Create or use existing accounts with these roles:
 - Sign in as an adviser or staff: should show "Your account type cannot submit research
   through this module." (Advisers can update assigned submissions, not create new ones here.)
 
-### 3. File slots — required / conditional / optional
-- Student Initial: 9 Required, 2 Conditional (`form_g`, `adviser_eval`), 1 Optional
-  (`additional_documents`) — the counts under "File Uploads" should say exactly that.
-- `form_g` is required only if "My adviser changed" is ticked, and `adviser_eval` only if
-  "End of semester" is ticked. Those two checkboxes are drawn from the config
-  (`conditionalFlags`), not hard-coded.
+### 3. Documents — required / conditional / optional
+- Student Initial: 9 Required, 1 Conditional (`form_g`), 2 Optional (`adviser_eval`,
+  `additional_documents`) — the counts under **Required Documents** should say exactly that,
+  and the checklist chips tick off each document as it is attached.
+- `form_g` is required only if "My adviser changed" is ticked. That checkbox is drawn from
+  the config (`conditionalFlags`), not hard-coded.
+- The adviser evaluation is a Google Form **link**, not a document: tick "End of semester"
+  and `adviser_eval_link` becomes required (the optional `adviser_eval` copy can still be
+  attached). The link is validated as an http(s) URL on both sides, so `javascript:` is out.
+- With `ADVISER_EVAL_FORM_URL` set, the link field also offers an "Open the Google Form"
+  button; without it, the field is still there to paste the link into.
 - Tick one and the live summary beside Submit should grow by one required file; untick it
   and it drops back. The server applies the same rule, so an unticked flag never demands
   the file and a ticked one does.
@@ -79,8 +93,8 @@ Create or use existing accounts with these roles:
   marker in the summary before submit.
 - Leave a required field blank → inline field error + summary "X required fields missing."
 - Leave a required file missing → summary "X required files missing."
-- Submit → server creates the submission with status `submitted`, and the confirmation
-  message stays on screen.
+- Submit → the server creates the submission with status `submitted`, the page confirms,
+  and it then redirects to `my-submissions.html`, where the row appears with a badge.
 - "Save as draft" sends the same POST with `as_draft=1` and really does store a draft:
   the row's status is `draft`, and an empty form is accepted.
   - Open the new draft's detail page: it shows a "Submit for checking" card.
@@ -88,6 +102,15 @@ Create or use existing accounts with these roles:
     missing (e.g. "Required field is missing: Author(s).") and the draft stays a draft.
   - Complete it (upload the required files, fill the fields), press it again → the status
     becomes `submitted` and the history shows Draft → Submitted.
+
+### 4b. My Submissions
+- Open `my-submissions.html`: only your own submissions are listed (an adviser or
+  facilitator sees the ones assigned to them, staff/admin see everything — the endpoint
+  decides that, the page only renders the answer).
+- Every row carries a colour-coded status badge plus the stage, type and dates.
+- "Show details" expands in place to the status timeline, the documents with **every
+  version** and a download link each, and the comment thread.
+- "New Submission" goes back to the form; "Open full page" opens the detail page.
 
 ### 5. Ownership isolation
 - Create a submission as Student A.

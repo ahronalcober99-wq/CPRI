@@ -78,6 +78,7 @@ import {
   buildValidationContext,
   isTruthyFlag,
   missingRequirements,
+  describeField,
   describeSlot,
   CONDITIONAL_FLAGS,
   WORD_EXTENSIONS,
@@ -98,6 +99,12 @@ import {
 // `research-submissions/<id>/files/<uuid>.pdf` therefore lands in
 // server/data/research-submissions/<id>/files/.
 export const RESEARCH_SUBMISSIONS_UPLOAD_DIR = join(process.cwd(), 'server', 'data');
+
+// The designated Google Form for the adviser evaluation, when the deployment
+// has one. /form-config publishes it so the form page can offer a button that
+// opens it; a student can always paste the link they were given instead, so an
+// unconfigured deployment stays fully usable.
+const ADVISER_EVAL_FORM_URL = String(process.env.ADVISER_EVAL_FORM_URL || '').trim();
 
 // ============================================================
 //  Router factory
@@ -398,7 +405,7 @@ router.get('/form-config', requireAuth, async (req, res) => {
     result.stages.push({
       stage: 'initial',
       stageLabel: 'Initial Submission',
-      fields: config.initial.fields.map(f => ({ ...f })),
+      fields: config.initial.fields.map(describeField),
       slots: config.initial.slots.map(describeSlot)
     });
   }
@@ -406,7 +413,7 @@ router.get('/form-config', requireAuth, async (req, res) => {
     result.stages.push({
       stage: 'final',
       stageLabel: 'Final Submission',
-      fields: config.final.fields.map(f => ({ ...f })),
+      fields: config.final.fields.map(describeField),
       slots: config.final.slots.map(describeSlot)
     });
   }
@@ -414,6 +421,10 @@ router.get('/form-config', requireAuth, async (req, res) => {
   // The flags a conditional slot depends on, so the page can render the
   // controls instead of hard-coding them.
   result.conditionalFlags = CONDITIONAL_FLAGS.map(f => ({ ...f }));
+
+  // Links the page should offer as buttons. Null when the deployment has not
+  // set one, in which case the field is still there to paste a link into.
+  result.links = { adviserEvalForm: ADVISER_EVAL_FORM_URL || null };
 
   res.json(result);
 });
@@ -513,6 +524,11 @@ router.post(
       facilitator_id:   body.facilitator ? String(body.facilitator).trim() : null,
       abstract:         requestedStage === 'final' ? String(body.abstract || '').trim() : '',
       keywords:         requestedStage === 'final' ? String(body.keywords || '').trim() : '',
+      // Stored only when this role+stage actually declares the field, so a
+      // faculty or presenter request cannot smuggle in a student-only value.
+      adviser_eval_link: fieldKeysFor(role, requestedStage).has('adviser_eval_link')
+        ? String(body.adviser_eval_link || '').trim()
+        : '',
       status:           stageDefaults[requestedStage].status,
       created_at:       now,
       updated_at:       now
@@ -1274,6 +1290,14 @@ function statusLabelFor(status, stage) {
   return FINAL_STATUSES.find(s => s.value === status)?.label || status;
 }
 
+// The field keys the config declares for a role+stage. Used to decide which
+// client-supplied values may be stored, so a field belonging to another role
+// (the student-only adviser-evaluation link, for instance) cannot be smuggled in
+// through a request body.
+function fieldKeysFor(role, stage) {
+  return new Set((FORM_CONFIG[role]?.[stage]?.fields || []).map(f => f.key));
+}
+
 function toColumn(fieldKey) {
   const map = {
     title: 'title',
@@ -1347,6 +1371,7 @@ export async function ensureResearchSubmissionsSchema(dependencies = {}) {
       facilitator_id  VARCHAR(36) DEFAULT NULL,
       abstract        TEXT DEFAULT NULL,
       keywords        VARCHAR(255) DEFAULT NULL,
+      adviser_eval_link VARCHAR(1000) NOT NULL DEFAULT '',
       status          VARCHAR(40) NOT NULL DEFAULT 'submitted',
       created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1432,6 +1457,11 @@ export async function ensureResearchSubmissionsSchema(dependencies = {}) {
   // version of this module — are caught up here. SHOW COLUMNS comes first, so
   // running this on every boot is safe, exactly like ensureUsersSchema.
   const columnsToAdd = [
+    {
+      table: 'research_submissions',
+      name: 'adviser_eval_link',
+      sql: "ALTER TABLE research_submissions ADD COLUMN adviser_eval_link VARCHAR(1000) NOT NULL DEFAULT ''"
+    },
     {
       table: 'research_submission_files',
       name: 'storage_backend',

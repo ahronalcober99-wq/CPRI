@@ -32,7 +32,7 @@
         </div>
 
         <div id="detail" style="display:none;">
-          <p><a href="research-submission.html">&larr; Back to the submission form</a></p>
+          <p><a href="submit.html">&larr; Back to the submission form</a></p>
 
           <div class="grid grid-2" style="gap:18px;">
             <div class="card">
@@ -82,7 +82,7 @@
             <h3>This is still a draft</h3>
             <p class="form-note" id="draft-note">Nothing has been sent for checking yet. Finish the details and uploads on the submission form, then hand it in here.</p>
             <p style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:0;">
-              <a class="btn btn-outline" href="research-submission.html">Edit the form</a>
+              <a class="btn btn-outline-dark" href="submit.html">Edit the form</a>
               <button class="btn btn-primary" id="submit-draft-btn">Submit for checking</button>
               <span class="form-note" id="draft-status" style="margin:0;"></span>
             </p>
@@ -190,10 +190,20 @@
         form_i: 'Form I',
         defense_photos: 'Defense Photos',
         official_receipt: 'Official Receipt',
-        adviser_eval: 'Adviser Evaluation',
+        adviser_eval: 'Adviser Evaluation (optional copy)',
         data_instruments: 'Data and Instruments (PDF)',
         additional_documents: 'Additional Documents'
       };
+
+      // Anything typed by a person — a title, a comment body, a status note, an
+      // uploader's name — is escaped before it is interpolated below: this page
+      // builds its markup as strings, so unescaped values would be a stored-XSS
+      // hole.
+      function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[ch]);
+      }
 
       async function fetchJson(url, opts) {
         const res = await fetch(url, opts);
@@ -275,7 +285,7 @@
         // Status history
         const history = s.statusHistory || [];
         document.getElementById('history').innerHTML = history.length ? history.map(h =>
-          `<li><strong>${STATUS_LABELS[h.to_status] || h.to_status}</strong> — ${new Date(h.changed_at).toLocaleString()} by ${h.changed_by_name || h.changed_by}${h.note ? ' (' + h.note + ')' : ''}</li>`
+          `<li><strong>${esc(STATUS_LABELS[h.to_status] || h.to_status)}</strong> — ${new Date(h.changed_at).toLocaleString()} by ${esc(h.changed_by_name || h.changed_by)}${h.note ? ' (' + esc(h.note) + ')' : ''}</li>`
         ).join('') : '<p class="form-note">No status changes yet.</p>';
 
         // Files
@@ -284,7 +294,7 @@
         for (const f of files) {
           const label = FILE_LABEL_BY_KEY[f.slot_key] || f.slot_key;
           const dlHref = `/api/research-submissions/${encodeURIComponent(id)}/files/${encodeURIComponent(f.id)}`;
-          fileRows.push(`<tr><td>${label} <span class="form-note">v${f.version}</span></td><td><a class="btn btn-navy" href="${dlHref}">Download</a></td></tr>`);
+          fileRows.push(`<tr><td>${esc(label)} <span class="form-note">v${esc(f.version)}</span></td><td><a class="btn btn-navy" href="${dlHref}">Download</a></td></tr>`);
         }
         document.getElementById('files').innerHTML = fileRows.length ? fileRows.join('') : '<tr><td colspan="2">No files uploaded.</td></tr>';
 
@@ -295,9 +305,9 @@
           const rows = [];
           for (const f of (v.files || [])) {
             const label = FILE_LABEL_BY_KEY[f.slot_key] || f.slot_key;
-            rows.push(`<tr><td>${label} <span class="form-note">v${f.version}</span></td><td><a class="btn btn-navy" href="/api/research-submissions/${encodeURIComponent(id)}/files/${encodeURIComponent(f.id)}">Download</a></td></tr>`);
+            rows.push(`<tr><td>${esc(label)} <span class="form-note">v${esc(f.version)}</span></td><td><a class="btn btn-navy" href="/api/research-submissions/${encodeURIComponent(id)}/files/${encodeURIComponent(f.id)}">Download</a></td></tr>`);
           }
-          return `<div style="margin-bottom:14px;"><strong>Version ${v.version}</strong> — ${new Date(v.date).toLocaleString()} by ${v.uploader}${v.note ? ' · ' + v.note : ''}
+          return `<div style="margin-bottom:14px;"><strong>Version ${esc(v.version)}</strong> — ${new Date(v.date).toLocaleString()} by ${esc(v.uploader)}${v.note ? ' · ' + esc(v.note) : ''}
           <table style="margin-top:6px;"><tbody>${rows.join('') || '<tr><td colspan="2">No files.</td></tr>'}</tbody></table></div>`;
         }).join('') : '<p class="form-note">No versions yet.</p>';
 
@@ -435,8 +445,8 @@
         const commentsEl = document.getElementById('comments');
         commentsEl.innerHTML = comments.length ? comments.map(c =>
           `<div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">
-            <div class="meta">${c.comment_type || 'Comment'} · ${c.author_name} (${c.author_role || '—'}) · ${new Date(c.created_at).toLocaleString()}</div>
-            <p style="margin:6px 0 0;">${c.body}</p>${c.parent_id ? '<p style="margin:2px 0 0;color:var(--cpri-muted);font-size:.85rem;">Reply to ' + (c.parent_id ? 'a comment' : '') + '</p>' : ''}</div>`
+            <div class="meta">${esc(c.comment_type || 'Comment')} · ${esc(c.author_name)} (${esc(c.author_role || '—')}) · ${new Date(c.created_at).toLocaleString()}</div>
+            <p style="margin:6px 0 0;">${esc(c.body)}</p>${c.parent_id ? '<p style="margin:2px 0 0;color:var(--cpri-muted);font-size:.85rem;">Reply to a comment</p>' : ''}</div>`
         ).join('') : '<p class="form-note">No comments yet.</p>';
 
         // Comment box

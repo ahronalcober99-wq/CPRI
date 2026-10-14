@@ -290,13 +290,14 @@ test('the student initial slot list matches the brief exactly', () => {
     'manuscript_docx', 'manuscript_pdf', 'official_receipt'
   ]);
   const conditionalRequired = slots.filter(s => s.required && s.conditional).map(s => s.slot_key).sort();
-  assert.deepEqual(conditionalRequired, ['adviser_eval', 'form_g'],
-    'required only when adviser_changed / end_of_semester is true');
+  assert.deepEqual(conditionalRequired, ['form_g'],
+    'form_g is the only file required on a condition (adviser changed)');
   const optional = slots.filter(s => !s.required).map(s => s.slot_key).sort();
-  assert.deepEqual(optional, ['additional_documents'], 'only additional documents are always optional');
+  assert.deepEqual(optional, ['additional_documents', 'adviser_eval'],
+    'the adviser evaluation is a Google Form link, so its file slot is an optional copy');
   const conditional = slots.filter(s => s.conditional).map(s => s.slot_key).sort();
-  assert.deepEqual(conditional, ['adviser_eval', 'form_g'],
-    'form_g (adviser changed) and adviser_eval (end of semester) are conditional');
+  assert.deepEqual(conditional, ['form_g'],
+    'form_g (adviser changed) is the only conditional file slot');
   assert.ok(WORD_EXTENSIONS.has('.doc') && WORD_EXTENSIONS.has('.docx'));
 });
 
@@ -355,6 +356,16 @@ test('a user cannot read, edit, upload to, or download another user\'s submissio
       body: JSON.stringify({ body: 'not mine' })
     });
     assert.equal(comment.status, 403);
+
+    // --- list ---
+    // "My Submissions" must be scoped by the server, not by the page filtering
+    // whatever it was given: another researcher's own list never contains it.
+    const strangerList = await module.json(await module.call(stranger, '/'));
+    assert.equal(strangerList.status, 200);
+    assert.deepEqual(strangerList.body.submissions, [],
+      'a researcher sees an empty list, not someone else\'s row');
+    const ownerList = await module.json(await module.call(owner, '/'));
+    assert.deepEqual(ownerList.body.submissions.map(s => s.id), [submission.id]);
 
     // The owner still sees everything.
     assert.equal((await module.call(owner, `/${submission.id}`)).status, 200);
@@ -1347,24 +1358,152 @@ test('a bucket-stored file explains itself when this server has no Supabase conf
   }
 });
 
-test('the boot DDL adds storage_backend only to a table missing it', async () => {
+// Runs the boot DDL against a fake database and returns the ALTERs it issued.
+async function bootDdlAlters(existingColumnsByTable) {
   const statements = [];
-  const existing = {
-    research_submission_files: ['id', 'stored_path', 'storage_backend'],
-    research_ethics_clearances: ['id', 'file_path']
-  };
   await ensureResearchSubmissionsSchema({
     run: async (sql) => {
       statements.push(sql);
       const show = String(sql).match(/^SHOW COLUMNS FROM (\w+)$/);
-      if (show) return (existing[show[1]] || []).map(Field => ({ Field }));
+      if (show) return (existingColumnsByTable[show[1]] || []).map(Field => ({ Field }));
       return [];
     }
   });
-
-  const altered = statements
+  return statements
     .filter(sql => /^ALTER TABLE/.test(sql))
     .map(sql => sql.match(/^ALTER TABLE (\w+)/)[1]);
-  assert.deepEqual(altered, ['research_ethics_clearances'],
-    'a table that already has the column is left untouched, so every boot is safe');
+}
+
+test('the boot DDL adds a column only where it is missing', async () => {
+  // A database that already has both storage_backend columns but not the
+  // adviser-evaluation link: only research_submissions is touched.
+  assert.deepEqual(
+    await bootDdlAlters({
+      research_submissions: ['id', 'title'],
+      research_submission_files: ['id', 'stored_path', 'storage_backend'],
+      research_ethics_clearances: ['id', 'file_path', 'storage_backend']
+    }),
+    ['research_submissions']
+  );
+
+  // Everything already present: nothing is altered, so every boot is safe.
+  assert.deepEqual(
+    await bootDdlAlters({
+      research_submissions: ['id', 'adviser_eval_link'],
+      research_submission_files: ['id', 'storage_backend'],
+      research_ethics_clearances: ['id', 'storage_backend']
+    }),
+    []
+  );
+
+  // A table that is missing one of them is caught up.
+  assert.deepEqual(
+    await bootDdlAlters({
+      research_submissions: ['id', 'adviser_eval_link'],
+      research_submission_files: ['id', 'stored_path', 'storage_backend'],
+      research_ethics_clearances: ['id', 'file_path']
+    }),
+    ['research_ethics_clearances']
+  );
+});
+
+// ===========================================================================
+//  The adviser-evaluation link field (a Google Form, not a document)
+// ===========================================================================
+test('the adviser-evaluation link is a student-only url field, required at end of semester', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const faculty = account('non_teaching_researcher');
+
+    const studentCfg = await module.json(await module.call(student, '/form-config'));
+    const link = studentCfg.body.stages
+      .flatMap(s => s.fields)
+      .find(f => f.key === 'adviser_eval_link');
+    assert.ok(link, 'a student is offered the link field');
+    assert.equal(link.type, 'url', 'it is a link, not a file slot');
+    assert.equal(link.required, true);
+    assert.equal(link.conditional, true, 'published as a boolean: functions cannot cross JSON');
+    assert.equal(link.condition_key, 'end_of_semester');
+
+    const facultyCfg = await module.json(await module.call(faculty, '/form-config'));
+    for (const stage of facultyCfg.body.stages) {
+      assert.ok(!stage.fields.some(f => f.key === 'adviser_eval_link'),
+        'faculty has no adviser-evaluation link (it is a student form)');
+    }
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('the link is enforced only when the end-of-semester flag is set', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+
+    // Flag off: not required, so the ordinary submission still goes through.
+    const withoutFlag = await createStudentInitial(module, student);
+    assert.ok(withoutFlag.id);
+    assert.equal(withoutFlag.adviser_eval_link, '');
+
+    const withFiles = (extra) => uploadForm(STUDENT_INITIAL_FILES, {
+      ...STUDENT_INITIAL_FORM, end_of_semester: 'true', ...extra
+    });
+
+    // Flag on, no link → 400 naming the field.
+    let res = await module.call(student, '/', { method: 'POST', body: withFiles({}) });
+    let body = await res.json();
+    assert.equal(res.status, 400, JSON.stringify(body));
+    assert.equal(body.field, 'adviser_eval_link');
+
+    // A value that is not a link is refused.
+    for (const bad of ['forms.gle/abc123', 'javascript:alert(1)', 'not a url']) {
+      res = await module.call(student, '/', {
+        method: 'POST',
+        body: withFiles({ adviser_eval_link: bad })
+      });
+      body = await res.json();
+      assert.equal(res.status, 400, `${bad} must be refused: ${JSON.stringify(body)}`);
+      assert.match(body.error, /http:\/\/ or https:\/\//);
+    }
+
+    // A real link satisfies the end-of-semester requirement on its own: no
+    // adviser_eval PDF is needed, because the evaluation lives in the form.
+    res = await module.call(student, '/', {
+      method: 'POST',
+      body: withFiles({ adviser_eval_link: 'https://forms.gle/abc123' })
+    });
+    body = await res.json();
+    assert.equal(res.status, 201, JSON.stringify(body));
+    assert.equal(body.submission.adviser_eval_link, 'https://forms.gle/abc123');
+    assert.ok(!Object.keys(body.files || {}).includes('adviser_eval'),
+      'no adviser_eval document was required once the link is given');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('a role without the link field cannot smuggle one in', async () => {
+  const module = await startModule();
+  try {
+    const faculty = account('faculty_researcher');
+    const res = await module.call(faculty, '/', {
+      method: 'POST',
+      body: uploadForm({ manuscript_docx: docx(), manuscript_pdf: pdf() }, {
+        stage: 'initial', title: 'Faculty paper', authors: 'A. Author', program: 'CAS',
+        category: 'Education', research_type: 'faculty_research',
+        school_year: '2026-2027', semester: '1st',
+        adviser_eval_link: 'https://forms.gle/sneaky'
+      })
+    });
+    const body = await res.json();
+    assert.equal(res.status, 201, JSON.stringify(body));
+    assert.equal(body.submission.adviser_eval_link, '',
+      'the student-only value is dropped for a role whose form has no such field');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
 });

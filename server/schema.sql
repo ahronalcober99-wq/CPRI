@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS research_submissions (
   facilitator_id  VARCHAR(36) DEFAULT NULL,
   abstract        TEXT DEFAULT NULL,
   keywords        VARCHAR(255) DEFAULT NULL,
+  adviser_eval_link VARCHAR(1000) NOT NULL DEFAULT '',
   status          VARCHAR(40) NOT NULL DEFAULT 'submitted',
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

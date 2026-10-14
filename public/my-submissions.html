@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Submissions | CPRI</title>
+  <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>My Submissions</h1>
+        <p id="page-sub">Everything you have submitted, with its status, comments and version history.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container" style="max-width:900px;">
+        <div class="form-message" id="message"></div>
+
+        <div class="card" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+          <div>
+            <h3 style="margin:0 0 6px;">Your research records</h3>
+            <p class="form-note" id="scope-note" style="margin:0;"></p>
+          </div>
+          <a href="submit.html" class="btn btn-primary">New Submission</a>
+        </div>
+
+        <div id="not-logged" class="empty-state" style="display:none;">
+          Please <a href="login.html">log in</a> to see your submissions.
+        </div>
+
+        <div id="empty" class="empty-state" style="display:none;">
+          You have no submissions yet. Use <strong>New Submission</strong> to send your first one.
+        </div>
+
+        <div id="list" style="display:none;"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      // "My Submissions" for a researcher means their OWN records; for an
+      // adviser or facilitator the same endpoint answers with the submissions
+      // assigned to them, and for staff/admin with everything. The server
+      // decides which of those is true — this page only renders the answer, and
+      // never asks for another user's submission.
+
+      const STATUS_LABELS = {
+        draft: 'Draft',
+        submitted: 'Submitted',
+        under_initial_checking: 'Under Initial Checking',
+        for_revision: 'For Revision',
+        under_ethics_review: 'Under Ethics Review',
+        approved: 'Approved',
+        published: 'Published',
+        archived: 'Archived',
+        rejected: 'Rejected'
+      };
+
+      // Badge colours follow the maroon/gold palette; the green (approved) and
+      // red (rejected) tints are the two exceptions, because "approved" and
+      // "rejected" have to be readable at a glance.
+      const STATUS_STYLES = {
+        draft:                    { bg: 'rgba(0,0,0,.06)',            fg: 'var(--cpri-muted)' },
+        submitted:                { bg: 'var(--gold-tint)',            fg: '#8a6d1f' },
+        under_initial_checking:   { bg: 'var(--gold-tint)',            fg: '#8a6d1f' },
+        under_ethics_review:      { bg: 'var(--maroon-tint)',          fg: 'var(--cpri-secondary)' },
+        for_revision:             { bg: 'var(--maroon-tint-strong)',   fg: 'var(--cpri-secondary)' },
+        approved:                 { bg: 'rgba(16,185,129,.14)',        fg: '#0b7a56' },
+        published:                { bg: 'rgba(16,185,129,.14)',        fg: '#0b7a56' },
+        archived:                 { bg: 'rgba(0,0,0,.06)',             fg: 'var(--cpri-muted)' },
+        rejected:                 { bg: 'rgba(185,28,28,.12)',         fg: '#b91c1c' }
+      };
+
+      const FILE_LABEL_BY_KEY = {
+        manuscript_docx: 'Manuscript (Word)',
+        manuscript_pdf: 'Manuscript (PDF)',
+        abstract: 'Abstract',
+        approval_sheet: 'Approval Sheet',
+        form_a: 'Form A',
+        form_b: 'Form B',
+        form_d: 'Form D',
+        form_e1: 'Form E1',
+        form_e2: 'Form E2',
+        form_f: 'Form F',
+        form_g: 'Form G',
+        form_i: 'Form I',
+        defense_photos: 'Defense Photos',
+        official_receipt: 'Official Receipt',
+        adviser_eval: 'Adviser Evaluation (optional copy)',
+        data_instruments: 'Data and Instruments (PDF)',
+        additional_documents: 'Additional Documents'
+      };
+
+      const STAGE_LABELS = { initial: 'Initial Submission', final: 'Final Submission' };
+      const TYPE_LABELS = {
+        student_thesis: 'Student Thesis',
+        capstone: 'Capstone',
+        feasibility: 'Feasibility Study',
+        action_research: 'Action Research',
+        institutional_research: 'Institutional Research',
+        faculty_research: 'Faculty Research',
+        non_teaching_research: 'Non-Teaching Research'
+      };
+
+      const messageEl = document.getElementById('message');
+      const listEl = document.getElementById('list');
+      const emptyEl = document.getElementById('empty');
+      const notLoggedEl = document.getElementById('not-logged');
+      const scopeNote = document.getElementById('scope-note');
+      const pageSub = document.getElementById('page-sub');
+
+      // Everything on this page comes from a database row or a person's typing,
+      // so it is escaped before it goes anywhere near innerHTML.
+      function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[ch]);
+      }
+
+      function when(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        return isNaN(date) ? esc(value) : date.toLocaleString();
+      }
+
+      function statusBadge(status, label) {
+        const style = STATUS_STYLES[status] || { bg: 'rgba(0,0,0,.06)', fg: 'var(--cpri-muted)' };
+        return '<span class="badge" style="background:' + style.bg + ';color:' + style.fg + ';margin:0;">' +
+          esc(label || STATUS_LABELS[status] || status) + '</span>';
+      }
+
+      function toLogin() {
+        window.location.href = 'login.html?next=my-submissions.html';
+      }
+
+      async function getJson(url) {
+        const res = await fetch(url);
+        if (res.status === 401) { toLogin(); return null; }
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Request failed.');
+        return body;
+      }
+
+      // ---- One row, plus the detail it expands into ----
+      function renderSubmission(entry, index) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.marginTop = '18px';
+
+        const head = document.createElement('div');
+        head.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;';
+        head.innerHTML =
+          '<div style="min-width:240px;flex:1;">' +
+            '<h3 style="margin:0 0 8px;">' + esc(entry.title || 'Untitled submission') + '</h3>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+              statusBadge(entry.status, entry.statusLabel) +
+              '<span class="badge" style="background:transparent;border:1px solid var(--cpri-border);color:var(--cpri-muted);margin:0;">' +
+                esc(STAGE_LABELS[entry.stage] || entry.stage || '') + '</span>' +
+            '</div>' +
+            '<p class="form-note" style="margin:10px 0 0;">' +
+              esc(entry.authors || '—') + ' · ' + esc(entry.program || '—') + ' · ' +
+              esc(TYPE_LABELS[entry.research_type] || entry.research_type || '—') +
+            '</p>' +
+            '<p class="form-note" style="margin:4px 0 0;">Submitted ' + when(entry.created_at) +
+              ' · Last update ' + when(entry.updated_at) + '</p>' +
+          '</div>';
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;';
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'btn btn-navy btn-sm';
+        toggle.textContent = 'Show details';
+        toggle.setAttribute('aria-expanded', 'false');
+        actions.appendChild(toggle);
+
+        const openFull = document.createElement('a');
+        openFull.className = 'btn btn-outline-dark btn-sm';
+        openFull.href = 'research-submission-detail.html?id=' + encodeURIComponent(entry.id);
+        openFull.textContent = 'Open full page';
+        actions.appendChild(openFull);
+
+        head.appendChild(actions);
+        card.appendChild(head);
+
+        const detail = document.createElement('div');
+        detail.style.cssText = 'display:none;margin-top:18px;border-top:1px solid var(--cpri-border);padding-top:16px;';
+        card.appendChild(detail);
+
+        let loaded = false;
+        toggle.addEventListener('click', async () => {
+          const open = toggle.getAttribute('aria-expanded') === 'true';
+          if (open) {
+            detail.style.display = 'none';
+            toggle.textContent = 'Show details';
+            toggle.setAttribute('aria-expanded', 'false');
+            return;
+          }
+          detail.style.display = '';
+          toggle.textContent = 'Hide details';
+          toggle.setAttribute('aria-expanded', 'true');
+          if (loaded) return;
+          detail.innerHTML = '<p class="form-note">Loading…</p>';
+          try {
+            const payload = await getJson('/api/research-submissions/' + encodeURIComponent(entry.id));
+            if (!payload) return; // redirected to login
+            renderDetail(detail, payload.submission || {});
+            loaded = true;
+          } catch (err) {
+            detail.innerHTML = '<p class="form-note" style="color:var(--cpri-secondary);">' +
+              esc(err.message || 'Could not load this submission.') + '</p>';
+          }
+        });
+
+        return card;
+      }
+
+      function renderDetail(container, s) {
+        const history = s.statusHistory || [];
+        const versions = s.versions || [];
+        const comments = s.comments || [];
+        const files = s.files || [];
+
+        const section = (title, inner) =>
+          '<h4 style="margin:18px 0 8px;">' + title + '</h4>' + inner;
+
+        // Status timeline — every transition, who made it and when.
+        const historyHtml = history.length
+          ? '<ol style="padding-left:20px;margin:0;">' + history.map(h =>
+              '<li>' + esc(STATUS_LABELS[h.to_status] || h.to_status) + ' — ' + when(h.changed_at) +
+              ' by ' + esc(h.changed_by_name || h.changed_by || '—') +
+              (h.note ? ' <span class="form-note">(' + esc(h.note) + ')</span>' : '') + '</li>').join('') + '</ol>'
+          : '<p class="form-note">No status changes yet.</p>';
+
+        // Documents, grouped by version: nothing is ever overwritten, so every
+        // earlier revision stays downloadable here.
+        const versionsHtml = versions.length
+          ? versions.map(v => {
+              const rows = (v.files || []).map(f =>
+                '<tr><td>' + esc(FILE_LABEL_BY_KEY[f.slot_key] || f.slot_key) +
+                ' <span class="form-note">v' + esc(f.version) + '</span></td>' +
+                '<td><a class="btn btn-navy btn-sm" href="/api/research-submissions/' +
+                encodeURIComponent(s.id) + '/files/' + encodeURIComponent(f.id) + '">Download</a></td></tr>').join('');
+              return '<div style="margin-bottom:14px;"><strong>Version ' + esc(v.version) + '</strong> — ' +
+                when(v.date) + ' by ' + esc(v.uploader || '—') +
+                (v.note ? ' <span class="form-note">' + esc(v.note) + '</span>' : '') +
+                '<table style="margin-top:6px;"><tbody>' +
+                (rows || '<tr><td><span class="form-note">No files in this version.</span></td></tr>') +
+                '</tbody></table></div>';
+            }).join('')
+          : '<p class="form-note">No documents uploaded yet.</p>';
+
+        const documentsHtml = files.length
+          ? '<p class="form-note" style="margin:0 0 8px;">' + files.length + ' document' +
+            (files.length === 1 ? '' : 's') + ' on file, in ' + (versions.length || 1) + ' version' +
+            ((versions.length || 1) === 1 ? '' : 's') + '.</p>' + versionsHtml
+          : versionsHtml;
+
+        // Comments and feedback, newest last, with the author's role.
+        const commentsHtml = comments.length
+          ? comments.map(c =>
+              '<div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">' +
+                '<div class="meta">' + esc(c.comment_type || 'Comment') + ' · ' + esc(c.author_name || '—') +
+                ' (' + esc(c.author_role || '—') + ') · ' + when(c.created_at) + '</div>' +
+                '<p style="margin:6px 0 0;">' + esc(c.body) + '</p>' +
+              '</div>').join('')
+          : '<p class="form-note">No comments yet.</p>';
+
+        container.innerHTML =
+          section('Status', historyHtml) +
+          section('Documents and version history', documentsHtml) +
+          section('Comments and feedback', commentsHtml);
+      }
+
+      (async function () {
+        try {
+          const meRes = await fetch('/api/research-submissions/me');
+          if (meRes.status === 401) { toLogin(); return; }
+          if (!meRes.ok) {
+            notLoggedEl.style.display = '';
+            return;
+          }
+          const me = await meRes.json();
+
+          const scope = me.role === 'adviser' ? 'assigned to you as an adviser'
+            : me.role === 'facilitator' ? 'assigned to you as a facilitator'
+            : (me.role === 'cpri_staff' || me.role === 'admin') ? 'across CPRI'
+            : 'you have submitted';
+          pageSub.textContent = me.role === 'cpri_staff' || me.role === 'admin'
+            ? 'Every research submission, with its status, comments and version history.'
+            : 'Your submissions, with their status, comments and version history.';
+          scopeNote.textContent = 'Showing the submissions ' + scope + '.';
+
+          const payload = await getJson('/api/research-submissions');
+          if (!payload) return;
+          const submissions = payload.submissions || [];
+
+          if (!submissions.length) {
+            emptyEl.style.display = '';
+            return;
+          }
+
+          listEl.style.display = '';
+          submissions.forEach((entry, index) => listEl.appendChild(renderSubmission(entry, index)));
+        } catch (err) {
+          messageEl.className = 'form-message error';
+          messageEl.textContent = err.message || 'Could not load your submissions.';
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

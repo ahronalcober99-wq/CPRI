@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS research_submissions (
   facilitator_id  VARCHAR(36) DEFAULT NULL,
   abstract        TEXT DEFAULT NULL,
   keywords        VARCHAR(255) DEFAULT NULL,
+  adviser_eval_link VARCHAR(1000) NOT NULL DEFAULT '',
   status          VARCHAR(40) NOT NULL DEFAULT 'submitted',
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -121,3 +122,11 @@ CREATE TABLE IF NOT EXISTS research_ethics_clearances (
 -- ----------------------------------------------------------------------------
 ALTER TABLE research_submission_files  ADD COLUMN storage_backend VARCHAR(20) NOT NULL DEFAULT 'disk';
 ALTER TABLE research_ethics_clearances ADD COLUMN storage_backend VARCHAR(20) NOT NULL DEFAULT 'disk';
+
+-- ----------------------------------------------------------------------------
+--  `adviser_eval_link` (the Google Form the researchers fill in at the end of
+--  the semester). Same reason as above: an existing table is not touched by
+--  CREATE TABLE IF NOT EXISTS, so the column is added here as well. Every
+--  earlier row keeps the empty default.
+-- ----------------------------------------------------------------------------
+ALTER TABLE research_submissions      ADD COLUMN adviser_eval_link VARCHAR(1000) NOT NULL DEFAULT '';
