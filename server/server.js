@@ -272,7 +272,7 @@ const MEMBER_ONLY_PAGES = new Set([
   'ethics.html', 'ethics-detail.html', 'ethics-form.html',
   'researcher-form.html', 'publication-form.html', 'innovation-extension-form.html',
   'event-abstract.html', 'event-registration.html',
-  // Research Submission Module pages (served from the module's own folder).
+  // Research Submission Module pages (served from public/ like every other page).
   'research-submission.html', 'research-submission-detail.html'
 ]);
 
@@ -714,6 +714,13 @@ try {
 
 const server = app.listen(PORT, async () => {
   void supabaseStorage.verifyBucketAtStartup();
+  // Where research submission uploads will actually land. Said out loud because
+  // the difference matters on Render, whose local disk is wiped on every deploy:
+  // the bucket keeps manuscripts and receipts, the disk does not.
+  console.log(supabaseStorage.isConfigured()
+    ? '[research] file storage: supabase (uploads survive a redeploy)'
+    : '[research] file storage: local disk under server/data — set SUPABASE_URL, ' +
+      'SUPABASE_SERVICE_KEY and SUPABASE_BUCKET, or uploads are lost on the next deploy');
   let dbUp = true;
   try {
     await testConnection();

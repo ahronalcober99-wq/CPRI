@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS research_submission_files (
   slot_key         VARCHAR(80) NOT NULL,
   original_name    VARCHAR(255) NOT NULL DEFAULT '',
   stored_path      VARCHAR(512) NOT NULL,
+  storage_backend  VARCHAR(20) NOT NULL DEFAULT 'disk',
   mime             VARCHAR(120) NOT NULL DEFAULT 'application/octet-stream',
   size             BIGINT NOT NULL DEFAULT 0,
   version          INT NOT NULL DEFAULT 1,
@@ -100,7 +101,23 @@ CREATE TABLE IF NOT EXISTS research_ethics_clearances (
   decision      VARCHAR(20) NOT NULL,
   file_path     VARCHAR(512) DEFAULT NULL,
   file_name     VARCHAR(255) DEFAULT NULL,
+  storage_backend VARCHAR(20) NOT NULL DEFAULT 'disk',
   decided_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_research_ethics_submission (submission_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------------------------
+--  `storage_backend` (added when uploads learnt to use Supabase Storage)
+--
+--  A guarded `CREATE TABLE ... IF NOT EXISTS` leaves an EXISTING table
+--  untouched, so the column has to be added separately for a database created
+--  before it existed. Every
+--  pre-existing row is a local-disk row, which is exactly what the default
+--  says. The boot-time ensureResearchSubmissionsSchema() runs the same pair,
+--  guarded by a SHOW COLUMNS check; here it is written plainly, like 001 and
+--  004, so re-running this file raises "Duplicate column name" once the column
+--  is in place.
+-- ----------------------------------------------------------------------------
+ALTER TABLE research_submission_files  ADD COLUMN storage_backend VARCHAR(20) NOT NULL DEFAULT 'disk';
+ALTER TABLE research_ethics_clearances ADD COLUMN storage_backend VARCHAR(20) NOT NULL DEFAULT 'disk';

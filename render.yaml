@@ -54,3 +54,19 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_SECRET
         sync: false
+      # Supabase Storage — where uploaded files live, because this service's
+      # local disk is wiped on every restart and deploy. Research submission
+      # manuscripts, forms, receipts and ethics clearances go to the PRIVATE
+      # bucket named by SUPABASE_BUCKET; event covers and avatars use the PUBLIC
+      # one (SUPABASE_EVENT_BUCKET). Create them at https://supabase.com →
+      # Storage → New bucket, then set these four. The app still boots and works
+      # without them — uploads simply land on the ephemeral disk instead.
+      # Full notes: .env.example, section "Supabase Storage".
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        sync: false
+      - key: SUPABASE_EVENT_BUCKET
+        sync: false

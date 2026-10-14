@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS research_submission_files (
   slot_key         VARCHAR(80) NOT NULL,
   original_name    VARCHAR(255) NOT NULL DEFAULT '',
   stored_path      VARCHAR(512) NOT NULL,
+  storage_backend  VARCHAR(20) NOT NULL DEFAULT 'disk',
   mime             VARCHAR(120) NOT NULL DEFAULT 'application/octet-stream',
   size             BIGINT NOT NULL DEFAULT 0,
   version          INT NOT NULL DEFAULT 1,
@@ -97,6 +98,7 @@ CREATE TABLE IF NOT EXISTS research_ethics_clearances (
   decision      VARCHAR(20) NOT NULL,
   file_path     VARCHAR(512) DEFAULT NULL,
   file_name     VARCHAR(255) DEFAULT NULL,
+  storage_backend VARCHAR(20) NOT NULL DEFAULT 'disk',
   decided_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_research_ethics_submission (submission_id)

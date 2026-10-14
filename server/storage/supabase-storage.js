@@ -278,6 +278,24 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
     return signedDownloadUrl(body.signedURL || body.signedUrl, config, downloadName);
   }
 
+  // The bytes of one object, streamed back to the caller. Authorization is the
+  // caller's job (the research module only asks after it has checked the
+  // session and the submission), which is why this returns the raw Response and
+  // never a public or signed URL: nothing here is reachable without the service
+  // key. Resolves to null when the object does not exist.
+  async function downloadObject({ path, bucket }) {
+    const encodedPath = encodePath(path);
+    const config = bucketConfiguration(env, bucket);
+    const response = await request(
+      config,
+      `object/${encodeURIComponent(config.bucket)}/${encodedPath}`,
+      { method: 'GET' }
+    );
+    if (response.status === 404) return null;
+    await responseError(response, 'download', config.serviceKey);
+    return response;
+  }
+
   async function objectExists(path) {
     const encodedPath = encodePath(path);
     const config = configuration(env);
@@ -313,6 +331,7 @@ export function createSupabaseStorage({ env = process.env, fetchImpl = fetch } =
 
   return {
     uploadObject,
+    downloadObject,
     publicObjectUrl,
     createSignedDownloadUrl,
     objectExists,

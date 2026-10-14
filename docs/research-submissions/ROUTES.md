@@ -178,10 +178,30 @@ verification mails use.
 
 ## File storage
 
-- Uploads land on disk under `server/data/research-submissions/<submission-id>/files/`
-  (random UUID names; every version is preserved — a re-upload is version N+1).
-- Nothing is served from a public folder; downloads stream only through the authorized
-  `/files/:fileId` endpoint, always as an attachment.
+Where the bytes live depends on the deployment, decided per file by
+`server/lib/research-storage.js`:
+
+- **Supabase Storage** — the private bucket named by `SUPABASE_BUCKET` — when
+  `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and `SUPABASE_BUCKET` are set. This is what a
+  Render deployment needs: Render wipes its local disk on every deploy.
+- **The local disk** under `server/data/research-submissions/<submission-id>/files/`
+  otherwise, which is what development uses (no Supabase project required).
+
+Every row records which one holds it (`research_submission_files.storage_backend`,
+`research_ethics_clearances.storage_backend`; `disk` by default, which is correct for every
+row written before the column existed). Switching a deployment either way therefore keeps
+older uploads readable. The boot log states the live choice:
+
+```
+[research] file storage: supabase (uploads survive a redeploy)
+[research] file storage: local disk under server/data — set SUPABASE_URL, ...
+```
+
+- Generated names are random UUIDs; every version is preserved — a re-upload is version N+1.
+- Nothing is served from a public folder, and no public or signed URL is ever handed out:
+  downloads stream through the authorized `/files/:fileId` endpoint, always as an
+  attachment. A file recorded in the bucket on a server that has no bucket configured
+  answers `502` with a readable message — never an empty file and never a crash.
 - Max file size: 20 MB.
 - Accepted types per slot: `.pdf` for PDF slots, `.doc`/`.docx` for Word slots,
   `.pdf`/`.doc`/`.docx` for `additional_documents`. Unknown extensions are rejected.

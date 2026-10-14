@@ -68,6 +68,25 @@ const server = createServer(async (req, res) => {
     return send(res, 200, { name: bucket });
   }
 
+  // /storage/v1/object/<bucket>/<path...> — authenticated read (GET) and
+  // existence check (HEAD) of a private object. The research module streams a
+  // submission file back through its own authorized download route this way
+  // (server/lib/research-storage.js), and asks with HEAD before trusting a
+  // stored path (objectExists), so a private bucket needs neither a public nor
+  // a signed URL to be readable.
+  if ((req.method === 'GET' || req.method === 'HEAD') &&
+      segments[1] === 'v1' && segments[2] === 'object' && segments.length >= 5) {
+    const bucket = segments[3];
+    const objectPath = segments.slice(4).map(decodeURIComponent).join('/');
+    const object = buckets.get(bucket)?.get(objectPath);
+    if (!object) return send(res, 404, { message: 'Object not found' });
+    if (req.method === 'HEAD') {
+      res.writeHead(200, { 'Content-Type': object.contentType, 'Content-Length': object.buffer.length });
+      return res.end();
+    }
+    return send(res, 200, object.buffer, object.contentType);
+  }
+
   // /storage/v1/object/<bucket>/<path...> — upload
   if (req.method === 'POST' && segments[1] === 'v1' && segments[2] === 'object') {
     const bucket = segments[3];

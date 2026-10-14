@@ -2,9 +2,12 @@
 //  CPRI — Research Submission Module (back end)
 //  Router: /api/research-submissions/*
 //
-//  Storage: files land on disk under UPLOAD_DIR (random names),
-//  served ONLY through the authorized download endpoint. Nothing is
-//  stored in a public folder and nothing is served inline.
+//  Storage: bytes go to Supabase Storage when it is configured on the
+//  deployment, and to the local disk under UPLOAD_DIR otherwise (random names
+//  either way). They are served ONLY through the authorized download endpoint:
+//  nothing sits in a public folder and nothing is ever served inline. Each file
+//  row records the backend holding it, so switching a deployment between the two
+//  keeps older uploads readable. See server/lib/research-storage.js.
 //
 //  Auth: Express session. req.session.userId is the only identity the
 //  server trusts. Client-supplied role / owner_id / status are ignored
@@ -15,12 +18,13 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { randomUUID } from 'crypto';
-import { extname, basename, dirname } from 'path';
-import { createReadStream } from 'fs';
-// mkdir/readFile/rm/stat/writeFile are awaited, so they must come from the
-// promise API — the callback versions throw without a callback.
-import { mkdir, readFile, rm, stat, writeFile } from 'fs/promises';
+import { extname, basename } from 'path';
 import { join } from 'path';
+// mkdir is awaited, so it must come from the promise API — the callback version
+// throws without a callback. Every other byte-level operation (write/mkdir/stat/
+// stream/rm) lives in the storage adapter, so this router never has to assume
+// the files are on disk.
+import { mkdir } from 'fs/promises';
 
 // The module now lives inside server/ alongside the rest of the site, so it
 // shares the SAME database pool and the SAME session guard as every other
@@ -39,6 +43,7 @@ import {
 } from './auth.js';
 import { notify as defaultNotify } from './notifications.js';
 import { sendNotificationEmail as defaultSendEmail } from './lib/mail.js';
+import { createResearchStorage } from './lib/research-storage.js';
 
 // The caller's own user row, resolved from the session only. The router never
 // trusts a role / owner_id sent by the client, so this is the single place
@@ -168,7 +173,16 @@ export function createResearchSubmissionsRouter(dependencies = {}) {
   }
   const UPLOAD_DIR = dependencies.uploadDir || RESEARCH_SUBMISSIONS_UPLOAD_DIR;
 
-  // Ensure the upload directory exists so the disk survives a restart.
+  // Where the bytes live: Supabase Storage when this deployment has it
+  // configured, the local disk otherwise. Tests inject their own store.
+  const fileStore = dependencies.fileStore || createResearchStorage({
+    uploadDir: UPLOAD_DIR,
+    storage: dependencies.storage,
+    logger: dependencies.logger
+  });
+
+  // Ensure the local upload root exists, so the disk backend survives a
+  // restart. Harmless and unused when Supabase is configured.
   mkdir(UPLOAD_DIR, { recursive: true }).catch(() => {});
 
 
@@ -270,9 +284,10 @@ function handleUploadErrors(uploadMiddleware) {
 }
 
 // ---------------------------------------------------------------------------
-//  File persistence to disk (random name, keep every version)
+//  File persistence (random name, keep every version). This decides the path
+//  and the metadata; the bytes go wherever the storage adapter puts them.
 // ---------------------------------------------------------------------------
-async function storeFilesOnDisk(files, prefix, user, startingVersions = {}) {
+async function storeFiles(files, prefix, user, startingVersions = {}) {
   const stored = {};
   const paths = [];
 
@@ -303,16 +318,19 @@ async function storeFilesOnDisk(files, prefix, user, startingVersions = {}) {
     // every upload: an older version is never overwritten or removed.
     const version = (startingVersions[slotKey] || 0) + 1;
     const storedPath = `${prefix}/${randomUUID()}${ext}`;
-    const absolutePath = join(UPLOAD_DIR, storedPath);
-    await mkdir(dirname(absolutePath), { recursive: true }).catch(() => {});
-    await writeFile(absolutePath, file.buffer);
-    paths.push(absolutePath);
+    const backend = await fileStore.save({
+      path: storedPath,
+      buffer: file.buffer,
+      contentType: file.mimetype
+    });
+    paths.push({ path: storedPath, backend });
 
     stored[slotKey] = {
       id: randomUUID(),
       slot_key: slotKey,
       original_name: file.originalname || 'document',
       stored_path: storedPath,
+      storage_backend: backend,
       mime: file.mimetype || 'application/octet-stream',
       size: file.size,
       version,
@@ -326,9 +344,11 @@ async function storeFilesOnDisk(files, prefix, user, startingVersions = {}) {
   return { stored, paths };
 }
 
+// Undo the bytes of a submission that could not be saved. The adapter swallows
+// its own failures — the route is already reporting the problem.
 async function clearFiles(paths) {
-  for (const p of paths) {
-    try { await rm(p, { force: true }); } catch {}
+  for (const stored of paths) {
+    await fileStore.remove(stored);
   }
 }
 
@@ -501,10 +521,10 @@ router.post(
   let storedFiles = {};
   let filePaths = [];
   try {
-    ({ stored: storedFiles, paths: filePaths } = await storeFilesOnDisk(
+    ({ stored: storedFiles, paths: filePaths } = await storeFiles(
       req.files || {},
-      // Forward slashes on every platform: stored_path is persisted and read
-      // back with join(UPLOAD_DIR, stored_path), which handles both.
+      // Forward slashes on every platform: stored_path is persisted as-is and
+      // resolved by the storage adapter, as a disk path or a Supabase object path.
       `research-submissions/${sub.id}/files`,
       user
     ));
@@ -821,9 +841,17 @@ router.post(
     const nextVersion = existingFiles.reduce((max, f) => Math.max(max, f.version || 0), 0) + 1;
 
     const storedPath = `research-submissions/${sub.id}/files/${randomUUID()}${ext}`;
-    const absolutePath = join(UPLOAD_DIR, storedPath);
-    await mkdir(dirname(absolutePath), { recursive: true }).catch(() => {});
-    await writeFile(absolutePath, file.buffer);
+    let backend;
+    try {
+      backend = await fileStore.save({
+        path: storedPath,
+        buffer: file.buffer,
+        contentType: file.mimetype
+      });
+    } catch (err) {
+      console.error('[research-submissions] file storage failed:', err.message);
+      return res.status(502).json({ error: 'Could not store the file. Please try again.' });
+    }
 
     const fileRow = {
       id: randomUUID(),
@@ -831,6 +859,7 @@ router.post(
       slot_key: slotKey,
       original_name: file.originalname || 'document',
       stored_path: storedPath,
+      storage_backend: backend,
       mime: file.mimetype || 'application/octet-stream',
       size: file.size,
       version: nextVersion,
@@ -842,7 +871,7 @@ router.post(
     try {
       await insert('research_submission_files', fileRow);
     } catch (err) {
-      await rm(absolutePath, { force: true }).catch(() => {});
+      await fileStore.remove({ path: storedPath, backend });
       console.error('[research-submissions] file insert failed:', err.message);
       return res.status(500).json({ error: 'Could not save the file. Please try again.' });
     }
@@ -856,8 +885,9 @@ router.post(
 
 // ---------------------------------------------------------------------------
 //  GET /api/research-submissions/:id/files/:fileId
-//  Authorized download. Served from disk (application/octet-stream), never a
-//  public folder, never inline.
+//  Authorized download. Streamed straight from the storage backend (disk or
+//  Supabase) as an attachment — never from a public folder, never inline, and
+//  never as a public/signed URL the browser could keep using.
 // ---------------------------------------------------------------------------
 router.get('/:id/files/:fileId', requireAuth, async (req, res) => {
   const user = await callerUser(req);
@@ -870,17 +900,23 @@ router.get('/:id/files/:fileId', requireAuth, async (req, res) => {
   const file = await get('SELECT * FROM research_submission_files WHERE id = ? AND submission_id = ?', [req.params.fileId, sub.id]);
   if (!file) return res.status(404).json({ error: 'File not found.' });
 
-  // Stream from disk.
-  const filePath = join(UPLOAD_DIR, file.stored_path);
+  // Authorization happened above; only now do we reach for the bytes.
+  let stream;
   try {
-    await stat(filePath);
+    stream = await fileStore.open({
+      path: file.stored_path,
+      backend: file.storage_backend
+    });
   } catch (err) {
+    console.error('[research-submissions] file could not be opened:', err.message);
+    return res.status(502).json({ error: 'The stored file could not be retrieved. Please try again.' });
+  }
+  if (!stream) {
     return res.status(404).json({ error: 'File is no longer available.' });
   }
 
   res.setHeader('Content-Type', file.mime || 'application/octet-stream');
   res.setHeader('Content-Disposition', `attachment; filename="${encodeURI(file.original_name || 'document')}"`);
-  const stream = createReadStream(filePath);
   stream.pipe(res);
   stream.on('error', (err) => {
     if (!res.headersSent) res.status(500).json({ error: 'Could not stream the file.' });
@@ -1162,14 +1198,23 @@ router.post(
 
   let clearancePath = null;
   let clearanceName = null;
+  let clearanceBackend = null;
   if (req.file) {
     const ext = extname(req.file.originalname || '').toLowerCase();
     if (!PDF_EXTENSIONS.has(ext)) {
       return res.status(400).json({ error: 'The ethics clearance file must be a PDF.' });
     }
     clearancePath = `research-submissions/${sub.id}/ethics-clearance-${randomUUID()}${ext}`;
-    await mkdir(join(UPLOAD_DIR, `research-submissions/${sub.id}`), { recursive: true }).catch(() => {});
-    await writeFile(join(UPLOAD_DIR, clearancePath), req.file.buffer);
+    try {
+      clearanceBackend = await fileStore.save({
+        path: clearancePath,
+        buffer: req.file.buffer,
+        contentType: req.file.mimetype || 'application/pdf'
+      });
+    } catch (err) {
+      console.error('[research-submissions] could not store the ethics clearance file:', err.message);
+      return res.status(502).json({ error: 'Could not store the clearance file. Please try again.' });
+    }
     clearanceName = req.file.originalname || 'ethics-clearance.pdf';
   }
 
@@ -1183,6 +1228,7 @@ router.post(
       decision,
       file_path: clearancePath,
       file_name: clearanceName,
+      storage_backend: clearanceBackend,
       decided_at: now
     });
     const targetStatus = decision === 'approved' ? 'approved' : 'rejected';
@@ -1199,7 +1245,7 @@ router.post(
     });
   } catch (err) {
     if (clearancePath) {
-      try { await rm(join(UPLOAD_DIR, clearancePath), { force: true }); } catch {}
+      await fileStore.remove({ path: clearancePath, backend: clearanceBackend });
     }
     console.error('[research-submissions] ethics decision failed:', err.message);
     return res.status(500).json({ error: 'Could not record the ethics decision. Please try again.' });
@@ -1318,6 +1364,7 @@ export async function ensureResearchSubmissionsSchema(dependencies = {}) {
       slot_key         VARCHAR(80) NOT NULL,
       original_name    VARCHAR(255) NOT NULL DEFAULT '',
       stored_path      VARCHAR(512) NOT NULL,
+      storage_backend  VARCHAR(20) NOT NULL DEFAULT 'disk',
       mime             VARCHAR(120) NOT NULL DEFAULT 'application/octet-stream',
       size             BIGINT NOT NULL DEFAULT 0,
       version          INT NOT NULL DEFAULT 1,
@@ -1372,11 +1419,50 @@ export async function ensureResearchSubmissionsSchema(dependencies = {}) {
       decision      VARCHAR(20) NOT NULL,
       file_path     VARCHAR(512) DEFAULT NULL,
       file_name     VARCHAR(255) DEFAULT NULL,
+      storage_backend VARCHAR(20) NOT NULL DEFAULT 'disk',
       decided_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
       KEY idx_research_ethics_submission (submission_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+
+  // Existing databases: the two file tables learnt a `storage_backend` column
+  // when uploads started using Supabase Storage. New tables get it from the DDL
+  // above; older ones — including any deployment that already ran an earlier
+  // version of this module — are caught up here. SHOW COLUMNS comes first, so
+  // running this on every boot is safe, exactly like ensureUsersSchema.
+  const columnsToAdd = [
+    {
+      table: 'research_submission_files',
+      name: 'storage_backend',
+      sql: "ALTER TABLE research_submission_files ADD COLUMN storage_backend VARCHAR(20) NOT NULL DEFAULT 'disk'"
+    },
+    {
+      table: 'research_ethics_clearances',
+      name: 'storage_backend',
+      sql: "ALTER TABLE research_ethics_clearances ADD COLUMN storage_backend VARCHAR(20) NOT NULL DEFAULT 'disk'"
+    }
+  ];
+
+  const added = [];
+  for (const column of columnsToAdd) {
+    const existing = await runQuery(`SHOW COLUMNS FROM ${column.table}`);
+    const names = new Set(
+      (existing || []).map(row => String(row.Field || row.field || '').toLowerCase())
+    );
+    if (names.has(column.name.toLowerCase())) continue;
+    try {
+      await runQuery(column.sql);
+      added.push(`${column.table}.${column.name}`);
+    } catch (err) {
+      if (!String(err && err.message).includes('Duplicate column name')) {
+        throw err;
+      }
+    }
+  }
+  if (added.length > 0) {
+    console.log(`[schema] added missing research columns: ${added.join(', ')}`);
+  }
 }
 
 export { router as researchSubmissionsRouter };

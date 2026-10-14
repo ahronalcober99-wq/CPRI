@@ -164,7 +164,20 @@ Create or use existing accounts with these roles:
 ### 12. File integrity
 - Upload a PDF and a Word doc → both accepted.
 - Try uploading an `.exe` or `.html` → rejected at the file-slot validation level (extension + MIME).
-- Confirm each upload creates a NEW file on disk (random name); old versions remain.
+- Confirm each upload creates a NEW file (random name); old versions remain.
+- Without Supabase configured: the bytes are on disk under `server/data/research-submissions/`,
+  the row's `storage_backend` reads `disk`, and the boot log says `local disk`.
+
+### 12b. File durability (the Render case)
+- Start with the three Supabase variables set. For a local run, point them at the project's mock:
+  `node server/dev/mock-supabase-storage.mjs`, then `SUPABASE_URL=http://localhost:4599`,
+  `SUPABASE_SERVICE_KEY=local-test-service-key`, `SUPABASE_BUCKET=private-files`.
+- Boot log must say `[research] file storage: supabase (uploads survive a redeploy)`.
+- Upload a file → its row's `storage_backend` reads `supabase`.
+- Delete the whole local `server/data/research-submissions/` directory, then download the file
+  again → it still comes back, because the bytes were never on that disk.
+- Sign out and call the download endpoint anonymously → still `401`, and another researcher still
+  gets `403`: the private bucket never bypasses the module's own authorization.
 
 ## The five required proofs (quick checklist)
 - [ ] User cannot read / edit / upload / download another user's submission by changing the ID.
@@ -175,11 +188,13 @@ Create or use existing accounts with these roles:
 - [ ] Invalid status transitions are rejected.
 
 ## Known limitations
-- File storage is on the server's local disk under `server/data/research-submissions/`. On Render,
-  persistent disk is only available on paid instances; for a free Render web service, either switch
-  the upload store to S3/R2 (the site already has a Supabase storage shim under `server/storage/`)
-  or move to a server with persistent disk. For now, files land on disk and are served back through
-  the authorized download endpoint.
+- File storage follows the deployment: **Supabase Storage** (the private `SUPABASE_BUCKET`) when
+  `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and `SUPABASE_BUCKET` are set, and the **local disk** under
+  `server/data/research-submissions/` otherwise. Render wipes its disk on every restart/redeploy, so
+  on Render those three variables are what make uploaded manuscripts, receipts and clearances
+  survive — without them the module still works, and the files simply disappear on the next deploy.
+  The boot log says which one is live, and each row records the backend it used
+  (`storage_backend`), so files uploaded before a switch stay readable afterwards.
 - Notifications write in-app rows through the site's `notify()` and send email copies through
   `server/lib/mail.js`. Email delivery needs `BREVO_API_KEY` + `BREVO_SENDER_EMAIL`; without them
   the in-app notification still lands and the send is logged as a failure. The email copy also

@@ -21,7 +21,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { mkdtemp, readFile, rm } from 'fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -37,6 +37,7 @@ import {
   STUDENT_ONLY_SLOTS,
   WORD_EXTENSIONS
 } from '../lib/research-config.js';
+import { createSupabaseStorage } from '../storage/supabase-storage.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -126,7 +127,7 @@ function account(role, overrides = {}) {
   return user;
 }
 
-async function startModule({ uploadDir, notify, sendEmail } = {}) {
+async function startModule({ uploadDir, notify, sendEmail, storage } = {}) {
   const store = fakeStore();
   const inApp = [];
   const emails = [];
@@ -146,6 +147,10 @@ async function startModule({ uploadDir, notify, sendEmail } = {}) {
     createResearchSubmissionsRouter({
       ...store,
       uploadDir: dir,
+      // Lets a test point the module at Supabase Storage (a fake fetch stands in
+      // for the bucket). Omitted by every other test, which then exercises the
+      // local-disk backend — the one a deployment without Supabase uses.
+      ...(storage ? { storage } : {}),
       requireAuth: (req, res, next) => {
         if (!req.session?.userId) return res.status(401).json({ error: 'Not authenticated.' });
         next();
@@ -1220,4 +1225,146 @@ test('the schema file and the boot-time DDL declare the same tables and columns'
     assert.deepEqual(columns(block(schemaSql)), columns(block(bootSql)), `${table} columns match the boot DDL`);
     assert.deepEqual(columns(block(migrationSql)), columns(block(bootSql)), `${table} columns match the migration`);
   }
+});
+
+// ===========================================================================
+//  File storage — Supabase Storage when configured, the local disk when not
+// ===========================================================================
+
+// A stand-in for the Supabase Storage REST API: real Response objects, an
+// in-memory bucket, and a record of every call. The adapter's own contract is
+// the only thing being faked, so the module is driven end to end without a
+// Supabase project (server/dev/mock-supabase-storage.mjs does the same over
+// HTTP for manual runs).
+function fakeSupabase() {
+  const objects = new Map(); // `<bucket>/<object path>` -> Buffer
+  const calls = [];
+  const bucket = 'private-files';
+
+  const storage = createSupabaseStorage({
+    env: {
+      SUPABASE_URL: 'https://project.example.test',
+      SUPABASE_SERVICE_KEY: 'test-service-secret',
+      SUPABASE_BUCKET: bucket
+    },
+    fetchImpl: async (url, init = {}) => {
+      const method = (init.method || 'GET').toUpperCase();
+      const path = decodeURIComponent(new URL(url).pathname.replace('/storage/v1/object/', ''));
+      calls.push({ method, path });
+      if (method === 'POST') {
+        objects.set(path, Buffer.from(init.body));
+        return new Response('{}', { status: 200 });
+      }
+      if (method === 'DELETE') {
+        const { prefixes = [] } = JSON.parse(init.body || '{}');
+        for (const prefix of prefixes) objects.delete(`${bucket}/${prefix}`);
+        return new Response('{}', { status: 200 });
+      }
+      const body = objects.get(path);
+      if (!body) return new Response('Object not found', { status: 404 });
+      return new Response(body, { status: 200, headers: { 'content-type': 'application/pdf' } });
+    }
+  });
+
+  return { storage, objects, calls, bucket };
+}
+
+test('with Supabase configured, uploads reach the bucket and stream back authorized', async () => {
+  const supabase = fakeSupabase();
+  const module = await startModule({ storage: supabase.storage });
+  try {
+    const student = account('student_researcher');
+    const sub = await createStudentInitial(module, student);
+
+    // Every row records the backend holding it, and the bytes really landed in
+    // the bucket under the submission's own folder.
+    const rows = module.store.rowsOf('research_submission_files');
+    assert.equal(rows.length, 9);
+    assert.ok(rows.every(f => f.storage_backend === 'supabase'),
+      'each file row records that Supabase holds it');
+    for (const row of rows) {
+      assert.ok(supabase.objects.has(`${supabase.bucket}/${row.stored_path}`),
+        `${row.stored_path} was uploaded to the bucket`);
+    }
+
+    // ...and nothing was written to the local disk at all.
+    assert.deepEqual(await readdir(module.uploadDir).catch(() => []), [],
+      'no bytes are written locally once Supabase is configured');
+
+    // The authorized download streams the same bytes back as an attachment,
+    // from the bucket rather than from a public URL.
+    const row = rows[0];
+    const res = await module.call(student, `/${sub.id}/files/${row.id}`);
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-disposition') || '', /^attachment;/);
+    assert.deepEqual(
+      Buffer.from(await res.arrayBuffer()),
+      supabase.objects.get(`${supabase.bucket}/${row.stored_path}`)
+    );
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('a bucket-stored file is still refused to anyone who cannot read the submission', async () => {
+  const supabase = fakeSupabase();
+  const module = await startModule({ storage: supabase.storage });
+  try {
+    const owner = account('student_researcher');
+    const stranger = account('student_researcher');
+    const sub = await createStudentInitial(module, owner);
+    const row = module.store.rowsOf('research_submission_files')[0];
+
+    const denied = await module.call(stranger, `/${sub.id}/files/${row.id}`);
+    assert.equal(denied.status, 403,
+      'storage being reachable never bypasses the authorization check');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('a bucket-stored file explains itself when this server has no Supabase configured', async () => {
+  // The deployment lost its credentials, or the file was uploaded by a
+  // deployment that had them. The route answers 502 with a readable message
+  // instead of crashing or serving an empty file.
+  const module = await startModule({ storage: createSupabaseStorage({ env: {} }) });
+  try {
+    const student = account('student_researcher');
+    const sub = await createStudentInitial(module, student);
+    const row = module.store.rowsOf('research_submission_files')[0];
+    assert.equal(row.storage_backend, 'disk', 'without Supabase, uploads stay on the disk');
+
+    // Same row, but now claiming the bucket holds it.
+    module.store.rowsOf('research_submission_files')[0].storage_backend = 'supabase';
+    const res = await module.call(student, `/${sub.id}/files/${row.id}`);
+    assert.equal(res.status, 502);
+    assert.match((await res.json()).error, /could not be retrieved/i);
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('the boot DDL adds storage_backend only to a table missing it', async () => {
+  const statements = [];
+  const existing = {
+    research_submission_files: ['id', 'stored_path', 'storage_backend'],
+    research_ethics_clearances: ['id', 'file_path']
+  };
+  await ensureResearchSubmissionsSchema({
+    run: async (sql) => {
+      statements.push(sql);
+      const show = String(sql).match(/^SHOW COLUMNS FROM (\w+)$/);
+      if (show) return (existing[show[1]] || []).map(Field => ({ Field }));
+      return [];
+    }
+  });
+
+  const altered = statements
+    .filter(sql => /^ALTER TABLE/.test(sql))
+    .map(sql => sql.match(/^ALTER TABLE (\w+)/)[1]);
+  assert.deepEqual(altered, ['research_ethics_clearances'],
+    'a table that already has the column is left untouched, so every boot is safe');
 });

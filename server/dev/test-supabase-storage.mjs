@@ -357,3 +357,42 @@ test('objectPathFromPublicUrl maps our own public URLs back to their storage pat
   const unconfigured = createSupabaseStorage({ env: {} });
   assert.equal(unconfigured.objectPathFromPublicUrl('https://project.example.test/storage/v1/object/public/x/a.webp', { bucket }), null);
 });
+
+test('downloadObject returns the object response and nulls a missing object', async () => {
+  const calls = [];
+  const storage = createSupabaseStorage({
+    env,
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      if (url.endsWith('missing.pdf')) return response(404);
+      return response(200);
+    }
+  });
+
+  const found = await storage.downloadObject({ path: 'submissions/id/paper.pdf' });
+  assert.equal(found.status, 200);
+  assert.equal(calls[0].url, 'https://project.example.test/storage/v1/object/private-files/submissions/id/paper.pdf');
+  assert.equal(calls[0].init.method, 'GET');
+  assert.equal(calls[0].init.headers.apikey, env.SUPABASE_SERVICE_KEY);
+  assert.equal(calls[0].init.headers.Authorization, `Bearer ${env.SUPABASE_SERVICE_KEY}`);
+
+  assert.equal(await storage.downloadObject({ path: 'submissions/id/missing.pdf' }), null,
+    'a missing object is null, so the caller can answer 404');
+});
+
+test('downloadObject keeps credentials out of its error and rejects unsafe paths', async () => {
+  const storage = createSupabaseStorage({
+    env,
+    fetchImpl: async () => response(403, {}, `forbidden for ${env.SUPABASE_SERVICE_KEY}`)
+  });
+
+  await assert.rejects(
+    storage.downloadObject({ path: 'submissions/id/paper.pdf' }),
+    error => error.message.includes('HTTP 403') && !error.message.includes(env.SUPABASE_SERVICE_KEY)
+  );
+
+  await assert.rejects(
+    storage.downloadObject({ path: '../escape.pdf' }),
+    error => error.message.includes('Storage path is invalid')
+  );
+});
