@@ -25,7 +25,8 @@ const BASE = (process.env.CPRI_BASE || `http://localhost:${resolvePort()}`).repl
 
 const PUBLIC_ENDPOINTS = [
   '/api/site', '/api/announcements', '/api/events', '/api/research', '/api/agenda',
-  '/api/researchers', '/api/publications', '/api/events-module',
+  '/api/researchers', '/api/researchers/stats', '/api/researchers/directory',
+  '/api/publications', '/api/events-module',
   '/api/repository', '/api/innovation-extension', '/api/notifications',
   // Read-only aggregates the public home page renders; deliberately open.
   '/api/admin/hero-stats', '/api/admin/public-summary'

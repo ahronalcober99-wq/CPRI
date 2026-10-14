@@ -52,22 +52,7 @@
                   <option value="">All</option>
                   <option value="faculty">Faculty</option>
                   <option value="student">Student</option>
-                </select>
-              </div>
-              <div class="form-group" style="margin:0;">
-                <label for="f-year">Year Completed</label>
-                <input type="text" id="f-year" name="year" placeholder="e.g. 2025">
-              </div>
-              <div class="form-group" style="margin:0;">
-                <label for="f-status">Research Output Status</label>
-                <select id="f-status" name="status">
-                  <option value="">All</option>
-                  <option value="ongoing">Ongoing</option>
-                  <option value="completed">Completed</option>
-                  <option value="published">Published</option>
-                  <option value="presented">Presented</option>
-                  <option value="under_review">Under Review</option>
-                  <option value="rejected">Rejected</option>
+                  <option value="presenter">Presenter</option>
                 </select>
               </div>
             </div>
@@ -78,7 +63,8 @@
           </form>
         </div>
 
-        <div id="records"></div>
+        <p class="form-note" id="records-summary" style="margin-bottom:10px;"></p>
+        <div id="records" class="grid grid-3" style="gap:18px;"></div>
       </div>
     </section>
   </main>
@@ -89,8 +75,39 @@
     const message = document.getElementById('message');
     const dashboard = document.getElementById('dashboard');
     const recordsEl = document.getElementById('records');
+    const summaryEl = document.getElementById('records-summary');
 
-    const TYPE_LABELS = { faculty: 'Faculty Researcher', student: 'Student Researcher' };
+    const TYPE_LABELS = { faculty: 'Faculty Researcher', student: 'Student Researcher', presenter: 'Presenter' };
+    const SHORT_TYPE = { faculty: 'Faculty', student: 'Student', presenter: 'Presenter' };
+
+    // Every card is a live database count from GET /api/researchers/stats.
+    const STAT_CARDS = [
+      { key: 'totalResearchers', label: 'Total Researchers' },
+      { key: 'faculty', label: 'Faculty' },
+      { key: 'students', label: 'Students' },
+      { key: 'totalSubmissions', label: 'Total Submissions' },
+      { key: 'ongoing', label: 'Ongoing' },
+      { key: 'approved', label: 'Approved' },
+      { key: 'published', label: 'Published' },
+      { key: 'ethicsClearances', label: 'Ethics Clearances' },
+      { key: 'galaPresentations', label: 'Gala Presentations' }
+    ];
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text == null ? '' : String(text);
+      return div.innerHTML;
+    }
+
+    function showMsg(type, text) {
+      message.className = 'form-message ' + type;
+      message.textContent = text;
+    }
+
+    function clearMsg() {
+      message.className = 'form-message';
+      message.textContent = '';
+    }
 
     function buildQuery() {
       const fd = new FormData(document.getElementById('filter-form'));
@@ -99,54 +116,105 @@
       return p.toString();
     }
 
+    function card(value, label) {
+      return `<div class="card" style="text-align:center;padding:22px;">
+        <div style="font-size:2rem;font-weight:800;color:var(--cpri-accent);">${escapeHtml(value)}</div>
+        <div class="form-note" style="margin-top:4px;">${escapeHtml(label)}</div>
+      </div>`;
+    }
+
+    function renderStats(stats) {
+      dashboard.innerHTML = STAT_CARDS.map(c => card(Number(stats[c.key] || 0), c.label)).join('');
+    }
+
     async function loadStats() {
-      const res = await fetch('/api/researchers/stats');
-      const { stats } = await res.json();
-      dashboard.innerHTML = [
-        { label: 'Total Researchers', value: stats.totalResearchers, cls: '' },
-        { label: 'Faculty', value: stats.faculty, cls: '' },
-        { label: 'Students', value: stats.students, cls: '' },
-        { label: 'Completed Researches', value: stats.completedResearches, cls: '' },
-        { label: 'Publications', value: stats.publications, cls: '' },
-        { label: 'Presentations', value: stats.presentations, cls: '' },
-        { label: 'Innovation Projects', value: stats.innovationProjects, cls: '' },
-        { label: 'Citations', value: stats.citations, cls: '' }
-      ].map(s => `<div class="card" style="text-align:center;padding:22px;">
-        <div style="font-size:2rem;font-weight:800;color:var(--cpri-accent);">${s.value}</div>
-        <div class="form-note" style="margin-top:4px;">${s.label}</div>
-      </div>`).join('');
+      dashboard.innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:22px;">
+        <div class="form-note" style="margin:0;">Loading researcher statistics…</div>
+      </div>`;
+
+      try {
+        const res = await fetch('/api/researchers/stats');
+        if (!res.ok) throw new Error('Stats request failed with status ' + res.status);
+        const data = await res.json();
+        if (!data || !data.stats) throw new Error('Stats response did not include a "stats" object.');
+        renderStats(data.stats);
+      } catch (err) {
+        console.error('[researchers] Could not load statistics:', err);
+        dashboard.innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;padding:22px;">
+          <div class="form-note" style="margin:0 0 10px;">Could not load researcher statistics.</div>
+          <button type="button" class="btn btn-navy" id="retry-stats">Retry</button>
+        </div>`;
+        const retry = document.getElementById('retry-stats');
+        if (retry) retry.addEventListener('click', loadStats);
+      }
+    }
+
+    function countsLine(r) {
+      if (r.source === 'profile') {
+        return `Pubs: ${Number(r.publications || 0)} · Pres: ${Number(r.presentations || 0)} · Awards: ${Number(r.awards || 0)}`;
+      }
+      const subs = Number(r.submissions || 0);
+      return `${subs} submission${subs === 1 ? '' : 's'} · ${Number(r.published || 0)} published`;
+    }
+
+    // A registered account is badged with who they are; a hand-entered profile
+    // is badged with its documented output status.
+    function badgeFor(r) {
+      if (r.source === 'profile') return r.outputStatusLabel || 'Profile entry';
+      if (r.role === 'non_teaching_researcher') return 'Non-Teaching';
+      return SHORT_TYPE[r.type] || 'Researcher';
+    }
+
+    function researcherCard(r) {
+      const place = r.department || r.program || r.researchArea || '—';
+      const typeLabel = TYPE_LABELS[r.type] || r.roleLabel || r.type || 'Researcher';
+      return `<div class="card" style="margin:0;display:flex;flex-direction:column;justify-content:space-between;">
+        <div>
+          <h3 style="margin:0 0 6px;"><a href="researcher-detail.html?id=${encodeURIComponent(r.id)}">${escapeHtml(r.fullName || 'Unnamed researcher')}</a></h3>
+          <div class="meta">${escapeHtml(typeLabel)} · ${escapeHtml(place)}</div>
+          ${r.researchTitle ? `<div class="meta" style="margin-top:6px;">Research: ${escapeHtml(r.researchTitle)}</div>` : ''}
+          <div style="margin-top:10px;">
+            <span class="badge">${escapeHtml(badgeFor(r))}</span>
+            <span class="form-note">${escapeHtml(countsLine(r))}</span>
+          </div>
+        </div>
+        <p style="margin:14px 0 0;"><a href="researcher-detail.html?id=${encodeURIComponent(r.id)}">View profile &rarr;</a></p>
+      </div>`;
     }
 
     async function load() {
-      const res = await fetch('/api/researchers' + (buildQuery() ? '?' + buildQuery() : ''));
-      const { researchers } = await res.json();
-      if (!researchers.length) {
-        recordsEl.innerHTML = '<p class="empty-state">No researcher profiles found.</p>';
-        return;
-      }
-      recordsEl.innerHTML = researchers.map(r => `
-        <div class="card" style="margin-bottom:16px;">
-          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;">
-            <div style="flex:1;min-width:240px;">
-              <h3 style="margin:0 0 6px;"><a href="researcher-detail.html?id=${r.id}">${escapeHtml(r.fullName)}</a></h3>
-              <div class="meta">${TYPE_LABELS[r.type] || r.type} · ${escapeHtml(r.department || r.program || '—')}</div>
-              ${r.researchTitle ? `<div class="meta" style="margin-top:4px;">Research: ${escapeHtml(r.researchTitle)}</div>` : ''}
-              ${r.orcid ? `<div class="meta" style="margin-top:4px;">ORCID: ${escapeHtml(r.orcid)}</div>` : ''}
-              ${r.googleScholar ? `<div class="meta" style="margin-top:4px;">Google Scholar: ${escapeHtml(r.googleScholar)}</div>` : ''}
-              ${r.researchGate ? `<div class="meta" style="margin-top:4px;">ResearchGate: ${escapeHtml(r.researchGate)}</div>` : ''}
-              <div style="margin-top:8px;">
-                <span class="badge">${r.outputStatusLabel || r.researchOutputStatus || '—'}</span>
-                <span class="form-note">Pubs: ${r.publications} · Pres: ${r.presentations} · Awards: ${r.awards}</span>
-              </div>
-            </div>
-          </div>
-        </div>`).join('');
-    }
+      const query = buildQuery();
+      summaryEl.textContent = '';
+      recordsEl.innerHTML = `<p class="empty-state" style="grid-column:1/-1;">Loading researchers…</p>`;
 
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
+      try {
+        const res = await fetch('/api/researchers/directory' + (query ? '?' + query : ''));
+        if (!res.ok) throw new Error('Directory request failed with status ' + res.status);
+        const data = await res.json();
+        const list = Array.isArray(data.researchers) ? data.researchers : [];
+
+        if (!list.length) {
+          recordsEl.innerHTML = `<p class="empty-state" style="grid-column:1/-1;">${query
+            ? 'No researchers match your search.'
+            : 'No researchers yet.'}</p>`;
+          if (!query) {
+            summaryEl.textContent = 'Faculty, student and presenter accounts appear here once they are registered and approved.';
+          }
+          return;
+        }
+
+        recordsEl.innerHTML = list.map(researcherCard).join('');
+        summaryEl.textContent = `Showing ${list.length} researcher${list.length === 1 ? '' : 's'}.`;
+        clearMsg();
+      } catch (err) {
+        console.error('[researchers] Could not load the researcher list:', err);
+        recordsEl.innerHTML = `<div class="card" style="grid-column:1/-1;text-align:center;">
+          <p class="form-note" style="margin:0 0 10px;">Could not load researchers. Please try again.</p>
+          <button type="button" class="btn btn-navy" id="retry-list">Retry</button>
+        </div>`;
+        const retry = document.getElementById('retry-list');
+        if (retry) retry.addEventListener('click', load);
+      }
     }
 
     document.getElementById('filter-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
@@ -158,12 +226,16 @@
     (async () => {
       await loadStats();
       await load();
-      const meRes = await fetch('/api/auth/me');
-      if (meRes.ok) {
-        const { user } = await meRes.json();
-        if (['admin', 'cpri_staff'].includes(user.role)) {
-          document.getElementById('admin-panel').style.display = 'block';
+      try {
+        const meRes = await fetch('/api/auth/me');
+        if (meRes.ok) {
+          const { user } = await meRes.json();
+          if (['admin', 'cpri_staff'].includes(user.role)) {
+            document.getElementById('admin-panel').style.display = 'block';
+          }
         }
+      } catch (err) {
+        console.error('[researchers] Could not resolve the signed-in user:', err);
       }
     })();
   </script>

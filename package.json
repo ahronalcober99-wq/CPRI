@@ -13,6 +13,8 @@
     "seed": "node server/server/seed.mjs",
     "seed:demo": "node server/server/seed-demo.mjs",
     "seed:demo:clear": "node server/server/seed-demo.mjs --clear",
+    "seed:researchers": "node server/server/seed-researchers.mjs",
+    "seed:researchers:clear": "node server/server/seed-researchers.mjs --clear",
     "migrate": "node server/server/seed.mjs",
     "test:dropdowns": "node server/dev/test-dropdowns.mjs",
     "test:phone": "node --test server/dev/test-phone-verification.mjs",
