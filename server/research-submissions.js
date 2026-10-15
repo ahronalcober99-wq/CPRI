@@ -61,7 +61,7 @@ async function defaultCallerUser(req) {
 
 import {
   RESEARCHER_ROLES,
-  REVIEWER_ROLES,
+  STATUS_CHANGE_ROLES,
   SUBMITTER_ROLES,
   ASSIGNED_ROLES,
   STAGES,
@@ -245,15 +245,21 @@ function requireRoles(...roles) {
 }
 
 // Researchers see only their own submissions.
-// Advisers/facilitators see submissions assigned to them (adviser_id / facilitator_id).
-// cpri_staff / admin see all.
+// A Research Adviser / Facilitator monitors STUDENT work: they can read every
+// student_researcher submission (that is the whole point of the role —
+// "Monitor student submissions and provide comments or recommendations"), plus
+// anything explicitly assigned to them via adviser_id / facilitator_id, which
+// is how they reach a faculty record they were asked to look at.
+// cpri_staff / admin see all. Reading is not writing: status changes stay with
+// STATUS_CHANGE_ROLES (see the status route).
 function canReadSubmission(user, sub) {
   if (!user) return false;
   if (RESEARCHER_ROLES.has(user.role)) return sub.owner_id === user.id;
   if (ASSIGNED_ROLES.has(user.role)) {
+    if (sub.owner_role === 'student_researcher') return true;
     if (user.role === 'adviser' && sub.adviser_id === user.id) return true;
     if (user.role === 'facilitator' && sub.facilitator_id === user.id) return true;
-    // If not assigned to this submission, the reviewer sees nothing here; fall through.
+    // Not a student record and not assigned to this reviewer; fall through.
   }
   if (user.role === 'cpri_staff' || user.role === 'admin') return true;
   return false;
@@ -618,7 +624,8 @@ router.post(
 
 // ---------------------------------------------------------------------------
 //  GET /api/research-submissions
-//  Caller's own (researcher) OR assigned (adviser/facilitator) OR all (staff/admin).
+//  Caller's own (researcher) OR every student record (adviser/facilitator)
+//  OR all (staff/admin).
 // ---------------------------------------------------------------------------
 router.get('/', requireAuth, async (req, res) => {
   const user = await callerUser(req);
@@ -631,10 +638,13 @@ router.get('/', requireAuth, async (req, res) => {
       [user.id]
     );
   } else if (ASSIGNED_ROLES.has(user.role)) {
-    const col = user.role === 'adviser' ? 'adviser_id' : 'facilitator_id';
+    // The monitoring view: every student submission, plus anything assigned to
+    // this reviewer even when the owner is faculty. Mirrors canReadSubmission().
     rows = await all(
-      `SELECT * FROM research_submissions WHERE ${col} = ? ORDER BY created_at DESC`,
-      [user.id]
+      `SELECT * FROM research_submissions
+        WHERE owner_role = 'student_researcher' OR adviser_id = ? OR facilitator_id = ?
+        ORDER BY created_at DESC`,
+      [user.id, user.id]
     );
   } else if (user.role === 'cpri_staff' || user.role === 'admin') {
     rows = await all('SELECT * FROM research_submissions ORDER BY created_at DESC');
@@ -1009,13 +1019,12 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
   const body = String(req.body?.body || '').trim();
   if (!body) return res.status(400).json({ error: 'Comment text is required.' });
 
-  // Anyone with read access + staff/reviewer/adviser OR the owner can comment.
+  // Anyone who can READ the submission may leave a comment on it — the read
+  // check above already scoped that. A Research Adviser / Facilitator therefore
+  // comments on any student record they monitor, and on a faculty record only
+  // when it names them. Commenting never implies the right to change a status.
   const mayComment =
-    user.role === 'cpri_staff' || user.role === 'admin' ||
-    user.role === 'ethics_reviewer' ||
-    (user.role === 'adviser' && sub.adviser_id === user.id) ||
-    (user.role === 'facilitator' && sub.facilitator_id === user.id) ||
-    sub.owner_id === user.id;
+    canReadSubmission(user, sub) || sub.owner_id === user.id;
 
   if (!mayComment) return res.status(403).json({ error: 'You are not allowed to comment on this submission.' });
 
@@ -1076,8 +1085,12 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
   const ownerHandsInDraft = sub.owner_id === user.id
     && sub.status === 'draft'
     && targetStatusEarly === 'submitted';
-  if (!ownerHandsInDraft && !REVIEWER_ROLES.has(user.role)) {
-    return res.status(403).json({ error: 'Only the owner of a draft, a reviewer, or CPRI staff can change a status.' });
+  if (!ownerHandsInDraft && !STATUS_CHANGE_ROLES.has(user.role)) {
+    // A Research Adviser / Facilitator reaches this line and is refused on
+    // purpose: the role monitors and comments, it never approves or rejects.
+    return res.status(403).json({
+      error: 'Only the owner of a draft, a reviewer, or CPRI staff can change a status.'
+    });
   }
 
   if (ownerHandsInDraft) {
@@ -1099,13 +1112,6 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Only submissions under ethics review can be acted on by an ethics reviewer.' });
   }
 
-  // Adviser/facilitator can only move submissions assigned to them.
-  if (user.role === 'adviser' && sub.adviser_id !== user.id) {
-    return res.status(403).json({ error: 'This submission is not assigned to you.' });
-  }
-  if (user.role === 'facilitator' && sub.facilitator_id !== user.id) {
-    return res.status(403).json({ error: 'This submission is not assigned to you.' });
-  }
 
   const targetStatus = targetStatusEarly;
   if (!targetStatus) return res.status(400).json({ error: 'A status is required.' });

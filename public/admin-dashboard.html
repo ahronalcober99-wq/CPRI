@@ -634,14 +634,7 @@
             <td>
               ${roleLocked
                 ? `<span class="role-locked" title="The System Administrator role cannot be changed"><i class="bi bi-lock-fill" aria-hidden="true"></i> <span class="sr-only">Locked:</span> ${escapeHtml(u.role)}</span>`
-                : `<select data-userid="${u.id}" class="user-role-select" style="max-width:140px;"><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option><option value="cpri_staff" ${u.role === 'cpri_staff' ? 'selected' : ''}>CPRI Staff</option><option value="faculty_researcher" ${u.role === 'faculty_researcher' ? 'selected' : ''}>Faculty</option><option value="student_researcher" ${u.role === 'student_researcher' ? 'selected' : ''}>Student</option><option value="adviser" ${u.role === 'adviser' ? 'selected' : ''}>Adviser</option><option value="ethics_reviewer" ${u.role === 'ethics_reviewer' ? 'selected' : ''}>Ethics Reviewer</option><option value="public_visitor" ${u.role === 'public_visitor' ? 'selected' : ''}>Public Visitor</option></select>`}`                  <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
-                <option value="cpri_staff" ${u.role === 'cpri_staff' ? 'selected' : ''}>CPRI Staff</option>
-                <option value="faculty_researcher" ${u.role === 'faculty_researcher' ? 'selected' : ''}>Faculty</option>
-                <option value="student_researcher" ${u.role === 'student_researcher' ? 'selected' : ''}>Student</option>
-                <option value="adviser" ${u.role === 'adviser' ? 'selected' : ''}>Adviser</option>
-                <option value="ethics_reviewer" ${u.role === 'ethics_reviewer' ? 'selected' : ''}>Ethics Reviewer</option>
-                <option value="public_visitor" ${u.role === 'public_visitor' ? 'selected' : ''}>Public Visitor</option>
-              </select>
+                : `<select data-userid="${u.id}" class="user-role-select" style="max-width:180px;"><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option><option value="cpri_staff" ${u.role === 'cpri_staff' ? 'selected' : ''}>CPRI Staff</option><option value="faculty_researcher" ${u.role === 'faculty_researcher' ? 'selected' : ''}>Faculty</option><option value="non_teaching_researcher" ${u.role === 'non_teaching_researcher' ? 'selected' : ''}>Non-Teaching Researcher</option><option value="student_researcher" ${u.role === 'student_researcher' ? 'selected' : ''}>Student</option><option value="presenter" ${u.role === 'presenter' ? 'selected' : ''}>Presenter</option><option value="adviser" ${u.role === 'adviser' ? 'selected' : ''}>Research Adviser / Facilitator</option><option value="ethics_reviewer" ${u.role === 'ethics_reviewer' ? 'selected' : ''}>Ethics Reviewer</option><option value="public_visitor" ${u.role === 'public_visitor' ? 'selected' : ''}>Public Visitor</option></select>`}
             </td>
             <td>
               <select data-userid="${u.id}" class="user-status-select" style="max-width:140px;" ${statusLocked ? 'disabled' : ''}><option value="active" ${u.status === 'active' ? 'selected' : ''}>Active</option><option value="pending" ${u.status === 'pending' ? 'selected' : ''}>Pending</option><option value="disabled" ${u.status === 'disabled' ? 'selected' : ''}>Disabled</option></select>
@@ -651,7 +644,7 @@
               <button class="btn btn-outline del-user" data-userid="${u.id}" data-name="${escapeHtml(u.fullName || u.username)}" style="padding:6px 10px;font-size:.85rem;border-color:#b23b32;color:#b23b32;" ${deleteLocked ? 'hidden' : ''} title="Delete user ${escapeHtml(u.fullName || u.username)}">Delete</button>
             </td>
           </tr>
-        `).join('') + '</tbody></table></div>';
+        `}).join('') + '</tbody></table></div>';
 
       el.querySelectorAll('.user-role-select').forEach(sel => {
         sel.addEventListener('change', async (ev) => {

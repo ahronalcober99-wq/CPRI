@@ -273,7 +273,10 @@ const MEMBER_ONLY_PAGES = new Set([
   'researcher-form.html', 'publication-form.html', 'innovation-extension-form.html',
   'event-abstract.html', 'event-registration.html',
   // Research Submission Module pages (served from public/ like every other page).
-  'research-submission.html', 'research-submission-detail.html', 'my-submissions.html'
+  'research-submission.html', 'research-submission-detail.html', 'my-submissions.html',
+  // Research Adviser / Facilitator dashboard (member-only, not admin-only: the
+  // page itself renders a short sidebar and the API scopes the data).
+  'facilitator-dashboard.html'
 ]);
 
 app.use(async (req, res, next) => {

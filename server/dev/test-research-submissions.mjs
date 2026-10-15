@@ -34,6 +34,8 @@ import {
 import {
   FORM_CONFIG,
   HAS_INITIAL_STAGE,
+  REVIEWER_ROLES,
+  STATUS_CHANGE_ROLES,
   STUDENT_ONLY_SLOTS,
   WORD_EXTENSIONS
 } from '../lib/research-config.js';
@@ -45,18 +47,41 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 //  A tiny fake data layer.
 //
 //  It understands exactly the query shapes this module issues: a single
-//  `FROM <table>`, `col = ?` conditions joined by AND, and an optional
-//  ORDER BY that the assertions do not depend on.
+//  `FROM <table>`, `col = ?` or `col = 'literal'` conditions joined by AND
+//  and/or OR, and an optional ORDER BY that the assertions do not depend on.
+//
+//  The OR matters: GET /api/research-submissions asks for "every student
+//  record, OR anything assigned to me" in one query for the Research Adviser /
+//  Facilitator monitoring view.
 // ---------------------------------------------------------------------------
-function whereColumns(sql) {
+function whereMatcher(sql) {
   const afterWhere = sql.split(/\bWHERE\b/i)[1];
-  if (!afterWhere) return [];
+  if (!afterWhere) return { test: () => true };
   const clause = afterWhere.split(/\bORDER BY\b/i)[0];
-  return clause
-    .split(/\bAND\b/i)
-    .map(part => part.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\?\s*$/))
-    .filter(Boolean)
-    .map(m => m[1]);
+
+  // OR binds loosest, so each disjunct is a group of AND-ed terms. Parameter
+  // positions are assigned up front, in query order, so a disjunct that fails
+  // still consumes the right number of `?`s for the ones after it.
+  let paramIndex = 0;
+  const groups = clause.split(/\bOR\b/i).map(disjunct =>
+    disjunct
+      .split(/\bAND\b/i)
+      .map(term => {
+        const m = term.match(/([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\?|'([^']*)')/);
+        if (!m) return null;
+        if (m[2] === '?') return { col: m[1], param: paramIndex++ };
+        return { col: m[1], value: m[3] };
+      })
+      .filter(Boolean)
+  );
+
+  return {
+    test: (row, params) => groups.some(terms => terms.every(term => {
+      const expected = term.param === undefined ? term.value : params[term.param];
+      const actual = row[term.col];
+      return String(actual == null ? '' : actual) === String(expected == null ? '' : expected);
+    }))
+  };
 }
 
 function tableName(sql) {
@@ -75,10 +100,8 @@ function fakeStore() {
   const select = (sql, params = []) => {
     const table = tableName(sql);
     if (!table || !tables.has(table)) return [];
-    const cols = whereColumns(sql);
-    return rowsOf(table).filter(row =>
-      cols.every((col, i) => row[col] === params[i])
-    );
+    const matcher = whereMatcher(sql);
+    return rowsOf(table).filter(row => matcher.test(row, params));
   };
 
   return {
@@ -1026,35 +1049,88 @@ test('files land under the private upload directory, never a public one', async 
 // ===========================================================================
 //  Adviser / facilitator scoping
 // ===========================================================================
-test('an adviser sees only the submissions assigned to them', async () => {
+test('reviewer read/comment access is gated separately from status changes', () => {
+  // The split that makes a Research Adviser / Facilitator read-only: the role
+  // stays a "reviewer" for reading and commenting, but is absent from the
+  // status-change set, so PATCH /:id/status refuses it.
+  assert.ok(REVIEWER_ROLES.has('adviser'));
+  assert.ok(REVIEWER_ROLES.has('facilitator'));
+  assert.ok(!STATUS_CHANGE_ROLES.has('adviser'));
+  assert.ok(!STATUS_CHANGE_ROLES.has('facilitator'));
+  for (const role of ['cpri_staff', 'ethics_reviewer', 'admin']) {
+    assert.ok(STATUS_CHANGE_ROLES.has(role), `${role} keeps its review powers`);
+  }
+});
+
+test('a Research Adviser / Facilitator monitors every student submission, read-only', async () => {
   const module = await startModule();
   try {
     const adviser = account('adviser');
     const otherAdviser = account('adviser');
     const student = account('student_researcher');
+    const faculty = account('faculty_researcher');
 
-    const assigned = {
-      id: randomUUID(), owner_id: student.id, owner_name: student.fullName,
-      owner_role: student.role, stage: 'initial', title: 'Mine to advise',
-      authors: 'A', program: 'P', category: 'C', research_type: 'student_thesis',
-      school_year: '2026-2027', semester: '1st', adviser_id: adviser.id,
-      status: 'submitted', created_at: '2026-01-01 00:00:00', updated_at: '2026-01-01 00:00:00'
+    const base = {
+      stage: 'initial', authors: 'A', program: 'P', category: 'C',
+      school_year: '2026-2027', semester: '1st', status: 'submitted',
+      created_at: '2026-01-01 00:00:00', updated_at: '2026-01-01 00:00:00'
     };
-    await module.store.insert('research_submissions', assigned);
+    // A student record nobody named this adviser on, and a faculty record that
+    // does name them.
+    const studentSub = {
+      ...base, id: randomUUID(), owner_id: student.id, owner_name: student.fullName,
+      owner_role: student.role, title: 'Student work', research_type: 'student_thesis',
+      adviser_id: '', facilitator_id: ''
+    };
+    const facultySub = {
+      ...base, id: randomUUID(), owner_id: faculty.id, owner_name: faculty.fullName,
+      owner_role: faculty.role, title: 'Faculty work', research_type: 'faculty_research',
+      adviser_id: adviser.id, facilitator_id: ''
+    };
+    await module.store.insert('research_submissions', studentSub);
+    await module.store.insert('research_submissions', facultySub);
 
+    // The role's whole remit is monitoring student work, so every student
+    // record is visible — assigned to them or not — plus what names them.
     const mine = await module.json(await module.call(adviser, '/'));
-    assert.deepEqual(mine.body.submissions.map(s => s.id), [assigned.id]);
+    assert.deepEqual(
+      mine.body.submissions.map(s => s.id).sort(),
+      [facultySub.id, studentSub.id].sort(),
+      'the assigned adviser sees the student record and the one naming them'
+    );
 
     const theirs = await module.json(await module.call(otherAdviser, '/'));
-    assert.deepEqual(theirs.body.submissions, []);
-    assert.equal((await module.call(otherAdviser, `/${assigned.id}`)).status, 403);
+    assert.deepEqual(
+      theirs.body.submissions.map(s => s.id), [studentSub.id],
+      'an unassigned adviser still monitors the student record, but not the faculty one'
+    );
+    assert.equal((await module.call(otherAdviser, `/${studentSub.id}`)).status, 200);
+    assert.equal((await module.call(otherAdviser, `/${facultySub.id}`)).status, 403,
+      'a faculty record is visible only to the adviser it names');
 
-    // They can move it along, because it is assigned to them.
-    const moved = await module.call(adviser, `/${assigned.id}/status`, {
+    // Read-only by design: approving, rejecting and every other status move is
+    // refused, even on a record that names them.
+    const moved = await module.call(adviser, `/${facultySub.id}/status`, {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ status: 'under_initial_checking' })
     });
-    assert.equal(moved.status, 200);
+    assert.equal(moved.status, 403, 'a facilitator can never change a status');
+
+    const movedStudent = await module.call(adviser, `/${studentSub.id}/status`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ status: 'approved' })
+    });
+    assert.equal(movedStudent.status, 403, 'and never approves a student submission');
+
+    // Commenting is exactly what the role may do.
+    const commented = await module.call(otherAdviser, `/${studentSub.id}/comments`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ body: 'Please justify the sample size.' })
+    });
+    assert.equal(commented.status, 201);
+    const posted = await commented.json();
+    assert.equal(posted.comment.comment_type, 'feedback');
+    assert.equal(posted.comment.author_role, 'adviser');
   } finally {
     await module.close();
     await module.cleanup();

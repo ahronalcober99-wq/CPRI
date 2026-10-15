@@ -59,7 +59,8 @@ Create or use existing accounts with these roles:
 - `student_researcher` (can do Initial + Final)
 - `faculty_researcher` (can do Initial + Final)
 - `presenter` (Final only)
-- `adviser` (assigned submissions only)
+- `adviser` / `facilitator` ("Research Adviser / Facilitator": every student submission,
+  read-only — comments but no status changes)
 - `cpri_staff` or `admin` (all submissions, status updates, compare)
 
 ### 2. Form page — role + stage branching
@@ -68,7 +69,8 @@ Create or use existing accounts with these roles:
 - Sign in as a faculty researcher: same two tabs, but different research-type options.
 - Sign in as a presenter: only Final tab, with institution + nationality fields.
 - Sign in as an adviser or staff: should show "Your account type cannot submit research
-  through this module." (Advisers can update assigned submissions, not create new ones here.)
+  through this module." (An adviser monitors and comments on student submissions here; the
+  status controls are hidden and the status endpoint answers 403.)
 
 ### 3. Documents — required / conditional / optional
 - Student Initial: 9 Required, 1 Conditional (`form_g`), 2 Optional (`adviser_eval`,
@@ -105,7 +107,7 @@ Create or use existing accounts with these roles:
 
 ### 4b. My Submissions
 - Open `my-submissions.html`: only your own submissions are listed (an adviser or
-  facilitator sees the ones assigned to them, staff/admin see everything — the endpoint
+  facilitator sees every student submission, staff/admin see everything — the endpoint
   decides that, the page only renders the answer).
 - Every row carries a colour-coded status badge plus the stage, type and dates.
 - "Show details" expands in place to the status timeline, the documents with **every

@@ -38,7 +38,8 @@ Data model (new tables):
 
 Access control:
 - owner-only for student/faculty/presenter researchers
-- adviser/facilitator: assigned submissions only
+- adviser/facilitator ("Research Adviser / Facilitator"): all student submissions, read-only
+  (comments only; no status changes)
 - ethics_reviewer: only "Under ethics review"
 - cpri_staff/admin: all
 - role/owner_id/status ignored from client, taken from session

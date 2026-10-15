@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Facilitator Dashboard | CPRI</title>
+  <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
+  <meta name="theme-color" content="#240000">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container-xl">
+        <span class="badge" style="background:rgba(255,255,255,.16);color:#fff;">Research Adviser / Facilitator</span>
+        <h1>Facilitator Dashboard</h1>
+        <p>Monitor student submissions and leave comments or recommendations.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container-xl">
+        <div class="form-message" id="message"></div>
+        <div id="access-denied" class="empty-state" style="display:none;">
+          This dashboard is for Research Adviser / Facilitator accounts.
+          <a href="account.html">Go to My Account</a>.
+        </div>
+
+        <div class="admin-shell" id="shell" style="display:none;">
+          <!-- Sidebar. Deliberately short: a facilitator monitors submissions and
+               reads notifications, so the admin-only entries (Repository,
+               Publications, Ethics Review, Researchers, Analytics & Reports,
+               Audit Logs, Calendar, Email Notifications, File Manager and the
+               user/role controls) are not rendered for this role at all. -->
+          <aside class="admin-side">
+            <div class="as-brand">
+              <img class="logo" src="/images/cpri-logo.jpg" alt="Colegio de San Gabriel Arcangel seal">
+              <div><b>CPRI</b><small>Facilitator</small></div>
+            </div>
+            <div class="as-label">Monitoring</div>
+            <a href="#submissions" class="active"><i class="bi bi-send"></i> Student Submissions</a>
+            <a href="#notifications"><i class="bi bi-bell"></i> Notifications</a>
+            <div class="as-label">Account</div>
+            <a href="messages.html"><i class="bi bi-chat-left-text"></i> Messages</a>
+            <a href="profile.html"><i class="bi bi-person-gear"></i> My Profile</a>
+            <a href="account.html"><i class="bi bi-person-badge"></i> My Account</a>
+            <div class="as-user">
+              <span class="av" id="side-av">—</span>
+              <div><b id="side-name" style="font-family:var(--font-head);color:var(--cpri-text)">—</b><small id="side-role">Research Adviser / Facilitator</small></div>
+            </div>
+          </aside>
+
+          <!-- Main -->
+          <div class="admin-main">
+            <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+              <div>
+                <h2>Student Submissions</h2>
+                <small style="color:var(--cpri-muted)" id="subs-sub">Every student research submission, with its current status.</small>
+              </div>
+              <span class="badge" style="background:var(--gold-tint);color:#8a6d1f;" id="subs-count">—</span>
+            </div>
+
+            <div id="submissions-loading" class="empty-state">Loading student submissions…</div>
+            <div id="submissions-empty" class="empty-state" style="display:none;">
+              No student submissions yet. Please check back soon.
+            </div>
+            <div id="submissions-list"></div>
+          </div>
+        </div>
+
+        <div id="notifications" style="margin-top:28px;">
+          <div class="card">
+            <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+              <h3 style="margin:0;"><i class="bi bi-bell"></i> Notifications</h3>
+              <button class="btn btn-outline-dark btn-sm" id="mark-read" type="button">Mark all as read</button>
+            </div>
+            <div id="notif-list" style="margin-top:12px;"><p class="form-note">Loading…</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      // A Research Adviser / Facilitator monitors STUDENT work: the server scopes
+      // GET /api/research-submissions to every student_researcher record for this
+      // role. Comments are read and written through the same endpoints the full
+      // submission page uses, so there is no second code path to keep in sync.
+      // Nothing here can change a status — the server refuses that with a 403.
+
+      const STATUS_LABELS = {
+        draft: 'Draft',
+        submitted: 'Submitted',
+        under_initial_checking: 'Under Initial Checking',
+        for_revision: 'For Revision',
+        under_ethics_review: 'Under Ethics Review',
+        approved: 'Approved',
+        published: 'Published',
+        archived: 'Archived',
+        rejected: 'Rejected'
+      };
+
+      // Same maroon/gold palette as My Submissions, so a status reads the same
+      // here as it does everywhere else.
+      const STATUS_STYLES = {
+        draft:                  { bg: 'rgba(0,0,0,.06)',          fg: 'var(--cpri-muted)' },
+        submitted:              { bg: 'var(--gold-tint)',          fg: '#8a6d1f' },
+        under_initial_checking: { bg: 'var(--gold-tint)',          fg: '#8a6d1f' },
+        under_ethics_review:    { bg: 'var(--maroon-tint)',        fg: 'var(--cpri-secondary)' },
+        for_revision:           { bg: 'var(--maroon-tint-strong)', fg: 'var(--cpri-secondary)' },
+        approved:               { bg: 'rgba(16,185,129,.14)',      fg: '#0b7a56' },
+        published:              { bg: 'rgba(16,185,129,.14)',      fg: '#0b7a56' },
+        archived:               { bg: 'rgba(0,0,0,.06)',           fg: 'var(--cpri-muted)' },
+        rejected:               { bg: 'rgba(185,28,28,.12)',       fg: '#b91c1c' }
+      };
+
+      const STAGE_LABELS = { initial: 'Initial Submission', final: 'Final Submission' };
+
+      const messageEl = document.getElementById('message');
+      const shell = document.getElementById('shell');
+      const denied = document.getElementById('access-denied');
+      const listEl = document.getElementById('submissions-list');
+      const loadingEl = document.getElementById('submissions-loading');
+      const emptyEl = document.getElementById('submissions-empty');
+      const countEl = document.getElementById('subs-count');
+      const notifList = document.getElementById('notif-list');
+
+      // Every value below is a database row or a person's typing, so it is
+      // escaped before it goes anywhere near innerHTML.
+      function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[ch]);
+      }
+
+      function when(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        return isNaN(date) ? esc(value) : date.toLocaleString();
+      }
+
+      function statusBadge(status, label) {
+        const style = STATUS_STYLES[status] || { bg: 'rgba(0,0,0,.06)', fg: 'var(--cpri-muted)' };
+        return '<span class="badge" style="background:' + style.bg + ';color:' + style.fg + ';margin:0;">' +
+          esc(label || STATUS_LABELS[status] || status) + '</span>';
+      }
+
+      function showMsg(type, text) {
+        messageEl.className = 'form-message ' + type;
+        messageEl.textContent = text || '';
+      }
+
+      function toLogin() {
+        window.location.href = 'login.html?next=facilitator-dashboard.html';
+      }
+
+      async function getJson(url) {
+        const res = await fetch(url);
+        if (res.status === 401) { toLogin(); return null; }
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Request failed.');
+        return body;
+      }
+
+      // The comment thread for one submission, loaded on first expand and kept
+      // in the DOM afterwards so a re-expand does not re-fetch.
+      function renderComments(container, submission) {
+        const comments = submission.comments || [];
+        const thread = comments.length
+          ? comments.map(c =>
+              '<div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">' +
+                '<div class="meta">' + esc(c.comment_type || 'Comment') + ' · ' + esc(c.author_name || '—') +
+                ' (' + esc(c.author_role || '—') + ') · ' + when(c.created_at) + '</div>' +
+                '<p style="margin:6px 0 0;">' + esc(c.body) + '</p>' +
+              '</div>').join('')
+          : '<p class="form-note">No comments yet. Be the first to leave a recommendation.</p>';
+
+        container.innerHTML =
+          '<h4 style="margin:14px 0 8px;">Comments and recommendations</h4>' +
+          thread +
+          '<div class="form-group" style="margin-top:14px;">' +
+            '<label for="c-body-' + esc(submission.id) + '">Add a comment or recommendation</label>' +
+            '<textarea id="c-body-' + esc(submission.id) + '" rows="3" placeholder="Write your comment or recommendation…"></textarea>' +
+          '</div>' +
+          '<div id="c-msg-' + esc(submission.id) + '" class="form-message"></div>' +
+          '<button type="button" class="btn btn-primary btn-sm c-post" data-id="' + esc(submission.id) + '">Post comment</button>';
+      }
+
+      function renderSubmission(entry) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.marginTop = '18px';
+
+        const head = document.createElement('div');
+        head.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;';
+        head.innerHTML =
+          '<div style="min-width:240px;flex:1;">' +
+            '<h3 style="margin:0 0 8px;">' + esc(entry.title || 'Untitled submission') + '</h3>' +
+            '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+              statusBadge(entry.status, entry.statusLabel) +
+              '<span class="badge" style="background:transparent;border:1px solid var(--cpri-border);color:var(--cpri-muted);margin:0;">' +
+                esc(STAGE_LABELS[entry.stage] || entry.stage || '') + '</span>' +
+            '</div>' +
+            '<p class="form-note" style="margin:10px 0 0;">' +
+              esc(entry.authors || '—') + ' · ' + esc(entry.program || '—') +
+            '</p>' +
+            '<p class="form-note" style="margin:4px 0 0;">Submitted ' + when(entry.created_at) +
+              ' · Last update ' + when(entry.updated_at) + '</p>' +
+          '</div>';
+
+        const actions = document.createElement('div');
+        actions.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;';
+
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'btn btn-navy btn-sm';
+        toggle.textContent = 'Comments';
+        toggle.setAttribute('aria-expanded', 'false');
+        actions.appendChild(toggle);
+
+        const openFull = document.createElement('a');
+        openFull.className = 'btn btn-outline-dark btn-sm';
+        openFull.href = 'research-submission-detail.html?id=' + encodeURIComponent(entry.id);
+        openFull.textContent = 'Open full page';
+        actions.appendChild(openFull);
+
+        head.appendChild(actions);
+        card.appendChild(head);
+
+        const panel = document.createElement('div');
+        panel.className = 'fac-panel';
+        panel.style.cssText = 'display:none;margin-top:18px;border-top:1px solid var(--cpri-border);padding-top:16px;';
+        card.appendChild(panel);
+
+        let loaded = false;
+        toggle.addEventListener('click', async () => {
+          const open = toggle.getAttribute('aria-expanded') === 'true';
+          if (open) {
+            panel.style.display = 'none';
+            toggle.setAttribute('aria-expanded', 'false');
+            return;
+          }
+          panel.style.display = '';
+          toggle.setAttribute('aria-expanded', 'true');
+          if (loaded) return;
+          panel.innerHTML = '<p class="form-note">Loading comments…</p>';
+          try {
+            const payload = await getJson('/api/research-submissions/' + encodeURIComponent(entry.id));
+            if (!payload) return; // redirected to login
+            renderComments(panel, payload.submission || {});
+            loaded = true;
+          } catch (err) {
+            panel.innerHTML = '<p class="form-note" style="color:var(--cpri-secondary);">' +
+              esc(err.message || 'Could not load this submission.') + '</p>';
+          }
+        });
+
+        return card;
+      }
+
+      // One delegated handler for every post button, so cards rendered later
+      // need no wiring of their own.
+      listEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.c-post');
+        if (!btn) return;
+        const id = btn.dataset.id;
+        const box = document.getElementById('c-body-' + id);
+        const msg = document.getElementById('c-msg-' + id);
+        const body = box ? box.value.trim() : '';
+        if (msg) { msg.className = 'form-message'; msg.textContent = ''; }
+        if (!body) {
+          if (msg) { msg.className = 'form-message error'; msg.textContent = 'Write something before posting.'; }
+          return;
+        }
+        btn.disabled = true;
+        btn.textContent = 'Posting…';
+        try {
+          const res = await fetch('/api/research-submissions/' + encodeURIComponent(id) + '/comments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body, parent_id: null })
+          });
+          const out = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(out.error || 'Could not post the comment.');
+          // Re-read the thread so the new comment appears in order.
+          const payload = await getJson('/api/research-submissions/' + encodeURIComponent(id));
+          if (!payload) return;
+          // Re-render the panel the button belongs to (the thread + a fresh box).
+          const panel = btn.closest('.card') && btn.closest('.card').querySelector('.fac-panel');
+          if (panel) renderComments(panel, payload.submission || {});
+          showMsg('success', 'Comment posted. The student has been notified.');
+        } catch (err) {
+          if (msg) { msg.className = 'form-message error'; msg.textContent = err.message; }
+          btn.disabled = false;
+          btn.textContent = 'Post comment';
+        }
+      });
+
+      async function loadNotifications() {
+        try {
+          const res = await fetch('/api/notifications');
+          if (!res.ok) throw new Error('Could not load notifications.');
+          const out = await res.json();
+          const items = out.notifications || [];
+          if (!items.length) {
+            notifList.innerHTML = '<p class="form-note">No notifications yet.</p>';
+            return;
+          }
+          notifList.innerHTML = items.map(n =>
+            '<div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">' +
+              '<div class="meta">' + when(n.createdAt) + (n.readAt ? '' : ' · <strong>New</strong>') + '</div>' +
+              '<p style="margin:6px 0 0;"><strong>' + esc(n.title || '') + '</strong></p>' +
+              '<p style="margin:2px 0 0;">' + esc(n.message || '') + '</p>' +
+              (n.link ? '<p style="margin:4px 0 0;"><a href="' + esc(n.link) + '">Open</a></p>' : '') +
+            '</div>').join('');
+        } catch (err) {
+          notifList.innerHTML = '<p class="form-note">' + esc(err.message) + '</p>';
+        }
+      }
+
+      document.getElementById('mark-read').addEventListener('click', async () => {
+        try {
+          await fetch('/api/notifications/read', { method: 'POST' });
+          await loadNotifications();
+          showMsg('success', 'Notifications marked as read.');
+        } catch {
+          showMsg('error', 'Could not mark notifications as read.');
+        }
+      });
+
+      (async function () {
+        try {
+          const meRes = await fetch('/api/auth/me');
+          if (!meRes.ok) { toLogin(); return; }
+          const { user } = await meRes.json();
+          // The server is the real gate; this only decides what to render.
+          const allowed = ['adviser', 'facilitator', 'cpri_staff', 'admin'];
+          if (!allowed.includes(user.role)) {
+            denied.style.display = 'block';
+            return;
+          }
+          shell.style.display = '';
+
+          const name = user.fullName || user.username || '—';
+          document.getElementById('side-name').textContent = name;
+          document.getElementById('side-role').textContent = user.roleLabel || 'Research Adviser / Facilitator';
+          document.getElementById('side-av').textContent =
+            name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase() || 'CP';
+
+          await loadNotifications();
+
+          const payload = await getJson('/api/research-submissions');
+          if (!payload) return;
+          const submissions = payload.submissions || [];
+
+          loadingEl.style.display = 'none';
+          countEl.textContent = submissions.length + (submissions.length === 1 ? ' submission' : ' submissions');
+
+          if (!submissions.length) {
+            emptyEl.style.display = '';
+            return;
+          }
+          submissions.forEach((entry) => listEl.appendChild(renderSubmission(entry)));
+        } catch (err) {
+          loadingEl.style.display = 'none';
+          showMsg('error', err.message || 'Could not load the dashboard.');
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

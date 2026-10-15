@@ -220,6 +220,12 @@ const CPRI = (() => {
         if (isAdmin) {
           auth.push({ label: 'Dashboard', href: 'admin-dashboard.html', primary: true });
         }
+        // A Research Adviser / Facilitator gets their own monitoring dashboard:
+        // student submissions with statuses, a comment box per submission and
+        // notifications. No admin console entry — the server would 403 it.
+        if (me.user.role === 'adviser' || me.user.role === 'facilitator') {
+          auth.push({ label: 'Facilitator Dashboard', href: 'facilitator-dashboard.html', primary: true });
+        }
         // Direct messaging is for all registered roles — mirror the server's DM gate.
         if (['admin','cpri_staff','faculty_researcher','non_teaching_researcher','adviser','ethics_reviewer','student_researcher','presenter','public_visitor'].includes(me.user.role)) {
           auth.push({ label: 'Messages', href: 'messages.html' });
@@ -2219,8 +2225,12 @@ const CPRI = (() => {
         // Session adopted — route like the normal Google callback would.
         const me = await fetchMe();
         const user = me && me.user;
+        // Mirrors homePageForRole() in server/auth.js.
         window.location.href = user
-          ? (user.needsSetup ? 'complete-profile.html' : user.role === 'admin' ? 'admin-dashboard.html' : 'account.html')
+          ? (user.needsSetup ? 'complete-profile.html'
+            : user.role === 'admin' ? 'admin-dashboard.html'
+            : user.role === 'adviser' ? 'facilitator-dashboard.html'
+            : 'account.html')
           : 'login.html';
       } catch (err) {
         msg.className = 'gbridge-msg error';

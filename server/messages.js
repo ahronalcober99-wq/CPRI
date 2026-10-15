@@ -25,7 +25,10 @@ const ROLE_LABELS = {
   cpri_staff: 'CPRI Staff',
   faculty_researcher: 'Faculty Researcher',
   student_researcher: 'Student Researcher',
-  adviser: 'Adviser',
+  // See notifications.js — "Research Advisers or Facilitators" is a single role
+  // stored as `adviser`; `facilitator` is the research module's spelling.
+  adviser: 'Research Adviser / Facilitator',
+  facilitator: 'Research Adviser / Facilitator',
   ethics_reviewer: 'Ethics Reviewer',
   public_visitor: 'Public Visitor'
 };

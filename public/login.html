@@ -148,7 +148,15 @@
         // protected page is where they land once they are signed in. Only
         // site-relative paths are followed (never an off-site address).
         const next = new URLSearchParams(window.location.search).get('next');
-        window.location.href = (next && /^\/(?!\/)/.test(next)) ? next : 'account.html';
+        // No ?next= means a plain sign-in, so send the role to the page it can
+        // actually work from: admins to the console, Research Advisers /
+        // Facilitators to their monitoring dashboard, everyone else to their
+        // account page. Mirrors homePageForRole() in server/auth.js.
+        const role = out && out.user && out.user.role;
+        const home = role === 'admin' ? 'admin-dashboard.html'
+          : role === 'adviser' ? 'facilitator-dashboard.html'
+          : 'account.html';
+        window.location.href = (next && /^\/(?!\/)/.test(next)) ? next : home;
       } catch (err) {
         message.className = 'form-message error';
         message.textContent = err.message;

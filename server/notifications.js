@@ -25,7 +25,11 @@ const ROLE_LABELS = {
   cpri_staff: 'CPRI Staff',
   faculty_researcher: 'Faculty Researcher',
   student_researcher: 'Student Researcher',
-  adviser: 'Adviser',
+  // The proposal's "Research Advisers or Facilitators" is one role; the stored
+  // value stays `adviser`. `facilitator` is listed too so a row that carries the
+  // research module's spelling never renders as a raw slug.
+  adviser: 'Research Adviser / Facilitator',
+  facilitator: 'Research Adviser / Facilitator',
   ethics_reviewer: 'Ethics Reviewer',
   public_visitor: 'Public Visitor'
 };

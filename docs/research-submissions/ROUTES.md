@@ -14,8 +14,10 @@ routes registered in `server/research-submissions.js` and exits non-zero if they
   read from the `users` table on each request; a role sent by the client is never used.
 - **Researcher roles (own submissions only):** `student_researcher`, `faculty_researcher`,
   `non_teaching_researcher`, `presenter`.
-- **Assigned roles (own assignments only):** `adviser` (submissions where `adviser_id === user.id`),
-  `facilitator` (submissions where `facilitator_id === user.id`).
+- **Monitoring roles (read + comment only):** `adviser` (the portal's "Research Adviser /
+  Facilitator") and `facilitator`. Both see every `student_researcher` submission, plus any
+  faculty record that names them (`adviser_id` / `facilitator_id === user.id`). They may
+  comment but never change a status — see `STATUS_CHANGE_ROLES`.
 - **Staff / admin (all submissions):** `cpri_staff`, `admin`.
 - **Reviewer-only actions:** `ethics_reviewer` can act only on submissions whose status is
   `under_ethics_review`.
@@ -96,7 +98,8 @@ Final papers: `submitted` → checking → `approved` → `published` → `archi
 ### GET /
 - Auth: `requireAuth`.
 - Researchers: own submissions only.
-- Advisers / facilitators: submissions assigned to them.
+- Advisers / facilitators: every `student_researcher` submission, plus any record that names
+  them via `adviser_id` / `facilitator_id`.
 - `cpri_staff` / `admin`: all submissions.
 - Returns `{ submissions: [...] }` where each item includes `isOwner`.
 
@@ -139,20 +142,23 @@ Final papers: `submitted` → checking → `approved` → `published` → `archi
 
 ### POST /:id/comments
 - Auth: `requireAuth`.
-- Allowed commenters: owner, adviser (if assigned), facilitator (if assigned), `cpri_staff`,
-  `admin`, `ethics_reviewer`.
+- Allowed commenters: the owner, anyone who can read the submission (which for an adviser or
+  facilitator means every student record they monitor), `cpri_staff`, `admin`, `ethics_reviewer`.
+  Commenting never implies the right to change a status.
 - Comment type is inferred from the session role: adviser/facilitator → `feedback`,
   ethics_reviewer → `revision_suggestion`, owner researcher → `response`, else `comment`.
 - Parent comments supported via `parent_id`.
 
 ### PATCH /:id/status
 - Auth: `requireAuth`. Two ways in:
-  - a reviewer/staff (`REVIEWER_ROLES`) moves a submission along, or
+  - a reviewer/staff account (`STATUS_CHANGE_ROLES` = `cpri_staff`, `ethics_reviewer`,
+    `admin`) moves a submission along, or
   - the **owner** hands in their own `draft` (`draft` → `submitted`), which runs the same
     completeness check as `POST /` against the stored fields and files, returning
     `400 { error, draftIncomplete: true }` when something is missing.
-- Additional guards: `ethics_reviewer` only while `under_ethics_review`; `adviser` /
-  `facilitator` only for submissions assigned to them.
+- An `adviser` / `facilitator` is refused here outright (`403`): the role monitors and
+  comments, it never approves, rejects or otherwise moves a submission.
+- Additional guard: `ethics_reviewer` only while `under_ethics_review`.
 - The transition is validated against `validTransitionsFor(stage, ownerRole)` → 400 if invalid.
 - `under_ethics_review` → `approved` is refused here (`400`): approval must come from
   `POST /:id/ethics` so an Ethics Clearance is always attached.

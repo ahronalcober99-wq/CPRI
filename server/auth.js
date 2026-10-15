@@ -105,7 +105,11 @@ const ROLE_META = {
   non_teaching_researcher: { label: 'Non-Teaching Researcher', approvable: false, desc: 'Non-teaching personnel conducting and submitting research.' },
   student_researcher: { label: 'Student Researcher', approvable: false, desc: 'Students conducting and submitting research.' },
   presenter: { label: 'Presenter', approvable: false, desc: 'Research Gala presenters submitting abstracts, papers and posters.' },
-  adviser: { label: 'Adviser', approvable: false, desc: 'Advises and guides researchers.' },
+  // One role covers both titles from the CPRI proposal's "Target Users of the
+  // System" table ("Research Advisers or Facilitators"). The stored value stays
+  // `adviser` so every existing row and every `role === 'adviser'` check keeps
+  // working — only the human-readable label changed.
+  adviser: { label: 'Research Adviser / Facilitator', approvable: false, desc: 'Monitors student submissions and provides comments or recommendations.' },
   ethics_reviewer: { label: 'Ethics Reviewer', approvable: true, desc: 'Reviews research for ethical compliance; requires admin approval.' },
   public_visitor: { label: 'Public Visitor', approvable: false, desc: 'Anonymous public site visitor.' }
 };
@@ -132,7 +136,11 @@ const RBAC_PERMISSIONS = {
   non_teaching_researcher: ['submit_research', 'view_public'],
   student_researcher: ['submit_research', 'submit_gala', 'view_public'],
   presenter: ['submit_gala', 'view_public'],
-  adviser: ['advise', 'submit_research', 'view_public'],
+  // A facilitator is read-only over submissions: it monitors student work and
+  // leaves comments/recommendations, but never approves, rejects or changes a
+  // status, and never reaches the admin surfaces (users, roles, audit logs,
+  // file manager, email settings). Those are gated by requireAdmin server-side.
+  adviser: ['monitor_submissions', 'comment_submissions', 'advise', 'submit_research', 'view_public'],
   ethics_reviewer: ['review_ethics', 'view_public'],
   public_visitor: ['view_public']
 };
@@ -208,6 +216,16 @@ function fullProfile(u) {
     institution: u.institution || '',
     nationality: u.nationality || ''
   };
+}
+
+// Where each role lands straight after signing in. Admins get the console,
+// Research Advisers / Facilitators get their own dashboard (their whole remit
+// is monitoring submissions, so the account page would be a dead end), and
+// everyone else gets the account page.
+function homePageForRole(role) {
+  if (role === 'admin') return '/admin-dashboard.html';
+  if (role === 'adviser') return '/facilitator-dashboard.html';
+  return '/account.html';
 }
 
 // Normalize the DB role value for display. We do NOT change the canonical
@@ -849,7 +867,7 @@ router.get('/google/callback', async (req, res) => {
     return res.redirect('/google-bridge.html?code=' + code);
   }
   if (isNewUser) return res.redirect('/complete-profile.html');
-  res.redirect(user.role === 'admin' ? '/admin-dashboard.html' : '/account.html');
+  res.redirect(homePageForRole(user.role));
 });
 
 // Step 3 (external flow) — the app exchanges the code shown in the system

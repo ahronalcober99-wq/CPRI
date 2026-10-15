@@ -43,6 +43,27 @@ test('the new roles are registered with a label, a description and permissions',
   assert.equal(ROLE_META.presenter.label, 'Presenter');
 });
 
+test('Research Adviser / Facilitator is the Adviser role relabelled, not a duplicate role', () => {
+  // The proposal's "Target Users of the System" table lists ONE role for
+  // "Research Advisers or Facilitators", and the portal already had `adviser`.
+  // Relabelling it keeps every existing row and every role === 'adviser' check
+  // working, so no data migration was needed.
+  assert.equal(ROLE_META.adviser.label, 'Research Adviser / Facilitator');
+  assert.ok(ROLES.includes('adviser'));
+  assert.ok(SELF_REGISTER_ROLES.includes('adviser'));
+  assert.ok(!ROLES.includes('facilitator'),
+    'facilitator is the research module\'s assignment column, not a second registered role');
+
+  // Monitoring and commenting only — never a review or admin capability.
+  const perms = RBAC_PERMISSIONS.adviser;
+  assert.ok(perms.includes('monitor_submissions'), 'may monitor student submissions');
+  assert.ok(perms.includes('comment_submissions'), 'may leave comments/recommendations');
+  assert.ok(!perms.includes('manage_users'), 'never manages users or roles');
+  assert.ok(!perms.includes('manage_content'));
+  assert.ok(!perms.includes('approve_reviewers'));
+  assert.ok(!perms.includes('review_ethics'), 'never does the Ethics Reviewer\'s work');
+});
+
 test('Non-Teaching Researcher gets exactly the same permissions as Faculty Researcher', () => {
   // The brief: "Give it the same submission permissions as faculty."
   assert.deepEqual(

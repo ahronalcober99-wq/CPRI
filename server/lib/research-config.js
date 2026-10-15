@@ -39,11 +39,25 @@ export function isFacultyRole(role) {
   return FACULTY_ROLES.has(role);
 }
 
-// ---- Reviewer / staff roles (read + status + comments) ----
+// ---- Reviewer / staff roles (read + comments) ----
+// Adviser and facilitator belong here for READING and COMMENTING only. A
+// Research Adviser / Facilitator monitors student work and leaves comments or
+// recommendations; approving, rejecting and every other status move are gated
+// separately by STATUS_CHANGE_ROLES below.
 
 export const REVIEWER_ROLES = new Set([
   'adviser',
   'facilitator',
+  'cpri_staff',
+  'ethics_reviewer',
+  'admin'
+]);
+
+// Roles that may actually move a submission through its statuses. Adviser and
+// facilitator are deliberately absent: their remit ends at commenting, so they
+// get a 403 from PATCH /:id/status like any other outsider.
+
+export const STATUS_CHANGE_ROLES = new Set([
   'cpri_staff',
   'ethics_reviewer',
   'admin'

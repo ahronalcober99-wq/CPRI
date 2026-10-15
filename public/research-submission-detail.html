@@ -324,9 +324,11 @@
           compareLink.click();
         });
 
-        // Status update (reviewers + staff only; adviser/facilitator update for assigned)
+        // Status update — reviewers, staff and admins only. A Research Adviser /
+        // Facilitator never gets this control: the role monitors and comments,
+        // and the server refuses a status PATCH from them with a 403 anyway.
         const su = document.getElementById('status-update');
-        const isStatusAllowed = isReviewer || (userRole === 'adviser' && isAdvisor) || (userRole === 'facilitator' && isFacilitator) || userRole === 'admin';
+        const isStatusAllowed = isReviewer;
         if (isStatusAllowed) {
           su.style.display = '';
           const sel = document.getElementById('new-status');
@@ -449,8 +451,11 @@
             <p style="margin:6px 0 0;">${esc(c.body)}</p>${c.parent_id ? '<p style="margin:2px 0 0;color:var(--cpri-muted);font-size:.85rem;">Reply to a comment</p>' : ''}</div>`
         ).join('') : '<p class="form-note">No comments yet.</p>';
 
-        // Comment box
-        const mayComment = isOwner || isReviewer || isAdvisor || isFacilitator || userRole === 'cpri_staff';
+        // Comment box. Mirrors the server: reviewers/staff comment anywhere, and
+        // a Research Adviser / Facilitator comments on every student record they
+        // monitor (or on a faculty record that names them).
+        const mayComment = isOwner || isReviewer || isAdvisor || isFacilitator ||
+          ((userRole === 'adviser' || userRole === 'facilitator') && s.owner_role === 'student_researcher');
         if (mayComment) {
           document.getElementById('comment-box').style.display = '';
           document.getElementById('comment-form').addEventListener('submit', async (e) => {

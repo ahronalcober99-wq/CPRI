@@ -51,11 +51,11 @@
     (function () {
       'use strict';
 
-      // "My Submissions" for a researcher means their OWN records; for an
-      // adviser or facilitator the same endpoint answers with the submissions
-      // assigned to them, and for staff/admin with everything. The server
-      // decides which of those is true — this page only renders the answer, and
-      // never asks for another user's submission.
+      // "My Submissions" for a researcher means their OWN records; for a
+      // Research Adviser / Facilitator the same endpoint answers with every
+      // student submission they monitor, and for staff/admin with everything.
+      // The server decides which of those is true — this page only renders the
+      // answer, and never asks for another user's submission.
 
       const STATUS_LABELS = {
         draft: 'Draft',
@@ -296,12 +296,13 @@
           }
           const me = await meRes.json();
 
-          const scope = me.role === 'adviser' ? 'assigned to you as an adviser'
-            : me.role === 'facilitator' ? 'assigned to you as a facilitator'
+          const isMonitor = me.role === 'adviser' || me.role === 'facilitator';
+          const seesAll = isMonitor || me.role === 'cpri_staff' || me.role === 'admin';
+          const scope = isMonitor ? 'submitted by CPRI\'s student researchers'
             : (me.role === 'cpri_staff' || me.role === 'admin') ? 'across CPRI'
             : 'you have submitted';
-          pageSub.textContent = me.role === 'cpri_staff' || me.role === 'admin'
-            ? 'Every research submission, with its status, comments and version history.'
+          pageSub.textContent = seesAll
+            ? 'Every research submission you can monitor, with its status, comments and version history.'
             : 'Your submissions, with their status, comments and version history.';
           scopeNote.textContent = 'Showing the submissions ' + scope + '.';
 
