@@ -1344,18 +1344,31 @@ router.delete('/admin/users/:id', requireAdmin, async (req, res) => {
 
 // ---------- Seed default admin ----------
 async function initAuth() {
-  // Idempotent check: look up by email (case-insensitive) OR by username.
-  // This covers admins created by any previous boot or deploy.
+  // Idempotent check: look up the default admin by email (case-insensitive)
+  // OR by username. This covers admins created by any previous boot or deploy.
   const existingByEmail = await get(
-    'SELECT id FROM users WHERE LOWER(email) = LOWER(?)',
+    'SELECT id, role FROM users WHERE LOWER(email) = LOWER(?)',
     [process.env.ADMIN_EMAIL || 'admin@cpri.edu']
   );
   const existingByUsername = await get(
-    'SELECT id FROM users WHERE LOWER(username) = LOWER(?)',
+    'SELECT id, role FROM users WHERE LOWER(username) = LOWER(?)',
     ['admin']
   );
-  const adminAlreadyExists = !!existingByEmail || !!existingByUsername;
-  if (adminAlreadyExists) {
+  const adminByEmail = existingByEmail ? existingByEmail : null;
+  const adminByUsername = existingByUsername ? existingByUsername : null;
+  const foundAdmin = adminByEmail || adminByUsername;
+
+  // If we found an existing admin but their role is not 'admin', fix it.
+  // This handles the case where the account was self-registered as ethics_reviewer
+  // and later approved, preserving the original role instead of resetting to 'admin'.
+  if (foundAdmin && foundAdmin.role !== 'admin') {
+    await update('users', foundAdmin.id, { role: 'admin' });
+    console.log('[auth] Fixed existing admin role from', foundAdmin.role, 'to admin.');
+    foundAdmin.role = 'admin';
+  }
+
+  // If no existing admin was found, we proceed to seed below.
+  if (foundAdmin) {
     console.log('[auth] Default admin already exists, skipping seeding.');
     return;
   }
