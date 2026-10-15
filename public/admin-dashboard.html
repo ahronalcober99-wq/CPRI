@@ -618,17 +618,23 @@
     async function loadUserManagement() {
       const res = await fetch('/api/admin/users');
       if (!res.ok) return;
-      const { users } = await res.json();
+      const { users, protectedAdminId } = await res.json();
       const el = document.getElementById('user-management');
       el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
-        users.map(u => `
+        users.map(u => {
+          const isProtectedAdmin = String(u.id) === String(protectedAdminId);
+          const roleLocked = isProtectedAdmin;
+          const statusLocked = isProtectedAdmin;
+          const deleteLocked = isProtectedAdmin;
+          return `
           <tr>
             <td>${escapeHtml(u.fullName || u.username)}</td>
             <td>${escapeHtml(u.username)}</td>
             <td>${escapeHtml(u.email)}</td>
             <td>
-              <select data-userid="${u.id}" class="user-role-select" style="max-width:140px;">
-                <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+              ${roleLocked
+                ? `<span class="role-locked" title="The System Administrator role cannot be changed"><i class="bi bi-lock-fill" aria-hidden="true"></i> <span class="sr-only">Locked:</span> ${escapeHtml(u.role)}</span>`
+                : `<select data-userid="${u.id}" class="user-role-select" style="max-width:140px;"><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option><option value="cpri_staff" ${u.role === 'cpri_staff' ? 'selected' : ''}>CPRI Staff</option><option value="faculty_researcher" ${u.role === 'faculty_researcher' ? 'selected' : ''}>Faculty</option><option value="student_researcher" ${u.role === 'student_researcher' ? 'selected' : ''}>Student</option><option value="adviser" ${u.role === 'adviser' ? 'selected' : ''}>Adviser</option><option value="ethics_reviewer" ${u.role === 'ethics_reviewer' ? 'selected' : ''}>Ethics Reviewer</option><option value="public_visitor" ${u.role === 'public_visitor' ? 'selected' : ''}>Public Visitor</option></select>`}`                  <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
                 <option value="cpri_staff" ${u.role === 'cpri_staff' ? 'selected' : ''}>CPRI Staff</option>
                 <option value="faculty_researcher" ${u.role === 'faculty_researcher' ? 'selected' : ''}>Faculty</option>
                 <option value="student_researcher" ${u.role === 'student_researcher' ? 'selected' : ''}>Student</option>
@@ -638,15 +644,11 @@
               </select>
             </td>
             <td>
-              <select data-userid="${u.id}" class="user-status-select" style="max-width:120px;">
-                <option value="active" ${u.status === 'active' ? 'selected' : ''}>Active</option>
-                <option value="pending" ${u.status === 'pending' ? 'selected' : ''}>Pending</option>
-                <option value="disabled" ${u.status === 'disabled' ? 'selected' : ''}>Disabled</option>
-              </select>
+              <select data-userid="${u.id}" class="user-status-select" style="max-width:140px;" ${statusLocked ? 'disabled' : ''}><option value="active" ${u.status === 'active' ? 'selected' : ''}>Active</option><option value="pending" ${u.status === 'pending' ? 'selected' : ''}>Pending</option><option value="disabled" ${u.status === 'disabled' ? 'selected' : ''}>Disabled</option></select>
             </td>
             <td>
-              <button class="btn btn-navy reset-pwd" data-userid="${u.id}" style="padding:6px 10px;font-size:.85rem;">Reset Password</button>
-              <button class="btn btn-outline del-user" data-userid="${u.id}" data-name="${escapeHtml(u.fullName || u.username)}" style="padding:6px 10px;font-size:.85rem;border-color:#b23b32;color:#b23b32;">Delete</button>
+              <button class="btn btn-navy reset-pwd" data-userid="${u.id}" style="padding:6px 10px;font-size:.85rem;" title="Reset password for ${escapeHtml(u.fullName || u.username)}">Reset Password</button>
+              <button class="btn btn-outline del-user" data-userid="${u.id}" data-name="${escapeHtml(u.fullName || u.username)}" style="padding:6px 10px;font-size:.85rem;border-color:#b23b32;color:#b23b32;" ${deleteLocked ? 'hidden' : ''} title="Delete user ${escapeHtml(u.fullName || u.username)}">Delete</button>
             </td>
           </tr>
         `).join('') + '</tbody></table></div>';

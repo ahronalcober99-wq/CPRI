@@ -1052,6 +1052,98 @@ router.get('/logs', requireAdmin, async (req, res) => {
 });
 
 // ---------- User management (MySQL) ----------
+// The System Administrator (seeded username "admin", email admin@cpri.edu) is
+// a protected account: its role, status, email, username and existence cannot be
+// changed or removed through the admin APIs. A case-insensitive lookup by id,
+// username or email is used so the protection survives renames and case-only
+// differences from earlier deploys.
+const PROTECTED_ADMIN_USERNAME = 'admin';
+const PROTECTED_ADMIN_EMAIL = 'admin@cpri.edu';
+
+async function isProtectedAdmin(userOrId) {
+  if (!userOrId) return false;
+  const id = typeof userOrId === 'string' ? userOrId : userOrId.id;
+  if (!id) return false;
+  // Fast path: the id already matches (after a fresh fetch).
+  if (String(id).toLowerCase() === PROTECTED_ADMIN_USERNAME.toLowerCase()) return true;
+  // Idempotent lookup by username or email so the rule holds even if the id is
+  // not the literal "admin" string.
+  const byName = await get('SELECT id FROM users WHERE LOWER(username) = LOWER(?) LIMIT 1', [String(id)]);
+  if (byName) return true;
+  const byEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?) LIMIT 1', [String(id)]);
+  return Boolean(byEmail);
+}
+
+async function protectedAdminCount() {
+  const rows = await all("SELECT COUNT(*) AS n FROM users WHERE role = 'admin' AND status = 'active'");
+  return Number(rows[0]?.n ?? 0);
+}
+
+async function forbidProtectedAdminChange(req, res, user) {
+  // Resolve the real protected-admin record so we can log and identify it by
+  // its canonical id/email/username, not by the possibly-stale identifier the
+  // caller sent.
+  const protectedUser = await get('SELECT id, username, email, role, status FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) LIMIT 1', [PROTECTED_ADMIN_USERNAME, PROTECTED_ADMIN_EMAIL]);
+  if (!protectedUser) {
+    // If the protected row is somehow gone, let the caller proceed on the
+    // assumption it was intentionally removed; do not block the request.
+    return null;
+  }
+  const id = user && user.id ? String(user.id) : req.params.id;
+  const attemptedId = String(id);
+  const isTarget = String(protectedUser.id) === attemptedId || String(protectedUser.username).toLowerCase() === String(attemptedId).toLowerCase() || String(protectedUser.email).toLowerCase() === String(attemptedId).toLowerCase();
+  if (!isTarget) return null;
+
+  const actor = await get('SELECT id, username, role FROM users WHERE id = ?', [req.session?.userId]).catch(() => null);
+  const actorName = actor ? (actor.username || 'unknown') : 'unknown';
+  const logged = (action) => addLog('admin_protected_blocked', `${action} blocked on protected admin "${protectedUser.username}" (${protectedUser.email}) by ${actorName}` , req).catch(err => console.error('[audit] blocked-attempt log failed:', err.message));
+
+  if (protectedUser.role === 'admin') {
+    const remainingAdmins = await protectedAdminCount();
+    // Demoting or deleting the only active admin would leave the system with no
+    // administrative access. Block that and log a clear reason.
+    if ((req.method === 'PATCH' || req.method === 'PUT') && (req.body?.role || user.role)) {
+      if (req.body.role !== undefined && String(req.body.role).trim() !== 'admin') {
+        await logged('demote-role');
+        return res.status(403).json({ error: 'The System Administrator account cannot have its role changed.' });
+      }
+      // Self-demotion guard: even attempting to set role to anything other than
+      // 'admin' while you are the last remaining admin is refused.
+      if (actor && actor.role === 'admin' && String(actor.id) === String(protectedUser.id) && remainingAdmins <= 1) {
+        await logged('self-demote-last-admin');
+        return res.status(403).json({ error: 'You cannot remove the last remaining administrator.' });
+      }
+    }
+  }
+
+  if (req.method === 'PATCH' || req.method === 'PUT') {
+    // Block status changes that would deactivate/suspend the protected admin.
+    if (req.body?.status !== undefined) {
+      const newStatus = String(req.body.status).trim().toLowerCase();
+      if (newStatus && newStatus !== protectedUser.status.toLowerCase()) {
+        await logged('change-status');
+        return res.status(403).json({ error: 'The System Administrator account cannot be deactivated or suspended.' });
+      }
+    }
+    // Block email and username changes on the protected account.
+    if (req.body?.email !== undefined && String(req.body.email).trim().toLowerCase() !== String(protectedUser.email).toLowerCase()) {
+      await logged('change-email');
+      return res.status(403).json({ error: 'The System Administrator account cannot have its email changed.' });
+    }
+    if (req.body?.username !== undefined && String(req.body.username).trim().toLowerCase() !== String(protectedUser.username).toLowerCase()) {
+      await logged('change-username');
+      return res.status(403).json({ error: 'The System Administrator account cannot have its username changed.' });
+    }
+  }
+
+  if (req.method === 'DELETE') {
+    await logged('delete');
+    return res.status(403).json({ error: 'The System Administrator account cannot be deleted.' });
+  }
+
+  return null;
+}
+
 router.get('/users', requireAdmin, async (req, res) => {
   try {
     const { active, page, limit } = req.query;
@@ -1072,14 +1164,17 @@ router.get('/users', requireAdmin, async (req, res) => {
       params.push(limitNum, offset);
     }
     const users = await all(sql, params);
-    const data = users.map(u => ({
-      id: u.id,
+    // Attach a boolean flag the frontend can use to render the protected admin
+    // row as locked, regardless of what the role column currently holds.
+    const protectedId = await get('SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) LIMIT 1', [PROTECTED_ADMIN_USERNAME, PROTECTED_ADMIN_EMAIL]);
+    const protectedAdminId = protectedId ? String(protectedId.id) : null;
+    const data = users.map(u => Object.assign({
       name: u.fullName || u.username,
       role: u.role,
       email: u.email,
       status: u.status
-    }));
-    res.json({ success: true, data, users, total });
+    }, { protectedAdmin: protectedAdminId && String(u.id) === protectedAdminId }));
+    res.json({ success: true, data, users, total, protectedAdminId });
   } catch (err) {
     console.error('[users] error:', err);
     res.status(500).json({ error: 'Failed to load users.' });
@@ -1087,11 +1182,14 @@ router.get('/users', requireAdmin, async (req, res) => {
 });
 
 router.patch('/users/:id', requireAdmin, async (req, res) => {
-  await addLog('user_update', 'Updated user ' + req.params.id, req);
-  const b = req.body || {};
   const user = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found.' });
 
+  const block = await forbidProtectedAdminChange(req, res, user);
+  if (block) return block;
+
+  await addLog('user_update', 'Updated user ' + req.params.id, req);
+  const b = req.body || {};
   const changes = {};
   for (const f of ['role', 'status', 'department']) {
     if (b[f] !== undefined) changes[f] = String(b[f]).trim();
@@ -1122,9 +1220,12 @@ router.post('/users/:id/reset-password', requireAdmin, async (req, res) => {
 });
 
 router.delete('/users/:id', requireAdmin, async (req, res) => {
-  await addLog('user_delete', 'Deleted user ' + req.params.id, req);
   const user = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found.' });
+
+  const block = await forbidProtectedAdminChange(req, res, user);
+  if (block) return block;
+  await addLog('user_delete', 'Deleted user ' + req.params.id, req);
   await remove('users', req.params.id);
   res.json({ message: 'User deleted.' });
 });

@@ -62,6 +62,12 @@
       document.getElementById('acc-name').textContent = user.fullName || user.username;
       document.getElementById('acc-username').textContent = user.username;
       document.getElementById('acc-email').textContent = user.email;
+      // Use the normalized role label so the display always agrees with the
+      // role label shown on the admin dashboard, even when the stored DB role
+      // drifted (e.g. 'ethics_reviewer' on the admin account from a prior
+      // self-registration/approval). The upstream initAuth guard + repair SQL
+      // fix the row; this keeps the page from masking that drift with a wrong
+      // label map lookup.
       document.getElementById('acc-role').textContent = user.roleLabel || user.role;
       document.getElementById('acc-status').textContent = user.status;
       const links = document.getElementById('acc-links');

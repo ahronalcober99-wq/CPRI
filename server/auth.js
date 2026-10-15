@@ -159,7 +159,7 @@ function publicUser(u) {
     email: u.email,
     fullName: u.fullName,
     role: u.role,
-    roleLabel: ROLE_META[u.role]?.label || u.role,
+    roleLabel: normalizedRoleLabel(u),
     status: u.status,
     // Profile photo — a Supabase Storage public URL, a Google OAuth picture
     // URL, or (on older accounts) a legacy /assets/uploads/profiles/... path.
@@ -178,7 +178,7 @@ function fullProfile(u) {
     email: u.email,
     fullName: u.fullName || '',
     role: u.role,
-    roleLabel: ROLE_META[u.role]?.label || u.role,
+    roleLabel: normalizedRoleLabel(u),
     status: u.status,
     department: u.department || '',
     contactNumber: u.contactNumber || '',
@@ -208,6 +208,21 @@ function fullProfile(u) {
     institution: u.institution || '',
     nationality: u.nationality || ''
   };
+}
+
+// Normalize the DB role value for display. We do NOT change the canonical
+// role stored in the users.role column, but we do ensure the *label* shown on
+// account.html is derived from the authoritative ROLE_META map with a sensible
+// fallback when the stored role is missing, blank or stale.
+function normalizedRoleLabel(u) {
+  if (!u) return '';
+  const raw = u.role;
+  if (raw && ROLE_META[raw]) return ROLE_META[raw].label;
+  // If the stored role somehow drifted (e.g. 'ethics_reviewer' on the admin
+  // account from a prior self-registration/approval), fall back to the role
+  // field itself so account.html shows what's actually in the DB, and let the
+  // upstream initAuth guard / repair SQL fix the row instead of masking it.
+  return String(raw || '').trim() || 'Unknown';
 }
 
 async function patchUser(id, changes) {

@@ -2919,9 +2919,47 @@ main { animation: pageIn .45s ease both; }
     linear-gradient(var(--cpri-card), var(--cpri-card)) 0 0 / 100% 100% no-repeat local;
 }
 
+.role-locked {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px dashed var(--maroon);
+  color: var(--maroon);
+  background: rgba(128,0,0,.05);
+  border-radius: 6px;
+  font-size: .82rem;
+  font-weight: 600;
+}
+
+.role-locked i {
+  font-size: .9rem;
+}
+
+.user-role-select:disabled,
+.user-status-select:disabled {
+  background: rgba(128,0,0,.06);
+  color: var(--cpri-muted);
+  border-color: var(--maroon);
+  cursor: not-allowed;
+}
+
+.del-user[hidden] {
+  display: none;
+}
+
 /* ============================================================
-   DOCUMENT PREVIEW MODAL (Submission Detail — "View" button)
+   SYSTEM ADMINISTRATOR ROW LOCKED STATE (admin-dashboard.html)
    ============================================================
+   The protected admin account renders with a locked role pill and disabled
+   status dropdown, plus a hidden Delete button, so it cannot be edited by
+   accident from the frontend. The background enforcement in server/admin-
+   dashboard.js rejects any matching API call with 403 regardless.
+
+   The locked role pill uses a Bootstrap Icons lock glyph and maroon treatment
+   to make the non-editable state visually obvious without touching the page
+   layout or the existing maroon theme.
+   ============================================================*/
    Sits next to the existing Download button without touching it: the pill
    below is the only new control, and the modal reuses the same backdrop
    treatment as .confirm-overlay so both dialogs feel like one system.
