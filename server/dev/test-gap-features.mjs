@@ -19,10 +19,20 @@ import {
   ROLES,
   ROLE_META,
   SELF_REGISTER_ROLES,
+  SETUP_ROLES,
+  PRIVILEGED_ROLES,
   RBAC_PERMISSIONS,
   ROLE_PROFILE_FIELDS,
-  ensureUsersSchema
+  ensureUsersSchema,
+  authRouter,
+  // The role → landing-page map and the user shape that ships it to the
+  // browser as `user.home` (login.html and the Google bridge follow it).
+  homePageForRole,
+  publicUser
 } from '../auth.js';
+import pool from '../db.js';
+import { notificationsRouter } from '../notifications.js';
+import { DM_ROLES } from '../messages.js';
 import { createGalaRouter, GALA_STATUS, ensureGalaSchema } from '../gala.js';
 import { createBackupsRouter } from '../backups.js';
 import { keepCount, dumpDatabase, ensureBackupSchema } from '../lib/backup-service.js';
@@ -62,6 +72,252 @@ test('Research Adviser / Facilitator is the Adviser role relabelled, not a dupli
   assert.ok(!perms.includes('manage_content'));
   assert.ok(!perms.includes('approve_reviewers'));
   assert.ok(!perms.includes('review_ethics'), 'never does the Ethics Reviewer\'s work');
+});
+
+test('every registered role has its own landing page — none falls back to the account page', () => {
+  // homePageForRole() is the single source of truth for where a person goes
+  // after signing in; publicUser() ships it as `user.home` so login.html and
+  // the Google bridge in main.js follow the same map instead of keeping their
+  // own copies (they did, and they drifted). A tenth role added to ROLES
+  // without an entry here would silently land its users on account.html.
+  const expected = {
+    admin: '/admin-dashboard.html',
+    cpri_staff: '/staff-dashboard.html',
+    ethics_reviewer: '/ethics.html',
+    adviser: '/facilitator-dashboard.html',
+    presenter: '/presenter-dashboard.html',
+    public_visitor: '/index.html',
+    student_researcher: '/my-submissions.html',
+    faculty_researcher: '/my-submissions.html',
+    non_teaching_researcher: '/my-submissions.html'
+  };
+
+  for (const role of ROLES) {
+    assert.ok(expected[role], `${role} has an explicit entry in the landing map`);
+    assert.equal(homePageForRole(role), expected[role], `${role} lands on its own page`);
+    assert.notEqual(homePageForRole(role), '/account.html',
+      `${role} must not fall back to the account page`);
+  }
+
+  // publicUser() is what the browser actually reads — keep it in lockstep.
+  for (const role of ROLES) {
+    const pub = publicUser({
+      id: 1, username: 'u', email: 'u@example.org', fullName: 'U',
+      role, status: 'active'
+    });
+    assert.equal(pub.home, homePageForRole(role), `publicUser().home matches homePageForRole for ${role}`);
+  }
+
+  // account.html stays the safety net for a stored role ROLES does not know.
+  assert.equal(homePageForRole('retired_role'), '/account.html');
+});
+
+test('profile setup can only ever choose one of the five self-selectable account types', () => {
+  // PUT /api/auth/profile/setup is what complete-profile.html posts to; this
+  // allow-list is the only thing standing between a crafted request and a
+  // `role=admin` reaching the users table.
+  assert.deepEqual(
+    [...SETUP_ROLES].sort(),
+    ['adviser', 'faculty_researcher', 'non_teaching_researcher', 'presenter', 'student_researcher'],
+    'exactly the five cards on the Account Type list'
+  );
+  for (const role of ['admin', 'cpri_staff', 'ethics_reviewer']) {
+    assert.ok(!SETUP_ROLES.includes(role), `${role} must not be self-selectable`);
+    assert.ok(PRIVILEGED_ROLES.includes(role), `${role} is refused by the setup endpoint`);
+  }
+  // Each option the page offers has to be a registered role with a real label,
+  // or the card and the admin dropdown would disagree on what it is called.
+  for (const role of SETUP_ROLES) {
+    assert.ok(ROLES.includes(role), `${role} is registered in ROLES`);
+    assert.ok(ROLE_META[role], `${role} has ROLE_META`);
+    assert.ok(String(ROLE_META[role].label || '').trim(), `${role} has a display label`);
+  }
+});
+
+// ---------------------------------------------------------------
+//  PUT /api/auth/profile/setup — the endpoint complete-profile.html posts to.
+//
+//  The REAL router is mounted in a real Express app and driven over HTTP; only
+//  the singleton MySQL pool is stubbed. Tests never load .env, so an
+//  unstubbed query would try localhost:3306 and fail loudly instead of
+//  reaching a production database.
+// ---------------------------------------------------------------
+test('profile/setup refuses a crafted role, cannot be replayed, and never downgrades', async () => {
+  const users = new Map();
+  const sql = [];
+  const realQuery = pool.query;
+
+  async function fakeQuery(query, params = []) {
+    const q = String(query).replace(/\s+/g, ' ').trim();
+    sql.push(q);
+    if (/^SELECT \* FROM users WHERE id = \?$/i.test(q)) {
+      const row = users.get(params[0]);
+      return [row ? [{ ...row }] : []];
+    }
+    if (/^SELECT user_prefs FROM users WHERE id = \?$/i.test(q)) {
+      const row = users.get(params[0]);
+      return [row ? [{ id: row.id, user_prefs: row.user_prefs }] : []];
+    }
+    // No active admin → no notification fan-out during the happy path.
+    if (/^SELECT id FROM users WHERE role = 'admin' AND status = 'active'$/i.test(q)) return [[]];
+    const upd = q.match(/^UPDATE users SET (.+) WHERE id = \?$/i);
+    if (upd) {
+      const cols = upd[1].split(',').map(part => part.trim().split(/\s+/)[0]);
+      const row = users.get(params[params.length - 1]);
+      if (row) cols.forEach((col, i) => { row[col] = params[i]; });
+      return [{ affectedRows: row ? 1 : 0 }];
+    }
+    if (/^INSERT INTO notifications/i.test(q)) return [{ insertId: 1 }];
+    throw new Error('unhandled SQL in profile/setup test: ' + q);
+  }
+
+  const app = express();
+  app.use(express.json());
+  let sessionUserId = null;
+  app.use((req, _res, next) => { req.session = sessionUserId ? { userId: sessionUserId } : {}; next(); });
+  app.use('/api/auth', authRouter);
+
+  const server = await new Promise(resolve => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    s.unref();
+  });
+  const put = async (body) => {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}/api/auth/profile/setup`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    return { status: res.status, body: await res.json().catch(() => ({})) };
+  };
+  const seed = (id, over = {}) => {
+    const row = {
+      id, username: id, email: `${id}@test.invalid`, fullName: id,
+      role: 'student_researcher', status: 'active', setupPending: 1,
+      department: '', user_prefs: null, researches: null,
+      ...over
+    };
+    users.set(id, row);
+    return row;
+  };
+
+  pool.query = fakeQuery;
+  try {
+    // (1) A crafted privileged role is refused before a single query runs.
+    const newbie = seed('u-new');
+    sessionUserId = newbie.id;
+    sql.length = 0;
+    for (const bad of ['admin', 'cpri_staff', 'ethics_reviewer', 'public_visitor', 'superuser']) {
+      const out = await put({ role: bad });
+      assert.equal(out.status, 400, `role=${bad} must be rejected with 400`);
+      assert.equal(users.get(newbie.id).role, 'student_researcher',
+        `role=${bad} must not change the stored role`);
+    }
+    assert.deepEqual(sql, [], 'a refused role never reaches the database');
+
+    // (2) Once setup is complete the endpoint is closed for that account.
+    const done = seed('u-done', { role: 'faculty_researcher', setupPending: 0 });
+    sessionUserId = done.id;
+    const replay = await put({ role: 'presenter' });
+    assert.equal(replay.status, 403, 'profile setup runs once');
+    assert.equal(users.get(done.id).role, 'faculty_researcher',
+      'revisiting complete-profile.html cannot overwrite an assigned role');
+
+    // (3) Even a stale setupPending cannot downgrade an admin, staff or reviewer.
+    for (const privileged of ['admin', 'cpri_staff', 'ethics_reviewer']) {
+      const boss = seed(`u-${privileged}`, { role: privileged, setupPending: 1 });
+      sessionUserId = boss.id;
+      const downgrade = await put({ role: 'student_researcher' });
+      assert.equal(downgrade.status, 403, `${privileged} must be refused with 403`);
+      assert.equal(users.get(boss.id).role, privileged, `${privileged} is never downgraded`);
+    }
+
+    // (4) The happy path: one of the five, saved once, then the door closes.
+    sessionUserId = newbie.id;
+    const ok = await put({ role: 'presenter', fullName: 'Ada Lovelace', department: 'Library' });
+    assert.equal(ok.status, 200, `expected 200, got ${ok.status}: ${JSON.stringify(ok.body)}`);
+    assert.equal(users.get(newbie.id).role, 'presenter');
+    assert.equal(users.get(newbie.id).setupPending, 0);
+    assert.equal(users.get(newbie.id).department, 'Library');
+    assert.equal(users.get(newbie.id).fullName, 'Ada Lovelace');
+    // The label must come from ROLE_META (not a raw slug fallback), and it is
+    // pinned here so a rename has to be a deliberate edit.
+    assert.equal(ok.body.profile.roleLabel, ROLE_META.presenter.label);
+    assert.equal(ok.body.profile.roleLabel, 'Presenter');
+    assert.equal((await put({ role: 'admin' })).status, 400, 'a completed profile stays closed');
+    assert.equal(users.get(newbie.id).role, 'presenter');
+  } finally {
+    pool.query = realQuery;
+    await new Promise(resolve => server.close(resolve)).catch(() => {});
+  }
+});
+
+// ---------------------------------------------------------------
+//  The bell's role pill must never disagree with the account page. Both files
+//  keep their OWN copy of the labels, which is exactly how they drifted apart
+//  before: notifications.js missed non_teaching_researcher and presenter
+//  entirely, so those pills rendered a raw slug.
+// ---------------------------------------------------------------
+test('the notification pill reports the same role label as the account page for every role', async () => {
+  const realQuery = pool.query;
+  const rolesByUser = new Map();
+
+  async function fakeQuery(query, params = []) {
+    const q = String(query).replace(/\s+/g, ' ').trim();
+    if (/^SELECT role FROM users WHERE id = \?$/i.test(q)) {
+      const role = rolesByUser.get(params[0]);
+      return [role ? [{ role }] : []];
+    }
+    if (/^SELECT \* FROM notifications WHERE userId = \?/i.test(q)) return [[]];
+    if (/^SELECT COUNT\(\*\) AS c FROM notifications/i.test(q)) return [[{ c: 0 }]];
+    throw new Error('unhandled SQL in notification label test: ' + q);
+  }
+
+  const app = express();
+  app.use((req, _res, next) => { req.session = { userId: 'u-1' }; next(); });
+  app.use('/api', notificationsRouter);
+
+  const server = await new Promise(resolve => {
+    const s = app.listen(0, '127.0.0.1', () => resolve(s));
+    s.unref();
+  });
+
+  pool.query = fakeQuery;
+  try {
+    for (const role of ROLES) {
+      rolesByUser.set('u-1', role);
+      const res = await fetch(`http://127.0.0.1:${server.address().port}/api/notifications`);
+      assert.equal(res.status, 200, `${role}: notification endpoint answers`);
+      const out = await res.json();
+      assert.equal(out.roleLabel, ROLE_META[role].label,
+        `${role} pill label must equal the account page label`);
+      assert.ok(!out.roleLabel.includes('_'), `${role} must not render as a raw slug`);
+    }
+  } finally {
+    pool.query = realQuery;
+    await new Promise(resolve => server.close(resolve)).catch(() => {});
+  }
+});
+
+test('every registered role can use direct messaging, so the Messages link never 403s', () => {
+  // The navbar pushes a Messages entry for all 9 roles; DM_ROLES is what the
+  // server actually allows. It predates non_teaching_researcher and presenter,
+  // so those two were reachable by nav but refused with a 403.
+  for (const role of ROLES) {
+    assert.ok(DM_ROLES.includes(role), `${role} may send and receive DMs`);
+  }
+  for (const role of DM_ROLES) {
+    assert.ok(ROLES.includes(role), `DM role ${role} is a registered role`);
+  }
+});
+
+test('every registered role has a display label, and every label belongs to a registered role', () => {
+  for (const role of ROLES) {
+    assert.ok(ROLE_META[role], `${role} has ROLE_META`);
+    assert.ok(String(ROLE_META[role].label || '').trim(), `${role} has a non-empty label`);
+  }
+  for (const role of Object.keys(ROLE_META)) {
+    assert.ok(ROLES.includes(role), `ROLE_META.${role} is a registered role`);
+  }
 });
 
 test('Non-Teaching Researcher gets exactly the same permissions as Faculty Researcher', () => {

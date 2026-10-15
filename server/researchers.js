@@ -50,7 +50,9 @@ const ROLE_LABELS = {
   faculty_researcher: 'Faculty Researcher',
   non_teaching_researcher: 'Non-Teaching Researcher',
   student_researcher: 'Student Researcher',
-  presenter: 'Presenter (Research Gala)'
+  // Mirrors ROLE_META in auth.js, so the directory never disagrees with
+  // account.html about what a role is called.
+  presenter: 'Presenter'
 };
 
 // Only accounts the portal has approved are counted or listed publicly.

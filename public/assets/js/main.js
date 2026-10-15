@@ -226,6 +226,12 @@ const CPRI = (() => {
         if (me.user.role === 'adviser' || me.user.role === 'facilitator') {
           auth.push({ label: 'Facilitator Dashboard', href: 'facilitator-dashboard.html', primary: true });
         }
+        // CPRI Staff land on their own dashboard (homePageForRole in
+        // server/auth.js) — they are blocked from the admin console, so this is
+        // their one-click way back to submissions, the ethics queue and announcements.
+        if (me.user.role === 'cpri_staff') {
+          auth.push({ label: 'Staff Dashboard', href: 'staff-dashboard.html', primary: true });
+        }
         // Direct messaging is for all registered roles — mirror the server's DM gate.
         if (['admin','cpri_staff','faculty_researcher','non_teaching_researcher','adviser','ethics_reviewer','student_researcher','presenter','public_visitor'].includes(me.user.role)) {
           auth.push({ label: 'Messages', href: 'messages.html' });
@@ -233,6 +239,10 @@ const CPRI = (() => {
         // A Presenter gets a one-click route to their own Gala dashboard.
         if (me.user.role === 'presenter') {
           auth.push({ label: 'My Gala Submissions', href: 'presenter-dashboard.html' });
+        }
+        // Submitting researchers need one click to their submission statuses.
+        if (['student_researcher', 'faculty_researcher', 'non_teaching_researcher'].includes(me.user.role)) {
+          auth.push({ label: 'My Submissions', href: 'my-submissions.html' });
         }
         auth.push({ label: 'My Account', href: 'account.html' });
         auth.push({ label: 'Logout', href: '#', action: 'logout' });
@@ -2225,12 +2235,10 @@ const CPRI = (() => {
         // Session adopted — route like the normal Google callback would.
         const me = await fetchMe();
         const user = me && me.user;
-        // Mirrors homePageForRole() in server/auth.js.
+        // user.home comes from homePageForRole() in server/auth.js, so this
+        // branch never has to be kept in sync with the landing map by hand.
         window.location.href = user
-          ? (user.needsSetup ? 'complete-profile.html'
-            : user.role === 'admin' ? 'admin-dashboard.html'
-            : user.role === 'adviser' ? 'facilitator-dashboard.html'
-            : 'account.html')
+          ? (user.needsSetup ? 'complete-profile.html' : user.home || 'account.html')
           : 'login.html';
       } catch (err) {
         msg.className = 'gbridge-msg error';

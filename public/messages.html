@@ -89,7 +89,10 @@
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script>
-    const MESSAGE_ROLES = ['admin', 'cpri_staff', 'faculty_researcher', 'adviser', 'ethics_reviewer', 'student_researcher', 'public_visitor'];
+    // Mirrors DM_ROLES in server/messages.js (which is the real gate): every
+    // registered role may message, including non-teaching researchers and
+    // presenters.
+    const MESSAGE_ROLES = ['admin', 'cpri_staff', 'faculty_researcher', 'non_teaching_researcher', 'adviser', 'ethics_reviewer', 'student_researcher', 'presenter', 'public_visitor'];
 
     const el = (id) => document.getElementById(id);
 

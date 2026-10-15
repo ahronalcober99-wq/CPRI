@@ -407,7 +407,11 @@ Member pages: `account.html`, `profile.html`, `messages.html`,
 `submissions.html`, `submission.html`, `submit.html`, `ethics*.html`,
 `researcher-form.html`, `publication-form.html`,
 `innovation-extension-form.html`, `event-abstract.html`,
-`event-registration.html`. Public pages are untouched.
+`event-registration.html`, `research-submission.html`,
+`research-submission-detail.html`, `my-submissions.html`, and the three
+personal dashboards `facilitator-dashboard.html`,
+`presenter-dashboard.html`, `staff-dashboard.html`. Public pages are
+untouched.
 
 This guard runs on the Express server. A statically hosted copy of the front
 end (GitHub Pages) has no server to run it, so there the JSON `401` from the API
@@ -415,8 +419,19 @@ is what protects the data — the page shell is downloadable but shows nothing.
 If you serve the front end from the API host as well, visitors also get the
 redirect.
 
+After a successful sign-in every role lands on its own page. The map is
+defined once in `homePageForRole()` (`server/auth.js`) and shipped to the
+browser as `user.home`, which `login.html` and the Google bridge in
+`main.js` follow: admin → `admin-dashboard.html`, CPRI Staff →
+`staff-dashboard.html`, ethics reviewers → `ethics.html`, advisers →
+`facilitator-dashboard.html`, presenters → `presenter-dashboard.html`,
+researchers (student, faculty, non-teaching) → `my-submissions.html`,
+public visitors → the homepage. An unrecognised stored role falls back to
+`account.html`. `npm run test:gap` asserts every role in `ROLES` has an
+entry and that `publicUser().home` matches.
+
 Research records live at `/api/submissions` and `/api/repository` (both
 authenticated); `/api/research` is the public content feed. There are no
-`/api/research/:id` CRUD routes in this project, and the admin dashboards are
-`account.html` and `admin-dashboard.html` — there is no `user-dashboard.html`,
-`login.js`, or `register.js` to fix.
+`/api/research/:id` CRUD routes in this project — `account.html` is the
+per-user account page, not a dashboard — and there is no
+`user-dashboard.html`, `login.js`, or `register.js` to fix.

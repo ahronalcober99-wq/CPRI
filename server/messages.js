@@ -16,15 +16,23 @@ import { notify } from './notifications.js';
 const router = Router();
 
 // Roles allowed to participate in direct messaging — every registered role
-// can send and receive DMs: staff, faculty, advisers, ethics reviewers,
-// students, and public-visitor accounts.
-const DM_ROLES = ['admin', 'cpri_staff', 'faculty_researcher', 'adviser', 'ethics_reviewer', 'student_researcher', 'public_visitor'];
+// can send and receive DMs: staff, faculty, non-teaching faculty, advisers,
+// ethics reviewers, students, presenters, and public-visitor accounts.
+//
+// DRAGONS: this list must cover every role in ROLES (auth.js). It was written
+// before non_teaching_researcher and presenter existed and was never extended,
+// even though the navbar has always offered Messages to them — so those two
+// got a Messages link that answered 403. DM_ROLES is exported and asserted
+// against ROLES by test:gap so the two can never diverge again.
+const DM_ROLES = ['admin', 'cpri_staff', 'faculty_researcher', 'non_teaching_researcher', 'adviser', 'ethics_reviewer', 'student_researcher', 'presenter', 'public_visitor'];
 
 const ROLE_LABELS = {
   admin: 'Administrator',
   cpri_staff: 'CPRI Staff',
   faculty_researcher: 'Faculty Researcher',
+  non_teaching_researcher: 'Non-Teaching Researcher',
   student_researcher: 'Student Researcher',
+  presenter: 'Presenter',
   // See notifications.js — "Research Advisers or Facilitators" is a single role
   // stored as `adviser`; `facilitator` is the research module's spelling.
   adviser: 'Research Adviser / Facilitator',
@@ -55,12 +63,15 @@ router.get('/contacts', requireDMRole, async (req, res) => {
   try {
     await ensureMessagesTable();
     const users = await all(
+      // Built from DM_ROLES rather than a second literal copy of it: the gate
+      // above and the contact list used to disagree, which is how a role could
+      // be allowed in and then shown no one to message.
       `SELECT id, username, fullName, role, department, profilePhoto
        FROM users
        WHERE status = 'active' AND id <> ?
-         AND role IN ('admin','cpri_staff','faculty_researcher','adviser','ethics_reviewer','student_researcher','public_visitor')
+         AND role IN (${DM_ROLES.map(() => '?').join(',')})
        ORDER BY fullName, username`,
-      [req.session.userId]
+      [req.session.userId, ...DM_ROLES]
     );
     res.json({ contacts: users.map(u => ({
       id: u.id,
@@ -222,4 +233,4 @@ router.post('/read', requireDMRole, async (req, res) => {
   }
 });
 
-export { router as messagesRouter, ensureMessagesTable };
+export { router as messagesRouter, ensureMessagesTable, DM_ROLES };

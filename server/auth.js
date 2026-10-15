@@ -174,7 +174,10 @@ function publicUser(u) {
     // Exposed so the navbar can render it.
     profilePhoto: u.profilePhoto || null,
     // First-time Google sign-ins must complete profile setup (pick a role).
-    needsSetup: u.setupPending === 1 || u.setupPending === '1'
+    needsSetup: u.setupPending === 1 || u.setupPending === '1',
+    // Where to send this person after signing in — see homePageForRole().
+    // Shipped here so no client has to keep its own copy of the map.
+    home: homePageForRole(u.role)
   };
 }
 
@@ -218,14 +221,38 @@ function fullProfile(u) {
   };
 }
 
-// Where each role lands straight after signing in. Admins get the console,
-// Research Advisers / Facilitators get their own dashboard (their whole remit
-// is monitoring submissions, so the account page would be a dead end), and
-// everyone else gets the account page.
+// Where each role lands straight after signing in.
+//
+// THIS IS THE ONLY DEFINITION of the landing map. publicUser() ships it as
+// `user.home`, so login.html and the Google bridge in main.js follow it rather
+// than keeping a copy each — those three copies used to be able to disagree
+// (they did, earlier in this project: presenter and facilitator had to be added
+// to all three by hand). test:gap asserts every role in ROLES has an entry.
+//
+// Each target is a page that role can actually work in: the admin console is
+// admin-only, CPRI Staff have no console of their own, researchers want their
+// submission statuses, the reviewer wants their queue, and a facilitator's
+// whole remit is monitoring work — account.html would be a dead end for all
+// of them.
 function homePageForRole(role) {
-  if (role === 'admin') return '/admin-dashboard.html';
-  if (role === 'adviser') return '/facilitator-dashboard.html';
-  return '/account.html';
+  switch (role) {
+    case 'admin':  return '/admin-dashboard.html';
+    // Staff are blocked from every admin-only page, so they need their own.
+    case 'cpri_staff': return '/staff-dashboard.html';
+    // ethics.html lists the applications and reveals the reviewer panel to
+    // admin / cpri_staff / ethics_reviewer — i.e. it is their working queue.
+    case 'ethics_reviewer': return '/ethics.html';
+    case 'adviser': return '/facilitator-dashboard.html';
+    case 'presenter': return '/presenter-dashboard.html';
+    // An anonymous visitor account has nothing private to show.
+    case 'public_visitor': return '/index.html';
+    case 'student_researcher':
+    case 'faculty_researcher':
+    case 'non_teaching_researcher': return '/my-submissions.html';
+    // Unknown role (a stored value ROLES does not know): fall back to the one
+    // page that never shows anything this person should not already see.
+    default: return '/account.html';
+  }
 }
 
 // Normalize the DB role value for display. We do NOT change the canonical
@@ -998,17 +1025,42 @@ router.put('/profile/prefs', requireAuth, async (req, res) => {
 });
 
 // ---------- First-time profile setup (Google sign-in) ----------
-// Lets a brand-new Google account pick its role (student / faculty / adviser)
-// and optional department/name. Only usable while setupPending is set, so a
-// user can't keep self-upgrading their role afterward.
+// Lets a brand-new Google account pick its own account type and optional
+// department/name. Only usable while setupPending is set, so a user can't keep
+// self-upgrading their role afterward.
+//
+// THIS LIST IS THE ALLOW-LIST. It holds exactly the account types a person may
+// choose about themselves — the five the complete-profile page offers. Admin,
+// CPRI Staff / Research Director and Ethics Reviewer (ERB) are deliberately
+// absent: those are assigned by an administrator through User Management.
 const SETUP_ROLES = ['student_researcher', 'faculty_researcher', 'non_teaching_researcher', 'adviser', 'presenter'];
+
+// Roles this endpoint must never touch, whatever the request asks for and
+// however stale setupPending might be. Kept explicit rather than derived from
+// ROLE_META.approvable, because `admin` is not approvable yet still has to be
+// protected here.
+const PRIVILEGED_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer'];
+
 router.put('/profile/setup', requireAuth, async (req, res) => {
   const { role, fullName, department } = req.body || {};
+  // 400 before anything is read or written: a crafted `role=admin` (or
+  // cpri_staff / ethics_reviewer / any value outside the allow-list) never
+  // reaches the UPDATE, so the stored role is left untouched.
   if (!SETUP_ROLES.includes(role)) {
-    return res.status(400).json({ error: 'Please choose a valid account type: Student Researcher, Faculty Researcher, or Adviser.' });
+    const choices = SETUP_ROLES.map(r => ROLE_META[r]?.label || r).join(', ');
+    return res.status(400).json({ error: `Please choose a valid account type: ${choices}.` });
   }
   const user = await get('SELECT * FROM users WHERE id = ?', [req.session.userId]);
   if (!user) return res.status(401).json({ error: 'Not authenticated.' });
+  // An account whose role an administrator already decided is off limits here —
+  // this endpoint must never downgrade an admin, staff or reviewer account.
+  if (PRIVILEGED_ROLES.includes(user.role)) {
+    return res.status(403).json({
+      error: 'Your account type is managed by an administrator and cannot be changed here.'
+    });
+  }
+  // Profile setup runs once: after that the role only changes through User
+  // Management, so revisiting complete-profile.html cannot overwrite it.
   if (!(user.setupPending === 1 || user.setupPending === '1')) {
     return res.status(403).json({ error: 'Profile setup is already complete.' });
   }
@@ -1507,9 +1559,19 @@ export {
   requireAdmin,
   requireRole,
   readUsers,
+  // The signed-in user shape login.html / the navbar receive — includes
+  // `home`, so the browser follows the server's landing map. Exported so
+  // test:gap can pin publicUser().home to homePageForRole().
+  publicUser,
   ROLES,
   ROLE_META,
   SELF_REGISTER_ROLES,
+  // The self-selectable account types, and the roles profile setup may never
+  // grant or revoke. Exported so tests can pin both lists down.
+  SETUP_ROLES,
+  PRIVILEGED_ROLES,
+  // The role → landing-page map (test:gap requires every role to have one).
+  homePageForRole,
   RBAC_PERMISSIONS,
   ROLE_PROFILE_FIELDS,
   // Notification preferences — exported so modules that notify users (e.g. the

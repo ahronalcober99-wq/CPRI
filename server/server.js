@@ -276,7 +276,14 @@ const MEMBER_ONLY_PAGES = new Set([
   'research-submission.html', 'research-submission-detail.html', 'my-submissions.html',
   // Research Adviser / Facilitator dashboard (member-only, not admin-only: the
   // page itself renders a short sidebar and the API scopes the data).
-  'facilitator-dashboard.html'
+  'facilitator-dashboard.html',
+  // CPRI Staff dashboard — the staff landing page (homePageForRole in
+  // server/auth.js). Same treatment as the other personal dashboards: the page
+  // renders a short sidebar and the API scopes the data.
+  'staff-dashboard.html',
+  // Presenter's Research Gala dashboard — same treatment as the other personal
+  // dashboards (account, my-submissions, facilitator-dashboard).
+  'presenter-dashboard.html'
 ]);
 
 app.use(async (req, res, next) => {

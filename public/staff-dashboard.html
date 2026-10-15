@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Staff Dashboard | CPRI</title>
+  <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
+  <meta name="theme-color" content="#240000">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container-xl">
+        <span class="badge" style="background:rgba(255,255,255,.16);color:#fff;">CPRI Staff</span>
+        <h1>Staff Dashboard</h1>
+        <p>Research submissions, ethics review and announcements at a glance.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container-xl">
+        <div class="form-message" id="message"></div>
+        <div id="access-denied" class="empty-state" style="display:none;">
+          This dashboard is for CPRI Staff accounts.
+          <a href="account.html">Go to My Account</a>.
+        </div>
+
+        <div class="admin-shell" id="shell" style="display:none;">
+          <!-- Sidebar. Deliberately shorter than the admin console: staff review
+               ethics applications and keep content flowing, but the admin-only
+               pages (Audit Logs, File Manager, Reports, Email Notifications,
+               Calendar and the user/role controls) are not rendered here at all. -->
+          <aside class="admin-side">
+            <div class="as-brand">
+              <img class="logo" src="/images/cpri-logo.jpg" alt="Colegio de San Gabriel Arcangel seal">
+              <div><b>CPRI</b><small>Staff</small></div>
+            </div>
+            <div class="as-label">Overview</div>
+            <a href="#overview" class="active"><i class="bi bi-speedometer2"></i> Dashboard</a>
+            <div class="as-label">Work</div>
+            <a href="#submissions-section"><i class="bi bi-send"></i> Submissions</a>
+            <a href="#ethics-section"><i class="bi bi-clipboard2-check"></i> Ethics Review</a>
+            <a href="#announcements-section"><i class="bi bi-megaphone"></i> Announcements</a>
+            <div class="as-label">Account</div>
+            <a href="messages.html"><i class="bi bi-chat-left-text"></i> Messages</a>
+            <a href="profile.html"><i class="bi bi-person-gear"></i> My Profile</a>
+            <a href="account.html"><i class="bi bi-person-badge"></i> My Account</a>
+            <div class="as-user">
+              <span class="av" id="side-av">—</span>
+              <div><b id="side-name" style="font-family:var(--font-head);color:var(--cpri-text)">—</b><small id="side-role">CPRI Staff</small></div>
+            </div>
+          </aside>
+
+          <!-- Main -->
+          <div class="admin-main">
+            <div id="overview" class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
+              <div>
+                <h2>Overview</h2>
+                <small style="color:var(--cpri-muted)">Counts update on every page load — nothing here is cached.</small>
+              </div>
+            </div>
+
+            <!-- Three tiles: total submissions, ethics waiting on a decision, latest announcements. -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-top:16px;">
+              <div class="card" style="margin:0;">
+                <div class="meta">Research submissions</div>
+                <div style="font-size:32px;font-weight:700;font-family:var(--font-head);margin-top:6px;" id="stat-submissions">—</div>
+                <a class="form-note" href="#submissions-section">See the list</a>
+              </div>
+              <div class="card" style="margin:0;">
+                <div class="meta">Ethics awaiting review</div>
+                <div style="font-size:32px;font-weight:700;font-family:var(--font-head);margin-top:6px;" id="stat-ethics">—</div>
+                <a class="form-note" href="#ethics-section">Open the queue</a>
+              </div>
+              <div class="card" style="margin:0;">
+                <div class="meta">Announcements</div>
+                <div style="font-size:32px;font-weight:700;font-family:var(--font-head);margin-top:6px;" id="stat-announcements">—</div>
+                <a class="form-note" href="#announcements-section">See the list</a>
+              </div>
+            </div>
+
+            <!-- Submissions -->
+            <div id="submissions-section" style="margin-top:28px;">
+              <div class="card">
+                <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+                  <h3 style="margin:0;"><i class="bi bi-send"></i> Research Submissions</h3>
+                  <a class="btn btn-outline-dark btn-sm" href="submissions.html">Open all submissions</a>
+                </div>
+                <p class="form-note" style="margin:8px 0 0;">Every submission in the system, newest first — the same list researchers see for their own work.</p>
+                <div id="submissions-list" style="margin-top:12px;"><p class="form-note">Loading…</p></div>
+              </div>
+            </div>
+
+            <!-- Ethics review -->
+            <div id="ethics-section" style="margin-top:20px;">
+              <div class="card">
+                <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+                  <h3 style="margin:0;"><i class="bi bi-clipboard2-check"></i> Ethics Review</h3>
+                  <a class="btn btn-outline-dark btn-sm" href="ethics.html">Open the review board</a>
+                </div>
+                <p class="form-note" style="margin:8px 0 0;">Applications waiting on a Board decision, newest first.</p>
+                <div id="ethics-list" style="margin-top:12px;"><p class="form-note">Loading…</p></div>
+              </div>
+            </div>
+
+            <!-- Announcements -->
+            <div id="announcements-section" style="margin-top:20px;">
+              <div class="card">
+                <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;">
+                  <h3 style="margin:0;"><i class="bi bi-megaphone"></i> Announcements</h3>
+                  <a class="btn btn-outline-dark btn-sm" href="announcements.html">Open all announcements</a>
+                </div>
+                <p class="form-note" style="margin:8px 0 0;">The latest posts sent to students and the public site.</p>
+                <div id="announcements-list" style="margin-top:12px;"><p class="form-note">Loading…</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      // CPRI Staff land here after sign-in (homePageForRole in server/auth.js).
+      // Every card reads an endpoint this role already has permission for —
+      // GET /api/submissions returns ALL records for cpri_staff (VIEW_ALL_ROLES),
+      // GET /api/ethics returns the full queue (REVIEWER_ROLES), and
+      // GET /api/announcements is the public content feed. No new API routes.
+      // The server is the real gate; this role check only decides what renders.
+
+      const AWAITING_ETHICS = ['submitted', 'under_review'];
+
+      // Same maroon/gold palette as the other dashboards so a status reads the
+      // same here as it does on My Submissions or the facilitator dashboard.
+      const STATUS_STYLES = {
+        submitted:              { bg: 'var(--gold-tint)',          fg: '#8a6d1f' },
+        under_review:           { bg: 'var(--gold-tint)',          fg: '#8a6d1f' },
+        under_initial_checking: { bg: 'var(--gold-tint)',          fg: '#8a6d1f' },
+        for_revision:           { bg: 'var(--maroon-tint-strong)', fg: 'var(--cpri-secondary)' },
+        under_ethics_review:    { bg: 'var(--maroon-tint)',        fg: 'var(--cpri-secondary)' },
+        approved:               { bg: 'rgba(16,185,129,.14)',      fg: '#0b7a56' },
+        certificate_issued:     { bg: 'rgba(16,185,129,.14)',      fg: '#0b7a56' },
+        exempted_from_full_review: { bg: 'rgba(16,185,129,.14)',   fg: '#0b7a56' },
+        published:              { bg: 'rgba(16,185,129,.14)',      fg: '#0b7a56' },
+        archived:               { bg: 'rgba(0,0,0,.06)',           fg: 'var(--cpri-muted)' },
+        disapproved:            { bg: 'rgba(185,28,28,.12)',       fg: '#b91c1c' },
+        rejected:               { bg: 'rgba(185,28,28,.12)',       fg: '#b91c1c' }
+      };
+
+      const el = (id) => document.getElementById(id);
+
+      // Every value below is a database row or a person's typing, so it is
+      // escaped before it goes anywhere near innerHTML.
+      function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+      }
+
+      function when(value) {
+        if (!value) return '—';
+        const date = new Date(value);
+        return isNaN(date) ? esc(value) : date.toLocaleDateString();
+      }
+
+      function statusBadge(status, label) {
+        const style = STATUS_STYLES[status] || { bg: 'rgba(0,0,0,.06)', fg: 'var(--cpri-muted)' };
+        return '<span class="badge" style="background:' + style.bg + ';color:' + style.fg + ';margin:0;">' +
+          esc(label || status || '—') + '</span>';
+      }
+
+      function toLogin() {
+        window.location.href = 'login.html?next=staff-dashboard.html';
+      }
+
+      async function getJson(url) {
+        const res = await fetch(url);
+        if (res.status === 401) { toLogin(); return null; }
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(body.error || 'Request failed.');
+        return body;
+      }
+
+      function emptyState(text) {
+        return '<p class="form-note">' + esc(text) + '</p>';
+      }
+
+      (async function () {
+        try {
+          const meRes = await fetch('/api/auth/me');
+          if (!meRes.ok) { toLogin(); return; }
+          const { user } = await meRes.json();
+          // Admin may look over a staff member's shoulder; everyone else gets
+          // pointed back at their own account.
+          const allowed = ['cpri_staff', 'admin'];
+          if (!allowed.includes(user.role)) {
+            el('access-denied').style.display = 'block';
+            return;
+          }
+          el('shell').style.display = '';
+
+          const name = user.fullName || user.username || '—';
+          el('side-name').textContent = name;
+          el('side-role').textContent = user.roleLabel || 'CPRI Staff';
+          el('side-av').textContent =
+            name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase() || 'CP';
+
+          // Three independent loads — one failing card must not blank the others.
+          const loadCard = async (url, key, render) => {
+            try {
+              const payload = await getJson(url);
+              if (!payload) return; // redirected to login
+              render(payload);
+            } catch (err) {
+              el(key).innerHTML = '<p class="form-note" style="color:var(--cpri-secondary);">' +
+                esc(err.message || 'Could not load this section.') + '</p>';
+            }
+          };
+
+          loadCard('/api/submissions', 'submissions-list', (payload) => {
+            const subs = payload.submissions || [];
+            el('stat-submissions').textContent = subs.length;
+            if (!subs.length) {
+              el('submissions-list').innerHTML = emptyState('No research submissions yet. Please check back soon.');
+              return;
+            }
+            el('submissions-list').innerHTML = subs.slice(0, 6).map(s =>
+              '<div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">' +
+                '<h4 style="margin:0 0 6px;"><a href="submission.html?id=' + encodeURIComponent(s.id) + '">' + esc(s.title || 'Untitled submission') + '</a></h4>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+                  statusBadge(s.status, s.statusLabel) +
+                  '<span class="meta">' + esc(s.authors || '—') + ' · ' + when(s.createdAt) + '</span>' +
+                '</div>' +
+              '</div>').join('') +
+              (subs.length > 6 ? '<p class="form-note" style="margin:10px 0 0;">Showing the 6 most recent of ' + subs.length + ' submissions.</p>' : '');
+          });
+
+          loadCard('/api/ethics', 'ethics-list', (payload) => {
+            const apps = payload.applications || [];
+            const awaiting = apps.filter(a => AWAITING_ETHICS.includes(a.status));
+            el('stat-ethics').textContent = awaiting.length;
+            const list = awaiting.length ? awaiting : apps;
+            if (!list.length) {
+              el('ethics-list').innerHTML = emptyState('No ethics applications yet. The queue is clear.');
+              return;
+            }
+            el('ethics-list').innerHTML = list.slice(0, 6).map(a =>
+              '<div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">' +
+                '<h4 style="margin:0 0 6px;"><a href="ethics-detail.html?id=' + encodeURIComponent(a.id) + '">' + esc(a.title || 'Untitled application') + '</a></h4>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
+                  statusBadge(a.status, a.statusLabel) +
+                  '<span class="meta">' + esc(a.researchers || '—') + ' · ' + esc(a.department || '—') + ' · ' + when(a.createdAt) + '</span>' +
+                '</div>' +
+              '</div>').join('') +
+              (list.length > 6 ? '<p class="form-note" style="margin:10px 0 0;">Showing the 6 most recent of ' + list.length + ' applications.</p>' : '');
+          });
+
+          loadCard('/api/announcements', 'announcements-list', (items) => {
+            const list = Array.isArray(items) ? items : [];
+            el('stat-announcements').textContent = list.length;
+            if (!list.length) {
+              el('announcements-list').innerHTML = emptyState('No announcements have been posted yet.');
+              return;
+            }
+            el('announcements-list').innerHTML = list.slice(0, 5).map(a =>
+              '<div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">' +
+                '<h4 style="margin:0 0 6px;">' + esc(a.title || 'Untitled announcement') + '</h4>' +
+                '<div class="meta">' + esc(a.category || 'General') + ' · ' + when(a.date || a.createdAt) +
+                  (a.author ? ' · ' + esc(a.author) : '') + '</div>' +
+                '<p style="margin:6px 0 0;">' + esc(a.excerpt || a.content || '') + '</p>' +
+              '</div>').join('') +
+              (list.length > 5 ? '<p class="form-note" style="margin:10px 0 0;">Showing the 5 most recent of ' + list.length + ' announcements.</p>' : '');
+          });
+        } catch (err) {
+          el('message').className = 'form-message error';
+          el('message').textContent = err.message || 'Could not load the dashboard.';
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>
