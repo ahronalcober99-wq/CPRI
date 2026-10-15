@@ -81,8 +81,6 @@ const iso = (y, m, d, h = 9, min = 0) => new Date(Date.UTC(y, m - 1, d, h, min))
 // Shared ID helpers so child rows (repository, registrations, abstracts)
 // reference exactly the same ids the parent seeders generate.
 const submissionId = (s) => `demo-sub-${s.created.slice(0, 10)}-${s.submitterId.slice(-6)}`;
-const eventModuleId = (e) => `demo-evmod-${e.dateTime.slice(0, 7).replace('-', '')}-${e.title.slice(0, 4).toLowerCase()}`;
-const registrationId = (e, userId) => `demo-reg-${e.dateTime.slice(0, 7).replace('-', '')}-${userId.slice(-6)}`;
 
 // ---------------------------------------------------------------- MySQL data
 
@@ -315,68 +313,16 @@ async function seedResearcherDirectory() {
   console.log(`[demo] Seeded ${RESEARCHERS.length} researcher directory entries.`);
 }
 
-const EVENTS_MODULE = [
-  { title: 'Annual Research Symposium 2026', theme: 'Evidence for a Resilient Philippines', dateTime: '2026-09-18 08:30', venue: 'CPRI Convention Hall, Quezon City', desc: 'A full-day symposium featuring paper presentations, panel discussions, and policy dialogues across CPRI priority themes.', link: '/events.html' },
-  { title: 'Policy Forum: Digital Governance', theme: 'Inclusive digital public services', dateTime: '2026-10-09 09:00', venue: 'University Boardroom', desc: 'Public forum on accountable and inclusive e-government with national and local experts.', link: '/events.html' },
-  { title: 'Capability Building: Impact Evaluation', theme: 'Methods for policy research', dateTime: '2026-11-12 09:00', venue: 'CPRI Training Room 2', desc: 'Two-day workshop on impact evaluation design for faculty and student researchers.', link: '/events.html' },
-  { title: 'Research Ethics Training 2026', theme: 'Responsible conduct of research', dateTime: '2027-01-15 08:30', venue: 'CPRI Training Room 1', desc: 'Required ethics certification for researchers working with human participants.', link: '/events.html' },
-  { title: 'Innovation & Extension Showcase', theme: 'Research to community', dateTime: '2027-03-05 09:00', venue: 'University Quadrangle', desc: 'Showcase of extension projects and community innovations from the past year.', link: '/events.html' }
-];
+// NOTE: the demo "events" seeding (both the events_module table rows and the
+// events.json content entries) has been removed deliberately. Seeded events
+// looked like real upcoming events on the public homepage and could not be told
+// apart from ones an administrator had created. Real events are added through
+// the admin Events & Conferences page and the Admin Console Content tab; they
+// are never generated from this file.
 
-async function seedEventsModule() {
-  for (const e of EVENTS_MODULE) {
-    await insert('events_module', {
-      id: eventModuleId(e),
-      title: e.title, theme: e.theme, dateTime: e.dateTime, venue: e.venue,
-      description: e.desc, registrationLink: e.link, programFlow: '',
-      speakers: JSON.stringify(['Carlos Tan, PhD', 'Maria Teresa Ramos, PhD']),
-      gallery: JSON.stringify([]), createdAt: iso(2026, 8, 1), updatedAt: iso(2026, 8, 1)
-    });
-  }
-  console.log(`[demo] Seeded ${EVENTS_MODULE.length} events-module records.`);
-}
-
-async function seedRegistrations() {
-  const regs = [
-    { event: EVENTS_MODULE[0], user: USER_IDS.ramos, name: 'Maria Teresa Ramos', inst: 'CPRI', email: 'maria.ramos@demo.cpri.edu', type: 'Faculty', role: 'speaker', status: 'attended' },
-    { event: EVENTS_MODULE[0], user: USER_IDS.bautista, name: 'Karla Bautista', inst: 'State University', email: 'karla.bautista@demo.cpri.edu', type: 'Student', role: 'presenter', status: 'attended' },
-    { event: EVENTS_MODULE[0], user: USER_IDS.reyes, name: 'Miguel Reyes', inst: 'State University', email: 'miguel.reyes@demo.cpri.edu', type: 'Student', role: 'presenter', status: 'attended' },
-    { event: EVENTS_MODULE[1], user: USER_IDS.ramos, name: 'Maria Teresa Ramos', inst: 'CPRI', email: 'maria.ramos@demo.cpri.edu', type: 'Faculty', role: 'speaker', status: 'registered' },
-    { event: EVENTS_MODULE[1], user: USER_IDS.delaCruz, name: 'Juan Miguel dela Cruz', inst: 'CPRI', email: 'juan.delacruz@demo.cpri.edu', type: 'Faculty', role: 'panelist', status: 'registered' },
-    { event: EVENTS_MODULE[2], user: USER_IDS.villanueva, name: 'Angela Villanueva', inst: 'CPRI', email: 'angela.villanueva@demo.cpri.edu', type: 'Faculty', role: 'facilitator', status: 'registered' },
-    { event: EVENTS_MODULE[2], user: USER_IDS.bautista, name: 'Karla Bautista', inst: 'State University', email: 'karla.bautista@demo.cpri.edu', type: 'Student', role: 'attendee', status: 'registered' },
-    { event: EVENTS_MODULE[3], user: USER_IDS.reyes, name: 'Miguel Reyes', inst: 'State University', email: 'miguel.reyes@demo.cpri.edu', type: 'Student', role: 'attendee', status: 'registered' }
-  ];
-  for (const r of regs) {
-    await insert('event_registrations', {
-      id: registrationId(r.event, r.user),
-      eventId: eventModuleId(r.event), userId: r.user, participantName: r.name, institution: r.inst,
-      email: r.email, participantType: r.type, role: r.role, abstractFile: null,
-      attendanceStatus: r.status, certificateIssued: r.status === 'attended' ? 1 : 0,
-      certificateData: JSON.stringify(null), createdAt: iso(2026, 8, 2)
-    });
-  }
-  console.log(`[demo] Seeded ${regs.length} event registrations.`);
-}
-
-async function seedAbstracts() {
-  const abs = [
-    { event: EVENTS_MODULE[0], user: USER_IDS.bautista, title: 'Open Data Adoption in LGUs', authors: 'Karla Bautista; Maria Teresa Ramos', strand: 'Digital Governance' },
-    { event: EVENTS_MODULE[0], user: USER_IDS.reyes, title: 'Nature-Based Solutions for Urban Flooding', authors: 'Miguel Reyes; Juan Miguel dela Cruz', strand: 'Climate & Environment' },
-    { event: EVENTS_MODULE[0], user: USER_IDS.villanueva, title: 'Teacher PD and Learning Outcomes', authors: 'Angela Villanueva', strand: 'Education' },
-    { event: EVENTS_MODULE[0], user: USER_IDS.delaCruz, title: 'Telemedicine in Rural Health', authors: 'Juan Miguel dela Cruz', strand: 'Health Systems' }
-  ];
-  for (const a of abs) {
-    await insert('event_abstracts', {
-      id: `demo-abs-${a.user.slice(-6)}`,
-      eventId: eventModuleId(a.event), userId: a.user, title: a.title, authors: a.authors,
-      abstract: `${a.title}. Abstract accepted for the Annual Research Symposium 2026.`,
-      keywords: 'research, policy', strand: a.strand, status: 'accepted',
-      createdAt: iso(2026, 8, 3)
-    });
-  }
-  console.log(`[demo] Seeded ${abs.length} event abstracts.`);
-}
+// Demo event registrations and abstracts were removed together with the demo
+// events they belonged to: both referenced the (now deleted) EVENTS_MODULE
+// array, so keeping them would have thrown a ReferenceError on the next run.
 
 const INNOVATION = [
   { projectType: 'Extension', title: 'Digital Governance Toolkit for LGUs', proponents: 'CPRI Governance Cluster', department: 'Governance & Public Policy', beneficiaries: 120, date: '2026-05-20', partner: 'Quezon City Government' },
@@ -432,14 +378,8 @@ async function seedInquiries() {
 // ---------------------------------------------------------------- JSON content
 
 async function seedJsonContent() {
-  // Events — homepage "Upcoming Events" + events page + admin Events tab.
-  await appendJson('events', [
-    { id: 'demo-ev-1', title: 'Annual Research Symposium 2026', type: 'Conference', date: '2026-09-18', location: 'CPRI Convention Hall, Quezon City', description: 'A full-day symposium featuring paper presentations, panel discussions, and policy dialogues across CPRI priority themes.', photo: '', createdAt: iso(2026, 8, 1) },
-    { id: 'demo-ev-2', title: 'Policy Forum: Digital Governance', type: 'Forum', date: '2026-10-09', location: 'University Boardroom', description: 'Public forum on inclusive, accountable e-government with national and local experts.', photo: '', createdAt: iso(2026, 8, 1) },
-    { id: 'demo-ev-3', title: 'Capability Building: Impact Evaluation', type: 'Workshop', date: '2026-11-12', location: 'CPRI Training Room 2', description: 'Two-day workshop on impact evaluation design for faculty and student researchers.', photo: '', createdAt: iso(2026, 8, 1) },
-    { id: 'demo-ev-4', title: 'Research Ethics Training 2026', type: 'Training', date: '2027-01-15', location: 'CPRI Training Room 1', description: 'Required ethics certification for researchers working with human participants.', photo: '', createdAt: iso(2026, 8, 1) },
-    { id: 'demo-ev-5', title: 'Past Webinar: UHC Progress in the Regions', type: 'Webinar', date: '2026-05-22', location: 'Online', description: 'Webinar on Universal Health Coverage implementation progress across partner provinces.', photo: '', createdAt: iso(2026, 8, 1) }
-  ]);
+  // Events are NOT seeded: the "Upcoming Events" section must only ever show
+  // events an administrator created. See the NOTE above the removals.
 
   // Announcements — public announcements page. Keeps any real entries.
   await appendJson('announcements', [
@@ -481,9 +421,6 @@ async function main() {
   await seedPublications();
   await seedEthics();
   await seedResearcherDirectory();
-  await seedEventsModule();
-  await seedRegistrations();
-  await seedAbstracts();
   await seedInnovation();
   await seedLogs();
   await seedInquiries();

@@ -2046,7 +2046,7 @@ const CPRI = (() => {
     const list = upcoming.slice(0,3);
     // No upcoming events yet: show a tidy empty state instead of a blank grid.
     if (!list.length) {
-      el.innerHTML = '<div class="empty-state"><i class="bi bi-calendar-event" style="font-size:1.6rem;display:block;margin-bottom:8px;color:var(--cpri-accent);"></i>No upcoming events scheduled — check back soon for seminars, symposia, and conferences.</div>';
+      el.innerHTML = '<div class="empty-state"><i class="bi bi-calendar-event" style="font-size:1.6rem;display:block;margin-bottom:8px;color:var(--cpri-accent);"></i>No upcoming events at the moment. Please check back soon.</div>';
       return;
     }
     el.innerHTML = list.map(e => {
