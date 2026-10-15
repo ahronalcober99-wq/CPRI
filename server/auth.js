@@ -1344,36 +1344,60 @@ router.delete('/admin/users/:id', requireAdmin, async (req, res) => {
 
 // ---------- Seed default admin ----------
 async function initAuth() {
-  const adminUser = await get("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
-  if (!adminUser) {
-    // Never boot a public deployment with a guessable admin password: when
-    // ADMIN_PASSWORD is unset, generate one and print it once so the owner can
-    // sign in and change it.
-    const generated = !process.env.ADMIN_PASSWORD;
-    const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(12).toString('base64url');
-    const admin = {
-      id: randomUUID(),
-      username: 'admin',
-      email: process.env.ADMIN_EMAIL || 'admin@cpri.edu',
-      fullName: 'System Administrator',
-      role: 'admin',
-      passwordHash: await bcrypt.hash(adminPassword, SALT_ROUNDS),
-      status: 'active',
-      department: '',
-      contactNumber: '',
-      researchInterests: '',
-    profilePhoto: null,
+  // Idempotent check: look up by email (case-insensitive) OR by username.
+  // This covers admins created by any previous boot or deploy.
+  const existingByEmail = await get(
+    'SELECT id FROM users WHERE LOWER(email) = LOWER(?)',
+    [process.env.ADMIN_EMAIL || 'admin@cpri.edu']
+  );
+  const existingByUsername = await get(
+    'SELECT id FROM users WHERE LOWER(username) = LOWER(?)',
+    ['admin']
+  );
+  const adminAlreadyExists = !!existingByEmail || !!existingByUsername;
+  if (adminAlreadyExists) {
+    console.log('[auth] Default admin already exists, skipping seeding.');
+    return;
+  }
+
+  // Never boot a public deployment with a guessable admin password: when
+  // ADMIN_PASSWORD is unset, generate one and print it once so the owner can
+  // sign in and change it.
+  const generated = !process.env.ADMIN_PASSWORD;
+  const adminPassword = process.env.ADMIN_PASSWORD || randomBytes(12).toString('base64url');
+  const admin = {
+    id: randomUUID(),
+    username: 'admin',
+    email: process.env.ADMIN_EMAIL || 'admin@cpri.edu',
+    fullName: 'System Administrator',
+    role: 'admin',
+    passwordHash: await bcrypt.hash(adminPassword, SALT_ROUNDS),
+    status: 'active',
+    department: '',
+    contactNumber: '',
+    researchInterests: '',
+  profilePhoto: null,
     researches: JSON.stringify([]),
     user_prefs: JSON.stringify(DEFAULT_PREFS),
     resetToken: null,
     resetTokenExpiry: null,
     createdAt: new Date().toISOString()
   };
-  await insert('users', admin);
+  try {
+    await insert('users', admin);
     console.log('[seed] Default admin created — username: admin');
     if (generated) {
       console.log('[seed] ADMIN_PASSWORD was not set, so this one-time password was generated: ' + adminPassword);
       console.log('[seed] Sign in as admin and change it, or set ADMIN_PASSWORD in the environment and recreate the account.');
+    }
+  } catch (error) {
+    // ER_DUP_ENTRY (errno 1062) means the admin already exists — another
+    // boot/race created it between our check and the insert.
+    if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+      console.log('[auth] Default admin already exists, skipping seeding.');
+    } else {
+      console.error('[auth] Error seeding default admin:', error.message);
+      throw error;
     }
   }
 }
