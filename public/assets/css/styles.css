@@ -1688,13 +1688,62 @@ img { max-width: 100%; display: block; }
 .cpri-nav-links > li > a:not(.nav-icon-only) > i:not(.cpri-caret-icon),
 .cpri-group-label > i:not(.cpri-caret-icon) { display: none; }
 
-/* Admin Console is always the icon-only pill (label kept for screen readers +
-   native tooltip): with its label it needs ~115px the 1320px header container
-   does not have, even on a 1920px screen. Admins also get the same destination
-   from the dashboard icon in the action row. */
+/* nav-icon-only is the escape hatch for a nav item that must stay an icon
+   pill (label kept for screen readers + native tooltip) because its text does
+   not fit the 1320px header container. */
 .cpri-nav-links .nav-icon-only > span { display: none; }
 .cpri-nav-links .nav-icon-only { padding: 10px; }
 .cpri-nav-links .nav-icon-only::after { left: 8px; right: 8px; }
+
+/* ---- Dashboard pill -------------------------------------------------------
+   One item, right after "Research", for every signed-in user (main.js inserts
+   it from the role's server-sent dashboard list). Gold on the maroon header so
+   it reads as the one action in that row instead of another section label.
+   It is also the only nav item that keeps its icon: the rule above hides every
+   other nav icon on purpose. */
+.cpri-nav-links > li.nav-dashboard > a,
+.cpri-nav-links > li.nav-dashboard > .cpri-group-label {
+  background: var(--cpri-accent);
+  color: #2a1416;
+  box-shadow: 0 3px 12px rgba(217, 169, 58, .32);
+}
+.cpri-nav-links > li.nav-dashboard > a:hover,
+.cpri-nav-links > li.nav-dashboard > .cpri-group-label:hover,
+.cpri-nav-links > li.nav-dashboard.open > .cpri-group-label {
+  background: #e8bd57; color: #241010;
+}
+/* The gold fill is the affordance — the active underline would just muddy it. */
+.cpri-nav-links > li.nav-dashboard > a::after,
+.cpri-nav-links > li.nav-dashboard > .cpri-group-label::after { display: none; }
+.cpri-nav-links > li.nav-dashboard > a > i:not(.cpri-caret-icon),
+.cpri-nav-links > li.nav-dashboard > .cpri-group-label > i:not(.cpri-caret-icon) { display: inline-flex; }
+.cpri-nav-links > li.nav-dashboard .cpri-caret-icon { color: #2a1416; opacity: .75; }
+/* The pill is the last item in the row, so its dropdown opens leftwards from
+   the header's right edge instead of pushing a panel off-screen. */
+.cpri-nav-links > li.nav-dashboard .cpri-submenu { left: auto; right: 0; min-width: 280px; }
+/* The dashboard the login redirect will send you to is marked in the panel. */
+.cpri-submenu li > a.dash-primary { background: var(--gold-tint); box-shadow: inset 3px 0 0 var(--cpri-accent); }
+/* 1200–1399px is the tight band (see the note below): the pill drops its label
+   and keeps the grid icon, with the name still on the tooltip + aria-label. */
+@media (min-width: 1200px) and (max-width: 1399px) {
+  .cpri-nav-links > li.nav-dashboard > a > span,
+  .cpri-nav-links > li.nav-dashboard > .cpri-group-label > span { display: none; }
+  .cpri-nav-links > li.nav-dashboard > a,
+  .cpri-nav-links > li.nav-dashboard > .cpri-group-label { padding: 10px 12px; }
+}
+/* Mobile: the pill lives in the hamburger/offcanvas menu (buildMobileNav),
+   where the same gold treatment marks the account's main destination. */
+.mobile-offcanvas a.nav-dashboard,
+.mobile-offcanvas .mo-toggle.nav-dashboard {
+  background: var(--cpri-accent); color: #2a1416; border-radius: 999px;
+  padding-left: 16px; padding-right: 16px; font-weight: 700; margin: 8px 0;
+}
+.mobile-offcanvas a.nav-dashboard:hover,
+.mobile-offcanvas .mo-toggle.nav-dashboard:hover { background: #e8bd57; color: #241010; }
+.mobile-offcanvas a.nav-dashboard i {
+  color: #2a1416; background: transparent; width: auto;
+}
+.mobile-offcanvas .mo-sub a.dash-primary { color: var(--cpri-accent); font-weight: 700; }
 /* Narrow desktop: the header keeps the brand subtitle (ellipsized) and all
    action buttons — shrinking via clamp() above replaced the old hide-them
    workaround, which is what made the subtitle "go missing" at 1366px. */

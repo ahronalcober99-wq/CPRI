@@ -28,6 +28,9 @@ import {
   // The role → landing-page map and the user shape that ships it to the
   // browser as `user.home` (login.html and the Google bridge follow it).
   homePageForRole,
+  // The role → dashboard map the shared header's Dashboard button is built
+  // from, shipped the same way as `user.dashboards`.
+  dashboardsForRole,
   publicUser
 } from '../auth.js';
 import pool from '../db.js';
@@ -110,6 +113,82 @@ test('every registered role has its own landing page — none falls back to the 
 
   // account.html stays the safety net for a stored role ROLES does not know.
   assert.equal(homePageForRole('retired_role'), '/account.html');
+});
+
+test('every role gets a Dashboard button target that agrees with its landing page', () => {
+  // The header's gold Dashboard pill is rendered from publicUser().dashboards,
+  // so the button and the post-login redirect are built from one map and cannot
+  // drift. This table is the contract: which dashboards each role may be
+  // offered, most important first. Everything here is a page that role can
+  // actually open — server.js gates the dashboard shells and each module's API
+  // 403s or scopes the rows — so a wrong-role dashboard URL cannot be reached
+  // just because the button offered it.
+  const EXPECTED = {
+    admin: ['/admin-dashboard.html', '/ethics.html'],
+    cpri_staff: ['/staff-dashboard.html', '/ethics.html'],
+    ethics_reviewer: ['/ethics.html'],
+    adviser: ['/facilitator-dashboard.html'],
+    presenter: ['/presenter-dashboard.html'],
+    student_researcher: ['/my-submissions.html'],
+    faculty_researcher: ['/my-submissions.html'],
+    non_teaching_researcher: ['/my-submissions.html'],
+    public_visitor: ['/account.html']
+  };
+
+  for (const role of ROLES) {
+    assert.ok(EXPECTED[role], `${role} has an explicit dashboard entry`);
+    const list = dashboardsForRole(role);
+    assert.deepEqual(list.map(d => d.href), EXPECTED[role], `${role} gets exactly its dashboards`);
+    for (const d of list) {
+      assert.ok(d.label && d.label !== 'Dashboard', `${role}'s dashboard entries are named`);
+      // Only the pages this feature is allowed to point at — never a data file
+      // or an arbitrary admin route.
+      assert.match(d.href, /^\/(admin-dashboard|staff-dashboard|facilitator-dashboard|presenter-dashboard|my-submissions|ethics|account)\.html$/);
+    }
+  }
+
+  // The button and the redirect agree for every role that HAS a dashboard.
+  // public_visitor is the one documented exception: it has no dashboard page of
+  // its own, so the button falls back to account.html while signing in still
+  // lands on the public homepage.
+  for (const role of ROLES) {
+    const first = dashboardsForRole(role)[0].href;
+    if (role === 'public_visitor') {
+      assert.equal(first, '/account.html');
+      assert.equal(homePageForRole(role), '/index.html');
+      continue;
+    }
+    assert.equal(first, homePageForRole(role), `${role} lands where its Dashboard button points`);
+  }
+
+  // More than one dashboard is the dropdown case; the ethics queue is only ever
+  // offered to the roles that may actually review (REVIEWER_ROLES in ethics.js).
+  for (const role of ['admin', 'cpri_staff']) {
+    assert.equal(dashboardsForRole(role).length, 2, `${role} gets the multi-dashboard dropdown`);
+    assert.ok(dashboardsForRole(role).some(d => d.href === '/ethics.html'), `${role} may work the ethics queue`);
+  }
+  for (const role of ['presenter', 'student_researcher', 'faculty_researcher', 'adviser', 'public_visitor']) {
+    assert.ok(!dashboardsForRole(role).some(d => d.href === '/ethics.html'),
+      `${role} is never offered the ethics reviewer's queue`);
+  }
+
+  // publicUser() is what the browser reads — keep it in lockstep.
+  for (const role of ROLES) {
+    const pub = publicUser({
+      id: 1, username: 'u', email: 'u@example.org', fullName: 'U',
+      role, status: 'active'
+    });
+    assert.deepEqual(pub.dashboards, dashboardsForRole(role), `publicUser().dashboards matches for ${role}`);
+  }
+
+  // `facilitator` is the research module's spelling of the adviser job, not a
+  // registered role — if a row ever holds it, it still gets the real dashboard
+  // instead of the account.html fallback.
+  assert.equal(dashboardsForRole('facilitator')[0].href, '/facilitator-dashboard.html');
+  assert.equal(homePageForRole('facilitator'), '/facilitator-dashboard.html');
+
+  // An unknown/stale role never gets a guess at a privileged page.
+  assert.deepEqual(dashboardsForRole('retired_role').map(d => d.href), ['/account.html']);
 });
 
 test('profile setup can only ever choose one of the five self-selectable account types', () => {

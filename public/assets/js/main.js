@@ -209,40 +209,21 @@ const CPRI = (() => {
 
   async function getNavItems() {
     const auth = [];
-    let isAdmin = false;
     let me = null;
+    // Every dashboard this account may open, most important first. This list
+    // arrives with the session (publicUser().dashboards in server/auth.js) —
+    // the header keeps no role → page copy of its own, so the Dashboard button
+    // and the post-login redirect can never disagree.
+    let dashboards = [];
     try {
       me = await fetchMe();
       if (me && me.user) {
-        isAdmin = me.user.role === 'admin';
-        // The Admin console is admin-only — hidden from the nav for every other
-        // role (mirrors the server's requireAdmin gate on /api/admin/*).
-        if (isAdmin) {
-          auth.push({ label: 'Dashboard', href: 'admin-dashboard.html', primary: true });
-        }
-        // A Research Adviser / Facilitator gets their own monitoring dashboard:
-        // student submissions with statuses, a comment box per submission and
-        // notifications. No admin console entry — the server would 403 it.
-        if (me.user.role === 'adviser' || me.user.role === 'facilitator') {
-          auth.push({ label: 'Facilitator Dashboard', href: 'facilitator-dashboard.html', primary: true });
-        }
-        // CPRI Staff land on their own dashboard (homePageForRole in
-        // server/auth.js) — they are blocked from the admin console, so this is
-        // their one-click way back to submissions, the ethics queue and announcements.
-        if (me.user.role === 'cpri_staff') {
-          auth.push({ label: 'Staff Dashboard', href: 'staff-dashboard.html', primary: true });
-        }
+        dashboards = (Array.isArray(me.user.dashboards) ? me.user.dashboards : [])
+          .filter(d => d && d.href)
+          .map(d => ({ label: d.label || 'Dashboard', href: d.href }));
         // Direct messaging is for all registered roles — mirror the server's DM gate.
         if (['admin','cpri_staff','faculty_researcher','non_teaching_researcher','adviser','ethics_reviewer','student_researcher','presenter','public_visitor'].includes(me.user.role)) {
           auth.push({ label: 'Messages', href: 'messages.html' });
-        }
-        // A Presenter gets a one-click route to their own Gala dashboard.
-        if (me.user.role === 'presenter') {
-          auth.push({ label: 'My Gala Submissions', href: 'presenter-dashboard.html' });
-        }
-        // Submitting researchers need one click to their submission statuses.
-        if (['student_researcher', 'faculty_researcher', 'non_teaching_researcher'].includes(me.user.role)) {
-          auth.push({ label: 'My Submissions', href: 'my-submissions.html' });
         }
         auth.push({ label: 'My Account', href: 'account.html' });
         auth.push({ label: 'Logout', href: '#', action: 'logout' });
@@ -254,19 +235,36 @@ const CPRI = (() => {
       auth.push({ label: 'Login', href: 'login.html' });
       auth.push({ label: 'Register', href: 'register.html', primary: true });
     }
-    // Desktop navbar entry for admins only. The mobile menu already surfaces
-    // the console via the Dashboard auth item, so buildMobileNav skips desktopOnly.
+    // One Dashboard button for every signed-in user, right after "Research"
+    // (baseNav's last item). Two or more dashboards — e.g. an admin who also
+    // works the ethics queue — open a small dropdown with the landing page
+    // first and highlighted; a single dashboard is a plain link. A signed-out
+    // visitor gets no Dashboard item at all, only the Login/Register pills.
     const nav = SITE.baseNav.slice();
-    if (isAdmin) {
-      // iconOnly: collapses to an icon pill below 1500px (CSS .nav-icon-only)
-      // so the nav row fits at 1366px/100% zoom; label stays as tooltip + aria-label.
-      nav.push({ label: 'Admin Console', href: 'admin-dashboard.html', icon: 'bi-speedometer2', desktopOnly: true, iconOnly: true });
+    if (dashboards.length) {
+      const [primary, ...others] = dashboards;
+      nav.push({
+        label: 'Dashboard',
+        href: primary.href,
+        icon: 'bi-grid-1x2',
+        dash: true,
+        group: others.length
+          ? dashboards.map((d, i) => ({
+              label: d.label,
+              href: d.href,
+              icon: i === 0 ? 'bi-grid-1x2' : 'bi-grid',
+              desc: i === 0 ? 'Your landing page' : '',
+              highlight: i === 0
+            }))
+          : null
+      });
     }
     // Avatar photo (Google OAuth URL or uploaded file) + display name, used by
     // headerHtml to render the My Account circle as a photo when one exists.
     return {
       nav,
       auth,
+      dashboards,
       photo: (me && me.user && me.user.profilePhoto) || '',
       name: (me && me.user && (me.user.fullName || me.user.username)) || '',
       // First-time Google sign-ins must finish profile setup (pick a role).
@@ -309,7 +307,10 @@ const CPRI = (() => {
       const icon = item.icon ? `<i class="bi ${item.icon}"></i>` : '';
       if (item.group) {
         const submenuItem = s => {
-          const isActive = s.href === active ? ' class="active"' : '';
+          // highlight: the primary dashboard in the Dashboard dropdown — marked
+          // so the panel shows which one the login redirect will send you to.
+          const cls = [s.href === active ? 'active' : '', s.highlight ? 'dash-primary' : ''].filter(Boolean).join(' ');
+          const isActive = cls ? ` class="${cls}"` : '';
           const si = s.icon ? `<i class="bi ${s.icon}"></i>` : '';
           const sd = s.desc ? `<small>${s.desc}</small>` : '';
           return `<li><a href="${s.href}"${isActive}>${si}<span>${s.label}${sd}</span></a></li>`;
@@ -330,23 +331,27 @@ const CPRI = (() => {
           panelCls = item.group.length > 5 ? ' cols-2' : '';
         }
         const isActiveGroup = item.group.some(g => (g.items ? g.items : [g]).some(s => s.href === active));
-        return `<li class="cpri-group${isActiveGroup ? ' active' : ''}">
-          <a href="#" class="cpri-group-label" aria-haspopup="true" aria-expanded="false">${icon}<span>${item.label}</span><i class="bi bi-chevron-down cpri-caret-icon"></i></a>
+        // .nav-dashboard turns the trigger into the gold pill and re-shows its
+        // icon (nav labels are text-only otherwise — see styles.css).
+        const dashAttr = item.dash ? ' nav-dashboard' : '';
+        const dashName = item.dash ? ` aria-label="${item.label}" title="${item.label}"` : '';
+        return `<li class="cpri-group${dashAttr}${isActiveGroup ? ' active' : ''}">
+          <a href="#" class="cpri-group-label" aria-haspopup="true" aria-expanded="false"${dashName}>${icon}<span>${item.label}</span><i class="bi bi-chevron-down cpri-caret-icon"></i></a>
           <ul class="cpri-submenu${panelCls}">${sub}</ul>
         </li>`;
       }
       const classes = [item.iconOnly ? 'nav-icon-only' : '', item.href === active ? 'active' : ''].filter(Boolean).join(' ');
       const clsAttr = classes ? ` class="${classes}"` : '';
-      // Icon-only items keep an accessible name + native tooltip via title.
-      const tipAttr = item.iconOnly ? ` title="${item.label}" aria-label="${item.label}"` : '';
-      return `<li><a href="${item.href}"${clsAttr}${tipAttr}>${icon}<span>${item.label}</span></a></li>`;
+      // Icon-only items keep an accessible name + native tooltip via title. The
+      // Dashboard pill keeps one too: below 1400px it collapses to the icon.
+      const tipAttr = item.iconOnly || item.dash ? ` title="${item.label}" aria-label="${item.label}"` : '';
+      return `<li${item.dash ? ' class="nav-dashboard"' : ''}><a href="${item.href}"${clsAttr}${tipAttr}>${icon}<span>${item.label}</span></a></li>`;
     }).join('');
 
     const loggedIn = navItems.auth.some(a => a.action === 'logout');
-    // The quick dashboard icon is admin-only — the Dashboard auth item is only
-    // pushed into navItems.auth for role === 'admin'.
-    const isAdmin = navItems.auth.some(a => a.href === 'admin-dashboard.html');
     // The messages icon shows for all registered roles (matches getNavItems push).
+    // There is no separate quick-dashboard icon any more: the gold Dashboard
+    // pill in the nav row is the one dashboard entry point for every role.
     const isMessenger = navItems.auth.some(a => a.href === 'messages.html');
     let authHtml;
     if (loggedIn) {
@@ -354,8 +359,7 @@ const CPRI = (() => {
       // picture URL or an uploaded file), otherwise fall back to the user's
       // name initials. A missing/broken photo hides the img and shows initials.
       const avatarInner = avatarHtml(navItems.photo, navItems.name);
-      authHtml = `${isAdmin ? `<a class="cpri-icon-btn" href="admin-dashboard.html" aria-label="Quick dashboard" title="Dashboard"><i class="bi bi-grid-1x2"></i></a>
-        ` : ''}${isMessenger ? `<a class="cpri-icon-btn" href="messages.html" aria-label="Direct messages" title="Messages"><i class="bi bi-chat-left-text"></i></a>
+      authHtml = `${isMessenger ? `<a class="cpri-icon-btn" href="messages.html" aria-label="Direct messages" title="Messages"><i class="bi bi-chat-left-text"></i></a>
         ` : ''}<button class="cpri-icon-btn cpri-bell-mobile" id="nav-bell-m" aria-label="Notifications" title="Notifications"><i class="bi bi-bell"></i><span class="dot" id="notifBadgeM" style="display:none"></span></button><a class="cpri-avatar" href="account.html" aria-label="My account" title="My Account">${avatarInner}</a>`;
     } else {
       authHtml = navItems.auth.map(item => {
@@ -594,14 +598,16 @@ const CPRI = (() => {
       if (item.group) {
         // Sectioned groups keep their small headings in the offcanvas too;
         // plain groups render as a flat list of links.
-        const flatLink = s => `<a href="${s.href}"><i class="${s.icon}"></i>${s.label}</a>`;
+        // Icons carry the `bi` base class (font-family) as well as the glyph
+        // class — the navbar's own markup does the same.
+        const flatLink = s => `<a href="${s.href}" class="${s.highlight ? 'dash-primary' : ''}"><i class="bi ${s.icon}"></i>${s.label}</a>`;
         const isSectioned = item.group.some(g => g.items);
         const sub = isSectioned
           ? item.group.map(sec => `<span class="mo-section">${sec.section}</span>${sec.items.map(flatLink).join('')}`).join('')
           : item.group.map(flatLink).join('');
-        return `<div class="mo-group"><a href="#" class="mo-toggle"><i class="${item.icon}"></i>${item.label}<i class="bi bi-chevron-down" style="margin-left:auto"></i></a><div class="mo-sub">${sub}</div></div>`;
+        return `<div class="mo-group"><a href="#" class="mo-toggle${item.dash ? ' nav-dashboard' : ''}"><i class="bi ${item.icon}"></i>${item.label}<i class="bi bi-chevron-down" style="margin-left:auto"></i></a><div class="mo-sub">${sub}</div></div>`;
       }
-      return `<a href="${item.href}" class="${item.href===active?'active':''}"><i class="${item.icon}"></i>${item.label}</a>`;
+      return `<a href="${item.href}" class="${[item.href===active?'active':'', item.dash?'nav-dashboard':''].filter(Boolean).join(' ')}"><i class="bi ${item.icon}"></i>${item.label}</a>`;
     }).join('');
     const auth = navItems.auth.map(a => {
       const actionAttr = a.action ? ` data-action="${a.action}"` : '';
@@ -647,7 +653,9 @@ const CPRI = (() => {
     const sheet = document.getElementById('moreSheet');
     if (sheet) {
       const loggedIn = navItems.auth.some(a => a.action === 'logout');
-      const isAdmin = navItems.auth.some(a => a.href === 'admin-dashboard.html');
+      // The sheet's account rows use the same server-sent dashboard the nav
+      // pill uses (a signed-out visitor has none).
+      const primaryDash = loggedIn ? ((navItems.dashboards || [])[0] || null) : null;
       const TILES = [
         { label: 'Search', icon: 'bi-search', action: 'search' },
         { label: 'About CPRI', href: 'about.html', icon: 'bi-info-circle' },
@@ -670,7 +678,7 @@ const CPRI = (() => {
         ? `<span class="ms-avatar">${avatarHtml(navItems.photo, navItems.name)}</span><div class="ms-id"><b>${escapeHtml(navItems.name || 'My Account')}</b><small>Account</small></div>`
         : `<img class="ms-logo" src="/images/cpri-logo.jpg" alt="Colegio de San Gabriel Arcangel seal"><div class="ms-id"><b>Explore CPRI</b><small>Quick access</small></div>`;
       const accountRows = loggedIn
-        ? `${isAdmin ? `<a class="ms-row" href="admin-dashboard.html"><i class="bi bi-speedometer2"></i>Dashboard</a>` : ''}
+        ? `${primaryDash ? `<a class="ms-row" href="${primaryDash.href}"><i class="bi bi-grid-1x2"></i>Dashboard</a>` : ''}
            <a class="ms-row" href="messages.html"><i class="bi bi-chat-left-text"></i>Messages</a>
            <a class="ms-row" href="account.html"><i class="bi bi-person-circle"></i>My Account</a>
            <a class="ms-row" href="#" data-action="logout"><i class="bi bi-box-arrow-right"></i>Logout</a>`

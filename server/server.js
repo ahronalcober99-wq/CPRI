@@ -286,6 +286,29 @@ const MEMBER_ONLY_PAGES = new Set([
   'presenter-dashboard.html'
 ]);
 
+// Dashboard shells that belong to specific roles. The data behind each one is
+// already role-scoped (or 403s) inside its module API, so this is not the
+// security boundary — it stops a signed-in member from opening ANOTHER role's
+// dashboard shell, which used to load the page and show its "access denied"
+// panel. Each list is exactly the role set that page's own API serves:
+//   staff/facilitator dashboards  → the check inside those pages (admin may look
+//                                   over a staff member's shoulder);
+//   my-submissions.html           → /api/research-submissions GET
+//                                   (RESEARCHER_ROLES + ASSIGNED_ROLES + staff);
+//   presenter-dashboard.html      → /api/gala (GALA_SUBMIT_ROLES + reviewers).
+const DASHBOARD_PAGE_ROLES = new Map([
+  ['staff-dashboard.html', ['admin', 'cpri_staff']],
+  ['facilitator-dashboard.html', ['admin', 'cpri_staff', 'adviser', 'facilitator']],
+  ['my-submissions.html', [
+    'admin', 'cpri_staff', 'adviser', 'facilitator',
+    'student_researcher', 'faculty_researcher', 'non_teaching_researcher', 'presenter'
+  ]],
+  ['presenter-dashboard.html', [
+    'admin', 'cpri_staff', 'adviser',
+    'student_researcher', 'faculty_researcher', 'non_teaching_researcher', 'presenter'
+  ]]
+]);
+
 app.use(async (req, res, next) => {
   if (req.method !== 'GET' && req.method !== 'HEAD') return next();
   const page = basename(req.path);
@@ -302,6 +325,13 @@ app.use(async (req, res, next) => {
     return res.redirect(302, `/login.html?next=${next}`);
   }
   if (adminOnly && user.role !== 'admin') {
+    return res.redirect(302, '/account.html');
+  }
+  // A dashboard shell is only served to the roles that own it; everyone else is
+  // sent to their own account page. Anonymous visitors were already sent to the
+  // login form above.
+  const dashRoles = DASHBOARD_PAGE_ROLES.get(page);
+  if (dashRoles && !dashRoles.includes(user.role)) {
     return res.redirect(302, '/account.html');
   }
   res.setHeader('Cache-Control', 'no-store');

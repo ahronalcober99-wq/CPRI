@@ -177,7 +177,13 @@ function publicUser(u) {
     needsSetup: u.setupPending === 1 || u.setupPending === '1',
     // Where to send this person after signing in — see homePageForRole().
     // Shipped here so no client has to keep its own copy of the map.
-    home: homePageForRole(u.role)
+    home: homePageForRole(u.role),
+    // Every dashboard this account may open, most important first — see
+    // dashboardsForRole(). The shared header renders one "Dashboard" button
+    // from this list (a direct link for a single entry, a small dropdown when
+    // there are several), so it never keeps its own role → page copy and can
+    // never disagree with the post-login redirect above.
+    dashboards: dashboardsForRole(u.role)
   };
 }
 
@@ -242,7 +248,12 @@ function homePageForRole(role) {
     // ethics.html lists the applications and reveals the reviewer panel to
     // admin / cpri_staff / ethics_reviewer — i.e. it is their working queue.
     case 'ethics_reviewer': return '/ethics.html';
-    case 'adviser': return '/facilitator-dashboard.html';
+    // `facilitator` is the research module's spelling of the same job (see
+    // RESEARCHER_ROLES / REVIEWER_ROLES in server/lib/research-config.js). It is
+    // not a registered role, so no row can hold it — the alias is here so that
+    // if one ever does, it still lands on its own dashboard.
+    case 'adviser':
+    case 'facilitator': return '/facilitator-dashboard.html';
     case 'presenter': return '/presenter-dashboard.html';
     // An anonymous visitor account has nothing private to show.
     case 'public_visitor': return '/index.html';
@@ -253,6 +264,49 @@ function homePageForRole(role) {
     // page that never shows anything this person should not already see.
     default: return '/account.html';
   }
+}
+
+// Every dashboard a role may open, most important first. This is the map the
+// header's "Dashboard" button is built from (publicUser().dashboards) and, for
+// every role that has a real dashboard, entry 0 IS the landing page above —
+// test:gap asserts that lockstep, so the button and the login redirect cannot
+// drift apart the way the three hand-kept copies used to.
+//
+// admin and cpri_staff list two each because they may also work the ethics
+// queue (REVIEWER_ROLES in server/ethics.js) — the "more than one dashboard"
+// case the header renders as a dropdown. Everything listed here is a page the
+// role can actually open: server.js gates the dashboard shells and each
+// module's API 403s or scopes the rows.
+const DASHBOARDS_BY_ROLE = {
+  admin: [
+    { label: 'Admin Console', href: '/admin-dashboard.html' },
+    { label: 'Ethics Review Queue', href: '/ethics.html' }
+  ],
+  cpri_staff: [
+    { label: 'Staff Dashboard', href: '/staff-dashboard.html' },
+    { label: 'Ethics Review Queue', href: '/ethics.html' }
+  ],
+  ethics_reviewer: [{ label: 'Ethics Review Queue', href: '/ethics.html' }],
+  adviser: [{ label: 'Facilitator Dashboard', href: '/facilitator-dashboard.html' }],
+  facilitator: [{ label: 'Facilitator Dashboard', href: '/facilitator-dashboard.html' }],
+  presenter: [{ label: 'Presenter Dashboard', href: '/presenter-dashboard.html' }],
+  student_researcher: [{ label: 'My Submissions', href: '/my-submissions.html' }],
+  faculty_researcher: [{ label: 'My Submissions', href: '/my-submissions.html' }],
+  non_teaching_researcher: [{ label: 'My Submissions', href: '/my-submissions.html' }],
+  // public_visitor is the ONE role in ROLES with no dashboard page of its own —
+  // the header still needs a destination for a signed-in account, so it gets
+  // the documented fallback (account.html). Its post-login landing page stays
+  // the public homepage; that is the only place `dashboards[0]` and `home`
+  // intentionally differ.
+  public_visitor: [{ label: 'My Account', href: '/account.html' }]
+};
+
+// The dashboards for a role, as a private copy the caller cannot mutate. An
+// unrecognised role gets the same account.html fallback homePageForRole() uses
+// rather than a guess at a privileged page.
+function dashboardsForRole(role) {
+  const list = DASHBOARDS_BY_ROLE[role] || DASHBOARDS_BY_ROLE.public_visitor;
+  return list.map(d => ({ label: d.label, href: d.href }));
 }
 
 // Normalize the DB role value for display. We do NOT change the canonical
@@ -1572,6 +1626,11 @@ export {
   PRIVILEGED_ROLES,
   // The role → landing-page map (test:gap requires every role to have one).
   homePageForRole,
+  // The role → dashboards map the header's Dashboard button is built from
+  // (publicUser().dashboards) — exported so test:gap can pin it to
+  // homePageForRole() and to each module's role lists.
+  dashboardsForRole,
+  DASHBOARDS_BY_ROLE,
   RBAC_PERMISSIONS,
   ROLE_PROFILE_FIELDS,
   // Notification preferences — exported so modules that notify users (e.g. the

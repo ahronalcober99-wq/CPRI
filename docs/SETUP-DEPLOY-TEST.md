@@ -413,6 +413,18 @@ personal dashboards `facilitator-dashboard.html`,
 `presenter-dashboard.html`, `staff-dashboard.html`. Public pages are
 untouched.
 
+Personal dashboards are narrowed further by role (`DASHBOARD_PAGE_ROLES` in
+`server/server.js`): a signed-in member who is not on the list gets
+`302 /account.html` instead of another role's dashboard shell.
+`staff-dashboard.html` → admin, CPRI Staff; `facilitator-dashboard.html` →
+admin, CPRI Staff, adviser/facilitator; `my-submissions.html` → admin, CPRI
+Staff, adviser/facilitator, student/faculty/non-teaching researchers,
+presenters; `presenter-dashboard.html` → the same set minus
+adviser/facilitator. The lists mirror what each module's API already serves,
+because the API remains the real boundary: `/api/research-submissions`
+answers `403` for a role with no submissions view, `/api/gala` scopes rows to
+the caller, and `/api/admin/*` requires an active admin.
+
 This guard runs on the Express server. A statically hosted copy of the front
 end (GitHub Pages) has no server to run it, so there the JSON `401` from the API
 is what protects the data — the page shell is downloadable but shows nothing.
@@ -429,6 +441,38 @@ researchers (student, faculty, non-teaching) → `my-submissions.html`,
 public visitors → the homepage. An unrecognised stored role falls back to
 `account.html`. `npm run test:gap` asserts every role in `ROLES` has an
 entry and that `publicUser().home` matches.
+
+The same `server/auth.js` also owns `dashboardsForRole()` — the list of
+dashboards a role may open, shipped as `user.dashboards` and rendered by the
+shared header as one gold "Dashboard" button right after *Research* (a direct
+link for a single dashboard, a small dropdown when a role has several, e.g.
+an admin or CPRI Staff member who also works the ethics queue). Entry 0 is
+the landing page, so the button and the sign-in redirect cannot disagree;
+`public_visitor` is the one documented exception (no dashboard of its own, so
+the button falls back to `account.html` while sign-in still lands on the
+homepage). A signed-out visitor sees no Dashboard item at all — only
+Login/Register. The button is rendered by `public/assets/js/main.js` on every
+page that mounts the shared header.
+
+To check it by hand (see §11 for how to sign in):
+
+```
+# signed in as admin      -> the gold Dashboard pill after "Research",
+#                            opens Admin Console + Ethics Review Queue
+# signed in as adviser    -> direct link to facilitator-dashboard.html
+# signed in as a student  -> direct link to my-submissions.html
+# on /about.html, /news…  -> the same button on every page
+# signed out              -> no Dashboard item, Login/Register pills remain
+#                           (/api/auth/me answers 401)
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' \
+  http://localhost:3000/staff-dashboard.html    # 302 /login.html?next=…
+```
+
+Opening another role's dashboard URL directly is blocked twice over: the page
+shell redirects to `account.html` (see the guard above), and the data API
+behind it answers `403` or returns only the caller's own rows.
+`npm run test:gap` pins every entry of the dashboard map to the landing map
+and to `publicUser().dashboards`.
 
 Research records live at `/api/submissions` and `/api/repository` (both
 authenticated); `/api/research` is the public content feed. There are no
