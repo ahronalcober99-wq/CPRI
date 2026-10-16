@@ -67,7 +67,7 @@ async function makeUser(role) {
     passwordHash: PASSWORD_HASH,
     status: 'active'
   });
-  users[role] = { id, role, fullName: `${role} (module test)`, username: tag };
+  users[role] = { id, role, fullName: `${role} (module test)`, username: tag, email: `${tag}@rsub-test.local` };
   return users[role];
 }
 
@@ -439,10 +439,72 @@ test('a student can submit, the row and files persist, and every rule holds', op
     'a refused hand-in leaves the draft untouched'
   );
 
-  // --- an adviser who is not assigned sees nothing ---
+  // --- an adviser monitors every STUDENT submission, assigned or not ---
+  // (ROUTES.md, and the offline suite's "an unassigned adviser still monitors
+  // the student record, but not the faculty one"). What they must never reach
+  // is a faculty record that does not name them.
   const adviser = users.adviser;
   const list = await req(adviser, '/');
   assert.equal(list.status, 200);
-  assert.ok(list.body.submissions.every(s => s.id !== id), 'unassigned adviser sees no submissions');
-  assert.equal((await req(adviser, `/${id}`)).status, 403);
+  assert.ok(list.body.submissions.some(s => s.id === id),
+    'an adviser monitors student submissions, assigned or not');
+  assert.ok(!list.body.submissions.some(s => s.id === facultyId),
+    'and nothing else: a faculty record is not theirs to read');
+  assert.equal((await req(adviser, `/${facultyId}`)).status, 403,
+    'an unassigned faculty record is refused');
+});
+
+// ===========================================================================
+//  A record whose owner_id is not the account id
+//
+//  Rows copied from the classic `submissions` module carry the owner's email or
+//  username there. Against the real database this proves both halves: the
+//  widened owner match is valid SQL for MySQL/TiDB, and such a row is listed for
+//  its owner — the "You have no submissions yet" bug — while staying invisible
+//  to everybody else.
+// ===========================================================================
+test('a record keyed by the owner email is listed for that owner, and only them', async () => {
+  const student = await makeUser('student_researcher');
+  const other = await makeUser('student_researcher');
+  const importedId = `${PREFIX}legacy-email`;
+  createdSubmissionIds.push(importedId);
+
+  const now = new Date().toISOString();
+  await insert('research_submissions', {
+    id: importedId,
+    owner_id: student.email,
+    owner_name: student.fullName,
+    owner_role: 'student_researcher',
+    stage: 'initial',
+    title: 'Imported from the classic form',
+    authors: 'A. Author',
+    program: 'BSIT',
+    institution: '',
+    nationality: '',
+    category: '',
+    research_type: 'student_thesis',
+    school_year: '',
+    semester: '',
+    adviser_id: null,
+    facilitator_id: null,
+    abstract: null,
+    keywords: null,
+    status: 'legacy_pending',
+    created_at: now,
+    updated_at: now,
+    adviser_eval_link: ''
+  });
+
+  const list = await req(student, '/');
+  assert.equal(list.status, 200);
+  assert.ok(list.body.submissions.some(s => s.id === importedId),
+    'a row keyed by the owner email is listed for its owner');
+
+  const detail = await req(student, `/${importedId}`);
+  assert.equal(detail.status, 200, 'and its owner may open it');
+  assert.equal(detail.body.submission.isOwner, true);
+  assert.equal(detail.body.submission.status, 'legacy_pending', 'an unknown status is reported, never hidden');
+  assert.equal(detail.body.submission.statusLabel, 'legacy_pending');
+
+  assert.equal((await req(other, `/${importedId}`)).status, 403, 'and it is still nobody else\'s');
 });

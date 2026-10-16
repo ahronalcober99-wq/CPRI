@@ -252,9 +252,44 @@ function requireRoles(...roles) {
 // is how they reach a faculty record they were asked to look at.
 // cpri_staff / admin see all. Reading is not writing: status changes stay with
 // STATUS_CHANGE_ROLES (see the status route).
+// ---------------------------------------------------------------------------
+//  Whose record is this?
+//
+//  research_submissions.owner_id is the account id this module writes from the
+//  session. Records that arrived another way — imported from the classic
+//  `submissions` module, restored from a backup, or written by a script — can
+//  carry the owner's EMAIL or USERNAME instead. Those rows were invisible to
+//  their own owner: the dashboard simply listed nothing while the record sat in
+//  the table (the exact bug the migration script fixes for the classic rows).
+//
+//  ownerRefsFor() is every spelling of the CALLER's own identity, so matching
+//  always widens a person's view only to records that are already theirs: an id
+//  is unique, and so is an email and a username. It can never reach another
+//  account's submission.
+// ---------------------------------------------------------------------------
+function ownerRefsFor(user) {
+  const refs = [];
+  for (const value of [user?.id, user?.email, user?.username]) {
+    const text = String(value == null ? '' : value).trim();
+    if (!text) continue;
+    for (const variant of [text, text.toLowerCase()]) {
+      if (!refs.includes(variant)) refs.push(variant);
+    }
+  }
+  // Never leave the WHERE clause empty for a signed-in account.
+  if (!refs.length && user && user.id != null) refs.push(String(user.id));
+  return refs;
+}
+
+function isOwnerOf(user, ownerId) {
+  const value = String(ownerId == null ? '' : ownerId).trim().toLowerCase();
+  if (!value) return false;
+  return ownerRefsFor(user).some(ref => ref.toLowerCase() === value);
+}
+
 function canReadSubmission(user, sub) {
   if (!user) return false;
-  if (RESEARCHER_ROLES.has(user.role)) return sub.owner_id === user.id;
+  if (RESEARCHER_ROLES.has(user.role)) return isOwnerOf(user, sub.owner_id);
   if (ASSIGNED_ROLES.has(user.role)) {
     if (sub.owner_role === 'student_researcher') return true;
     if (user.role === 'adviser' && sub.adviser_id === user.id) return true;
@@ -633,9 +668,13 @@ router.get('/', requireAuth, async (req, res) => {
 
   let rows;
   if (RESEARCHER_ROLES.has(user.role)) {
+    // Only ever the caller's own identifiers — see ownerRefsFor().
+    const refs = ownerRefsFor(user);
     rows = await all(
-      'SELECT * FROM research_submissions WHERE owner_id = ? ORDER BY created_at DESC',
-      [user.id]
+      `SELECT * FROM research_submissions
+        WHERE ${refs.map(() => 'owner_id = ?').join(' OR ')}
+        ORDER BY created_at DESC`,
+      refs
     );
   } else if (ASSIGNED_ROLES.has(user.role)) {
     // The monitoring view: every student submission, plus anything assigned to
@@ -665,7 +704,7 @@ router.get('/', requireAuth, async (req, res) => {
       statusLabel: statusLabelFor(s.status, s.stage),
       created_at: s.created_at,
       updated_at: s.updated_at,
-      isOwner: s.owner_id === user.id
+      isOwner: isOwnerOf(user, s.owner_id)
     }))
   };
 
@@ -696,7 +735,7 @@ router.get('/:id/form-config', requireAuth, async (req, res) => {
   // revision. Reviewers and staff read, comment and move the status instead —
   // the same rule POST /:id/files enforces (they have no slot list of their
   // own, so every slot would be refused anyway).
-  const editable = user.id === sub.owner_id && canWriteSubmission(user, sub);
+  const editable = isOwnerOf(user, sub.owner_id) && canWriteSubmission(user, sub);
 
   res.json({
     submissionId: sub.id,
@@ -740,6 +779,10 @@ router.get('/:id', requireAuth, async (req, res) => {
   res.json({
     submission: {
       ...sub,
+      // The server decides ownership (see ownerRefsFor) — the detail page must
+      // not re-decide it by comparing raw ids, or a record keyed by email would
+      // look like somebody else's to its own owner.
+      isOwner: isOwnerOf(user, sub.owner_id),
       statusLabel: statusLabelFor(sub.status, sub.stage),
       files,
       comments,
@@ -1024,7 +1067,7 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
   // comments on any student record they monitor, and on a faculty record only
   // when it names them. Commenting never implies the right to change a status.
   const mayComment =
-    canReadSubmission(user, sub) || sub.owner_id === user.id;
+    canReadSubmission(user, sub) || isOwnerOf(user, sub.owner_id);
 
   if (!mayComment) return res.status(403).json({ error: 'You are not allowed to comment on this submission.' });
 
@@ -1032,7 +1075,7 @@ router.post('/:id/comments', requireAuth, async (req, res) => {
   let commentType = 'comment';
   if (user.role === 'adviser' || user.role === 'facilitator') commentType = 'feedback';
   else if (user.role === 'ethics_reviewer') commentType = 'revision_suggestion';
-  else if (RESEARCHER_ROLES.has(user.role) && sub.owner_id === user.id) commentType = 'response';
+  else if (RESEARCHER_ROLES.has(user.role) && isOwnerOf(user, sub.owner_id)) commentType = 'response';
 
   const comment = {
     id: randomUUID(),
@@ -1082,7 +1125,7 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
 
   // Two ways in: a reviewer/staff moves a submission along, or the owner hands
   // in their own draft. Nobody else may change a status at all.
-  const ownerHandsInDraft = sub.owner_id === user.id
+  const ownerHandsInDraft = isOwnerOf(user, sub.owner_id)
     && sub.status === 'draft'
     && targetStatusEarly === 'submitted';
   if (!ownerHandsInDraft && !STATUS_CHANGE_ROLES.has(user.role)) {

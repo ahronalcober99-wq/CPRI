@@ -32,12 +32,40 @@
           <a href="submit.html" class="btn btn-primary">New Submission</a>
         </div>
 
+        <!-- Search + status filter. The status list is built from the records
+             that actually came back (plus the known statuses), so a record with
+             an unexpected status is selectable instead of unreachable. -->
+        <div class="card" id="filters" style="display:none;margin-top:18px;">
+          <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;">
+            <label class="form-group" style="flex:1 1 260px;margin:0;">
+              <span class="form-note" style="display:block;margin-bottom:6px;">Search your records</span>
+              <input type="search" id="filter-q" autocomplete="off" placeholder="Title, author, program, status…">
+            </label>
+            <label class="form-group" style="flex:1 1 200px;margin:0;">
+              <span class="form-note" style="display:block;margin-bottom:6px;">Status</span>
+              <select id="filter-status"><option value="">All statuses</option></select>
+            </label>
+            <button type="button" class="btn btn-outline-dark" id="filter-clear">Clear</button>
+          </div>
+          <p class="form-note" id="filter-count" style="margin:12px 0 0;"></p>
+        </div>
+
         <div id="not-logged" class="empty-state" style="display:none;">
           Please <a href="login.html">log in</a> to see your submissions.
         </div>
 
+        <div id="loading" class="empty-state" style="display:none;">
+          Loading your submissions…
+        </div>
+
         <div id="empty" class="empty-state" style="display:none;">
           You have no submissions yet. Use <strong>New Submission</strong> to send your first one.
+        </div>
+
+        <!-- Shown when a filter matches nothing — never instead of the records
+             themselves, so a search can't look like lost data. -->
+        <div id="no-match" class="empty-state" style="display:none;">
+          No records match your search or filter. Clear them to see everything again.
         </div>
 
         <div id="list" style="display:none;"></div>
@@ -101,7 +129,15 @@
         official_receipt: 'Official Receipt',
         adviser_eval: 'Adviser Evaluation (optional copy)',
         data_instruments: 'Data and Instruments (PDF)',
-        additional_documents: 'Additional Documents'
+        additional_documents: 'Additional Documents',
+        // Slots that only exist on records copied from the classic Submissions
+        // form — named here so their documents are labelled, not shown as a
+        // raw key.
+        adviser_endorsement: 'Adviser Endorsement',
+        ethics_certificate: 'Ethics Certificate',
+        panel_approval: 'Panel Approval',
+        publication_proof: 'Publication Proof',
+        similarity_report: 'Similarity Report'
       };
 
       const STAGE_LABELS = { initial: 'Initial Submission', final: 'Final Submission' };
@@ -118,9 +154,16 @@
       const messageEl = document.getElementById('message');
       const listEl = document.getElementById('list');
       const emptyEl = document.getElementById('empty');
+      const loadingEl = document.getElementById('loading');
+      const noMatchEl = document.getElementById('no-match');
       const notLoggedEl = document.getElementById('not-logged');
       const scopeNote = document.getElementById('scope-note');
       const pageSub = document.getElementById('page-sub');
+      const filtersEl = document.getElementById('filters');
+      const qEl = document.getElementById('filter-q');
+      const statusEl = document.getElementById('filter-status');
+      const countEl = document.getElementById('filter-count');
+      const clearEl = document.getElementById('filter-clear');
 
       // Everything on this page comes from a database row or a person's typing,
       // so it is escaped before it goes anywhere near innerHTML.
@@ -193,6 +236,17 @@
         openFull.href = 'research-submission-detail.html?id=' + encodeURIComponent(entry.id);
         openFull.textContent = 'Open full page';
         actions.appendChild(openFull);
+
+        // Edit / resubmit. The detail page owns that flow: it reads this
+        // submission's own slot list from the server and saves a new upload as
+        // the next version, keeping every earlier version downloadable.
+        if (entry.isOwner && ['draft', 'submitted', 'for_revision'].includes(entry.status)) {
+          const revise = document.createElement('a');
+          revise.className = 'btn btn-navy btn-sm';
+          revise.href = 'research-submission-detail.html?id=' + encodeURIComponent(entry.id);
+          revise.textContent = entry.status === 'draft' ? 'Finish and submit' : 'Edit / resubmit';
+          actions.appendChild(revise);
+        }
 
         head.appendChild(actions);
         card.appendChild(head);
@@ -286,11 +340,53 @@
           section('Comments and feedback', commentsHtml);
       }
 
+      // ---- List, search and status filter ----
+      // Every record the server returned for this account. The visible list is
+      // always a view over it, so filtering can never change what the account
+      // owns — only what is currently on screen.
+      let allSubmissions = [];
+
+      function matchesFilters(entry) {
+        const status = statusEl.value || '';
+        // An empty or unexpected status is still a record, so it is compared as
+        // a plain string and never treated as "no status, hide it".
+        if (status && String(entry.status || '') !== status) return false;
+        const q = qEl.value.trim().toLowerCase();
+        if (!q) return true;
+        return [entry.title, entry.authors, entry.program, entry.category,
+          entry.research_type, entry.status, entry.statusLabel,
+          STATUS_LABELS[entry.status], STAGE_LABELS[entry.stage] || entry.stage]
+          .some(value => String(value == null ? '' : value).toLowerCase().includes(q));
+      }
+
+      function renderList() {
+        const visible = allSubmissions.filter(matchesFilters);
+        listEl.textContent = '';
+        visible.forEach(entry => listEl.appendChild(renderSubmission(entry)));
+        listEl.style.display = visible.length ? '' : 'none';
+        noMatchEl.style.display = (!visible.length && allSubmissions.length) ? '' : 'none';
+        if (!allSubmissions.length) { countEl.textContent = ''; return; }
+        countEl.textContent = visible.length === allSubmissions.length
+          ? allSubmissions.length + (allSubmissions.length === 1 ? ' record.' : ' records.')
+          : 'Showing ' + visible.length + ' of ' + allSubmissions.length + ' records.';
+      }
+
+      qEl.addEventListener('input', renderList);
+      statusEl.addEventListener('change', renderList);
+      clearEl.addEventListener('click', () => {
+        qEl.value = '';
+        statusEl.value = '';
+        renderList();
+        qEl.focus();
+      });
+
       (async function () {
         try {
+          loadingEl.style.display = '';
           const meRes = await fetch('/api/research-submissions/me');
           if (meRes.status === 401) { toLogin(); return; }
           if (!meRes.ok) {
+            loadingEl.style.display = 'none';
             notLoggedEl.style.display = '';
             return;
           }
@@ -308,16 +404,26 @@
 
           const payload = await getJson('/api/research-submissions');
           if (!payload) return;
-          const submissions = payload.submissions || [];
+          allSubmissions = payload.submissions || [];
+          loadingEl.style.display = 'none';
 
-          if (!submissions.length) {
+          if (!allSubmissions.length) {
             emptyEl.style.display = '';
             return;
           }
 
-          listEl.style.display = '';
-          submissions.forEach((entry, index) => listEl.appendChild(renderSubmission(entry, index)));
+          // Options: every known status, plus anything the data actually holds.
+          const statuses = [...new Set([
+            ...Object.keys(STATUS_LABELS),
+            ...allSubmissions.map(entry => entry.status).filter(Boolean)
+          ])];
+          statusEl.innerHTML = '<option value="">All statuses</option>' +
+            statuses.map(value => '<option value="' + esc(value) + '">' +
+              esc(STATUS_LABELS[value] || value) + '</option>').join('');
+          filtersEl.style.display = '';
+          renderList();
         } catch (err) {
+          loadingEl.style.display = 'none';
           messageEl.className = 'form-message error';
           messageEl.textContent = err.message || 'Could not load your submissions.';
         }

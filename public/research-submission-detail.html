@@ -192,7 +192,14 @@
         official_receipt: 'Official Receipt',
         adviser_eval: 'Adviser Evaluation (optional copy)',
         data_instruments: 'Data and Instruments (PDF)',
-        additional_documents: 'Additional Documents'
+        additional_documents: 'Additional Documents',
+        // Slots that exist only on records copied from the classic Submissions
+        // form (see server/migrate-legacy-submissions.mjs).
+        adviser_endorsement: 'Adviser Endorsement',
+        ethics_certificate: 'Ethics Certificate',
+        panel_approval: 'Panel Approval',
+        publication_proof: 'Publication Proof',
+        similarity_report: 'Similarity Report'
       };
 
       // Anything typed by a person — a title, a comment body, a status note, an
@@ -260,7 +267,10 @@
         document.getElementById('sub-title').textContent = s.title;
 
         // Read access check (only for displaying; the server already enforced it).
-        const isOwner = s.owner_id === userId;
+        // The server decides ownership (it also matches records whose owner_id
+        // is an email or username, not the account id); the id comparison stays
+        // only as a fallback for an older API response.
+        const isOwner = s.isOwner === true || s.owner_id === userId;
         const isReviewer = ['admin','cpri_staff','ethics_reviewer'].includes(userRole);
         const isAdvisor = userRole === 'adviser' && s.adviser_id === userId;
         const isFacilitator = userRole === 'facilitator' && s.facilitator_id === userId;

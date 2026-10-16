@@ -25,13 +25,15 @@
     "test:uploads": "node --test server/dev/test-upload-safety.mjs",
     "test:gap": "node --test server/dev/test-gap-features.mjs",
     "test:research-submissions": "node --test server/dev/test-research-submissions.mjs",
+    "test:legacy-migration": "node --test server/dev/test-legacy-migration.mjs",
     "test:research-submissions:db": "node --test --test-force-exit server/dev/test-research-submissions-db.mjs",
     "check:research-submissions-doc": "node docs/research-submissions/check-doc.js",
     "test:validator": "node --test server/dev/test-input-validator.mjs",
     "check:api": "node server/dev/check-api.mjs",
     "doctor": "node server/dev/db-doctor.mjs",
     "db:init": "node server/dev/db-init.mjs",
-    "purge:sessions": "node server/session-purge.mjs"
+    "purge:sessions": "node server/session-purge.mjs",
+    "migrate:legacy-submissions": "node server/migrate-legacy-submissions.mjs"
   },
   "engines": {
     "node": ">=20.9.0"

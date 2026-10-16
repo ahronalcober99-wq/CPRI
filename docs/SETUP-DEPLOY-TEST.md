@@ -277,9 +277,43 @@ end is pointed at it:
 DB_HOST=<managed-host> DB_USER=... DB_PASSWORD=... DB_NAME=cpri npm run migrate
 ```
 
-Uploaded files live on local disk (`public/assets/uploads/`), so a host with an
-ephemeral filesystem loses them on redeploy — mount a volume or switch to object
-storage if that matters.
+Some legacy uploads still live on local disk (`public/assets/uploads/`), so a
+host with an ephemeral filesystem loses those — mount a volume or switch to
+object storage if that matters. Research submission files (manuscripts, forms,
+receipts, ethics clearances) do **not** use that folder: they go to the Supabase
+private bucket (§6), and event covers and avatars to the public one. Without
+`SUPABASE_*` configured they fall back to the ephemeral disk, and the boot log
+says so:
+
+```
+[research] file storage: local disk under server/data — set SUPABASE_URL, SUPABASE_SERVICE_KEY and SUPABASE_BUCKET, or uploads are lost on the next deploy
+```
+
+The database (MySQL/TiDB) is always external, so users, submissions, comments and
+status history survive every redeploy. Only the disk-backed files do not.
+
+**Existing (classic) submissions on My Submissions.** The site keeps research
+records in two stores: the classic `submissions` table, written by
+`public/submission.html`, and the Research Submission Module
+(`research_submissions`, `research_submission_files`, `research_comments`,
+`research_status_history`), which is what `my-submissions.html` and
+`facilitator-dashboard.html` read. A record saved by the classic form is
+invisible on My Submissions until it is copied across, so run this once against
+the deployed database:
+
+```bash
+npm run migrate:legacy-submissions              # dry run — reports only
+npm run migrate:legacy-submissions -- --apply   # back up, then copy
+```
+
+The script never edits or deletes the classic rows, keeps each record's own id
+(so a second run is a no-op), writes everything in one transaction, and takes a
+full database backup into `backups/` before writing. The owner is resolved by
+account id, then email, username or full name — middle initials are ignored, so a
+row whose account was deleted and re-created still lands on its owner; a name
+matching more than one account is never guessed at (`--strict-owner` turns the
+name matching off entirely, `--include-orphans` copies rows with no account at
+all).
 
 Then set the origin in `public/assets/js/main.js` (§4), commit, push, and let the
 Pages workflow redeploy.

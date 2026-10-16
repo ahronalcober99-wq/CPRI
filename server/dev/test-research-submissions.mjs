@@ -1583,3 +1583,140 @@ test('a role without the link field cannot smuggle one in', async () => {
     await module.cleanup();
   }
 });
+
+// ===========================================================================
+//  Records whose owner_id is not the account id
+//
+//  The classic `submissions` module stored its owner in `submitterId`, and a
+//  row imported from it (or written by a script) can carry the owner's EMAIL or
+//  USERNAME in owner_id instead of the account id. Those rows used to be
+//  invisible to their own owner — GET / answered with an empty list while the
+//  record sat in the table, which is exactly the "You have no submissions yet"
+//  bug on my-submissions.html.
+// ===========================================================================
+function importedRow(overrides = {}) {
+  return {
+    id: `imported-${randomUUID()}`,
+    owner_id: '',
+    owner_name: '',
+    owner_role: 'student_researcher',
+    stage: 'initial',
+    title: 'Imported record',
+    authors: 'A. Author',
+    program: 'BSIT',
+    institution: '',
+    nationality: '',
+    category: '',
+    research_type: 'student_thesis',
+    school_year: '',
+    semester: '',
+    adviser_id: null,
+    facilitator_id: null,
+    abstract: null,
+    keywords: null,
+    status: 'submitted',
+    created_at: '2026-01-01T00:00:00.000Z',
+    updated_at: '2026-01-02T00:00:00.000Z',
+    adviser_eval_link: '',
+    ...overrides
+  };
+}
+
+test("a record keyed by the owner's email or username still belongs to that owner", async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher', { email: 'Ahron.Alcober@example.org' });
+    const other = account('student_researcher', { email: 'someone.else@example.org' });
+
+    module.store.rowsOf('research_submissions').push(
+      importedRow({ id: 'imported-by-email', owner_id: 'ahron.alcober@example.org', owner_name: student.fullName }),
+      importedRow({ id: 'imported-by-username', owner_id: student.username, owner_name: student.fullName }),
+      importedRow({ id: 'imported-not-mine', owner_id: other.id, owner_name: other.fullName })
+    );
+
+    const list = await module.json(await module.call(student, '/'));
+    assert.equal(list.status, 200);
+    const ids = list.body.submissions.map(s => s.id);
+    assert.ok(ids.includes('imported-by-email'), 'owner_id stored as an email is still this account\'s record');
+    assert.ok(ids.includes('imported-by-username'), 'owner_id stored as a username is still this account\'s record');
+    assert.ok(!ids.includes('imported-not-mine'), 'another account\'s record is never listed');
+    assert.equal(list.body.submissions.find(s => s.id === 'imported-by-email').isOwner, true,
+      'the list marks the email-keyed record as the caller\'s own');
+
+    const mine = await module.json(await module.call(student, '/imported-by-email'));
+    assert.equal(mine.status, 200, 'the owner may read the record itself');
+    assert.equal(mine.body.submission.isOwner, true, 'and the detail view agrees it is theirs');
+
+    assert.equal((await module.call(student, '/imported-not-mine')).status, 403,
+      'widening the match never reaches another account');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('an unexpected or blank status never hides a record', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher', { email: 'student@example.org' });
+    module.store.rowsOf('research_submissions').push(
+      importedRow({ id: 'imported-odd-status', owner_id: student.id, status: 'legacy_pending' }),
+      importedRow({ id: 'imported-blank-status', owner_id: student.id, status: '' })
+    );
+
+    const list = await module.json(await module.call(student, '/'));
+    const byId = new Map(list.body.submissions.map(s => [s.id, s]));
+    assert.ok(byId.has('imported-odd-status'), 'an unknown status is not a reason to drop a record');
+    assert.equal(byId.get('imported-odd-status').status, 'legacy_pending', 'the status is reported verbatim');
+    assert.equal(byId.get('imported-odd-status').statusLabel, 'legacy_pending',
+      'with no known label it falls back to the raw value');
+    assert.ok(byId.has('imported-blank-status'), 'a blank status is not a reason to drop a record either');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('the owner of an email-keyed record can still edit it and add a new version', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher', { email: 'ahron@example.org' });
+    module.store.rowsOf('research_submissions').push(
+      importedRow({ id: 'imported-editable', owner_id: 'AHRON@example.org', owner_name: student.fullName, status: 'for_revision' })
+    );
+    // The current version of the one slot, so the re-upload has to become v2.
+    module.store.rowsOf('research_submission_files').push({
+      id: 'imported-file-v1',
+      submission_id: 'imported-editable',
+      slot_key: 'manuscript_docx',
+      original_name: 'manuscript-v1.docx',
+      stored_path: 'submissions/classic/manuscript-v1.docx',
+      mime: DOCX,
+      size: 0,
+      version: 1,
+      uploaded_by: student.id,
+      uploaded_by_name: student.fullName,
+      uploaded_at: '2026-01-01T00:00:00.000Z',
+      storage_backend: 'supabase'
+    });
+
+    const cfg = await module.json(await module.call(student, '/imported-editable/form-config'));
+    assert.equal(cfg.status, 200);
+    assert.equal(cfg.body.editable, true, 'the owner may change it while it is For revision');
+    assert.equal(cfg.body.canUpload, true);
+
+    const upload = await module.call(student, '/imported-editable/files', {
+      method: 'POST',
+      body: uploadForm({ manuscript_docx: docx('manuscript-v2.docx') })
+    });
+    const payload = await upload.json();
+    assert.equal(upload.status, 201, JSON.stringify(payload));
+    assert.equal(payload.file.version, 2, 'a re-upload is stored as the next version, keeping v1');
+
+    const detail = await module.json(await module.call(student, '/imported-editable'));
+    assert.equal(detail.body.submission.versions.length, 2, 'both versions are still listed');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
