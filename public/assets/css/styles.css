@@ -2168,7 +2168,6 @@ textarea { resize: vertical; min-height: 140px; }
 .field-label { display: block; font-weight: 600; margin-bottom: 6px; color: var(--cpri-text); font-family: var(--font-head); }
 .field-value { display: block; color: var(--cpri-text); word-break: break-word; }
 .read-only-field { background: var(--cpri-card); border-radius: 10px; padding: 10px 12px; border: 1px solid transparent; }
-.read-only-tag { margin-left: auto; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--cpri-muted); padding: 2px 6px; border-radius: 999px; background: rgba(128,0,0,.08); border: 1px solid rgba(128,0,0,.18); }
 .editable-field { background: var(--cpri-card); border-radius: 10px; padding: 10px 12px; border: 1px solid transparent; transition: background .15s, border-color .15s; }
 .editable-field.editing { background: #fff; border-color: #7a0000; }
 .editable-field.editing .field-label { color: #7a0000; }
@@ -2320,6 +2319,115 @@ body.photo-modal-open { overflow: hidden; }
   color: var(--cpri-secondary); letter-spacing: .01em;
 }
 .phone-group .phone-field input { width: auto; min-width: 0; flex: 1 1 150px; border-radius: 0 12px 12px 0; }
+
+/* ---- Contact No. field (profile page, new layout) ----
+   One row: [label] [+63 | 9XX XXX XXXX], with the 0/10 counter right-aligned
+   directly under the input and the validation hint under the field. The row is
+   a 2-column grid so the label hugs its natural width and the input + feedback
+   share the second column — matching how the Department / Research Interests
+   rows put the label left and the field right. */
+.phone-field-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 14px;
+  align-items: start;
+}
+.phone-field-row > .field-label { min-width: 0; margin-bottom: 0; align-self: center; }
+.phone-input-container { grid-column: 2; min-width: 0; }
+.phone-feedback-wrap { grid-column: 2; }
+.phone-progress-bar { grid-column: 2; }
+
+/* The +63 prefix and the input share ONE rounded border. The prefix is a fixed,
+   non-editable segment with a light-maroon fill and a divider on its right. */
+.phone-input-container {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--cpri-border);
+  border-radius: 10px;
+  background: var(--cpri-card);
+  overflow: hidden;
+  transition: border-color .15s, box-shadow .15s;
+}
+.phone-prefix-box {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: rgba(128,0,0,.06);
+  border-right: 1px solid var(--cpri-border);
+  color: var(--cpri-secondary);
+  font-family: var(--font-head);
+  font-weight: 700;
+  white-space: nowrap;
+  user-select: none;
+}
+.phone-input-container input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px 12px;
+}
+/* The ring is drawn around the WHOLE container (prefix + input), so suppress the
+   per-input ring the generic .editable-field.editing rule would otherwise add. */
+.editable-field.editing .phone-input-container input:focus,
+.phone-input-container input:focus {
+  border: none;
+  outline: none;
+  box-shadow: none;
+}
+.phone-input-container:focus-within {
+  border-color: #7a0000;
+  box-shadow: 0 0 0 3px rgba(122,0,0,.14);
+}
+.phone-input-container.is-valid { border-color: #2e7d32; }
+.phone-input-container.is-error { border-color: #c62828; }
+
+/* Feedback line: hint on the left, 0/10 counter right-aligned under the input. */
+.phone-feedback-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 5px;
+  min-height: 16px;
+}
+.phone-hint { font-size: .8rem; color: var(--cpri-muted); }
+.phone-hint.error { color: #c62828; font-weight: 600; }
+.phone-hint.valid { color: #2e7d32; }
+.phone-status-meta { display: flex; align-items: center; }
+.phone-counter {
+  margin-left: auto;
+  font-size: .8rem;
+  color: var(--cpri-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Thin progress bar under the counter (0 → full at 10 digits). */
+.phone-progress-bar {
+  height: 4px;
+  margin-top: 6px;
+  background: var(--cpri-border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.phone-progress-fill {
+  height: 100%;
+  width: 0;
+  background: #7a0000;
+  border-radius: 999px;
+  transition: width .2s ease, background .2s ease;
+}
+.phone-progress-fill.valid { background: #2e7d32; }
+.phone-progress-fill.error { background: #c62828; }
+
+/* Mobile: label sits above the field (single column), like the other rows. */
+@media (max-width: 540px) {
+  .phone-field-row { grid-template-columns: 1fr; }
+  .phone-field-row > .field-label { margin-bottom: 6px; align-self: start; }
+  .phone-input-container, .phone-feedback-wrap, .phone-progress-bar { grid-column: 1; }
+}
 
 /* neon focus ring for keyboard users */
 :focus-visible { outline: 3px solid var(--cpri-accent); outline-offset: 2px; border-radius: 6px; }
@@ -3008,7 +3116,7 @@ main { animation: pageIn .45s ease both; }
    The locked role pill uses a Bootstrap Icons lock glyph and maroon treatment
    to make the non-editable state visually obvious without touching the page
    layout or the existing maroon theme.
-   ============================================================*/
+   ============================================================
    Sits next to the existing Download button without touching it: the pill
    below is the only new control, and the modal reuses the same backdrop
    treatment as .confirm-overlay so both dialogs feel like one system.

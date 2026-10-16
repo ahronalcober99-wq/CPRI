@@ -61,19 +61,16 @@
               <div class="field-row read-only-field">
                 <span class="label">Email</span>
                 <span class="field-value" id="pf-email"></span>
-                <span class="read-only-tag">read-only</span>
               </div>
 
               <div class="field-row read-only-field">
                 <span class="label">Account Type</span>
                 <span class="field-value" id="pf-account-type"></span>
-                <span class="read-only-tag">read-only</span>
               </div>
 
               <div class="field-row read-only-field">
                 <span class="label">Status</span>
                 <span class="field-value" id="pf-status"></span>
-                <span class="read-only-tag">read-only</span>
               </div>
 
               <!-- Editable fields: white background + maroon border, disabled by default -->
@@ -90,8 +87,8 @@
                     type="tel" 
                     id="edit-contactno" 
                     inputmode="numeric" 
-                    placeholder="912 345 6789" 
-                    maxlength="12" 
+                    placeholder="9XX XXX XXXX" 
+                    maxlength="16" 
                     disabled
                     aria-describedby="phone-hint phone-counter"
                   >
@@ -460,7 +457,7 @@
       // Otherwise accept: +63 9XX XXX XXXX · 63 9XX XXX XXXX · 09XX XXX XXXX · 9XX XXX XXXX
       // Spaces, dashes and parentheses are allowed as separators.
       // Output form: +639XXXXXXXXX (E.164).
-      const PH_ERR = 'Enter a valid Philippine mobile number: +63 followed by 10 digits starting with 9 (for example +63 912 345 6789).';
+      const PH_ERR = 'Enter a valid 10-digit mobile number starting with 9.';
       function validateContactNo(value) {
         const s = (value || '').trim();
         if (!s) return { ok: true, value: '' };
@@ -536,7 +533,7 @@
           if (phoneContainer) phoneContainer.classList.add('is-error');
           if (phoneHint) {
             phoneHint.className = 'phone-hint error';
-            phoneHint.textContent = 'The first digit must be 9 (e.g. 912 345 6789)';
+            phoneHint.textContent = 'Enter a valid 10-digit mobile number starting with 9.';
           }
           if (phoneProgressFill) phoneProgressFill.classList.add('error');
           return;
@@ -550,6 +547,7 @@
             if (isBlur) {
               if (phoneContainer) phoneContainer.classList.add('is-error');
               phoneHint.className = 'phone-hint error';
+              phoneHint.textContent = 'Enter a valid 10-digit mobile number starting with 9.';
             }
           }
         } else if (count === 10) {
@@ -564,12 +562,16 @@
             if (phoneContainer) phoneContainer.classList.add('is-error');
             if (phoneHint) {
               phoneHint.className = 'phone-hint error';
-              phoneHint.textContent = 'Invalid Philippine mobile number.';
+              phoneHint.textContent = 'Enter a valid 10-digit mobile number starting with 9.';
             }
             if (phoneProgressFill) phoneProgressFill.classList.add('error');
           }
         }
       }
+
+      // Live formatting + validation as the number is typed or the field is left.
+      editContactNo.addEventListener('input', () => updatePhoneUI(editContactNo.value));
+      editContactNo.addEventListener('blur', () => updatePhoneUI(editContactNo.value, true));
 
       function maxLen(value, max) {
         const s = String(value || '').trim();
@@ -636,7 +638,11 @@
         // Wire editable field values in VIEW mode (disabled). Keep the inputs
         // present so editing is one click away.
         editDepartment.value = p.department || '';
-        editContactNo.value = p.contactNumber || '';
+        // Strip any stored "+63"/leading 0 so the input shows just the 10 digits
+        // (the "+63" prefix box supplies the country code) and seed the counter.
+        const loadedPhone = normalizeRawPhone(p.contactNumber);
+        editContactNo.value = formatPhDigits(loadedPhone);
+        if (phoneCounter) phoneCounter.textContent = loadedPhone.length + '/10';
         editInterestsNonStudent.value = (!isStudent && p.researchInterests) ? p.researchInterests : '';
 
         if (isStudent && p) {
