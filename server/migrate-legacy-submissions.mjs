@@ -67,6 +67,10 @@ import { ensureResearchSubmissionsSchema } from './research-submissions.js';
 // an old backup.
 import { dumpDatabase } from './lib/backup-service.js';
 import { INITIAL_STATUSES, FINAL_STATUSES } from './lib/research-config.js';
+// The classic-record mapping the dashboards share (slot keys, URL-encoded
+// names). One implementation, so a migrated row and a live classic row are
+// described the same way on screen.
+import { legacySlotKeyFor, readableName } from './lib/submission-records.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const BACKUPS_DIR = join(__dirname, '..', 'backups');
@@ -92,16 +96,7 @@ const clean = (value) => String(value == null ? '' : value).trim();
 export { clean };
 const clamp = (value, max) => clean(value).slice(0, max);
 
-// Legacy `original_name` values were stored URL-encoded ("CPRI%20-%20x.docx").
-function readableName(value, fallback = 'document') {
-  const raw = clean(value) || fallback;
-  if (!raw.includes('%')) return raw.slice(0, 255);
-  try {
-    return decodeURIComponent(raw).slice(0, 255);
-  } catch {
-    return raw.slice(0, 255);
-  }
-}
+
 
 const INITIAL_VALUES = new Set(INITIAL_STATUSES.map(s => s.value));
 const FINAL_VALUES = new Set(FINAL_STATUSES.map(s => s.value));
@@ -117,32 +112,11 @@ export function stageForStatus(status) {
   return 'initial';
 }
 
-// Classic slot keys -> module slot keys. An unknown key is kept as-is (clamped
-// to the column) so its document still shows up, labelled by its own name,
-// instead of being dropped.
-const SLOT_ALIASES = {
-  abstract: 'abstract',
-  adviserEndorsement: 'adviser_endorsement',
-  approvalForm: 'approval_sheet',
-  ethicsCertificate: 'ethics_certificate',
-  panelApproval: 'panel_approval',
-  publicationProof: 'publication_proof',
-  similarityReport: 'similarity_report',
-  additionalDocs: 'additional_documents',
-  additional: 'additional_documents'
-};
-
-export function slotKeyFor(key, originalName) {
-  const k = clean(key);
-  if (k === 'manuscript' || SLOT_ALIASES[k] === 'manuscript') {
-    // The classic "manuscript" slot accepted Word and PDF; the module keeps
-    // them in separate slots, so pick by the file's own extension.
-    return extname(readableName(originalName)).toLowerCase() === '.pdf'
-      ? 'manuscript_pdf'
-      : 'manuscript_docx';
-  }
-  return SLOT_ALIASES[k] || k.slice(0, 80) || 'additional_documents';
-}
+// Classic slot keys -> module slot keys, and the URL-encoded classic names, now
+// live in lib/submission-records.js: the dashboard reads the same classic rows,
+// so the two mappings must never drift apart. `slotKeyFor` stays exported here
+// because the tests (and any reader of this file) know it by that name.
+export const slotKeyFor = legacySlotKeyFor;
 
 // Every spelling of an account, lowercased, so a row keyed by email, username
 // or full name is still recognised as that person's. Ambiguity (two accounts

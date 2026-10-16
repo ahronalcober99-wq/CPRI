@@ -439,19 +439,35 @@ test('a student can submit, the row and files persist, and every rule holds', op
     'a refused hand-in leaves the draft untouched'
   );
 
-  // --- an adviser monitors every STUDENT submission, assigned or not ---
-  // (ROUTES.md, and the offline suite's "an unassigned adviser still monitors
-  // the student record, but not the faculty one"). What they must never reach
-  // is a faculty record that does not name them.
+  // --- an adviser / facilitator monitors EVERY submission, assigned or not ---
+  // The role is the portal's oversight seat: it sees the student record, the
+  // faculty record and anything recorded by staff, from both research stores.
+  // What it must never reach is a write — that is asserted after this.
   const adviser = users.adviser;
   const list = await req(adviser, '/');
   assert.equal(list.status, 200);
   assert.ok(list.body.submissions.some(s => s.id === id),
-    'an adviser monitors student submissions, assigned or not');
-  assert.ok(!list.body.submissions.some(s => s.id === facultyId),
-    'and nothing else: a faculty record is not theirs to read');
-  assert.equal((await req(adviser, `/${facultyId}`)).status, 403,
-    'an unassigned faculty record is refused');
+    'an adviser monitors the student submission, assigned or not');
+  assert.ok(list.body.submissions.some(s => s.id === facultyId),
+    'and the faculty record too — nothing about a submission hides it');
+  assert.equal(list.body.count, list.body.submissions.length,
+    'the count is the list it was given');
+  const entry = list.body.submissions.find(s => s.id === id);
+  for (const field of ['title', 'studentName', 'program', 'status', 'statusLabel', 'research_type', 'created_at', 'updated_at']) {
+    assert.ok(entry[field] !== undefined && entry[field] !== null && entry[field] !== '',
+      `a listed record carries ${field}`);
+  }
+  assert.ok(Array.isArray(entry.files) && Array.isArray(entry.comments),
+    'documents and comments come with the list');
+  assert.ok(entry.detailUrl, 'and so does the link to its full page');
+  assert.equal((await req(adviser, `/${facultyId}`)).status, 200,
+    'opening a record it does not own works — reading is not owning');
+  assert.equal((await req(adviser, `/${facultyId}/files`, {
+    method: 'POST', body: uploadForm({ manuscript_docx: docx('not-mine.docx') })
+  })).status, 403,
+    'but uploading into one is refused');
+  assert.equal((await req(adviser, `/${facultyId}`)).status, 200,
+    'a faculty record is readable by the oversight seat even when it never named them');
 });
 
 // ===========================================================================

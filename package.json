@@ -33,7 +33,10 @@
     "doctor": "node server/dev/db-doctor.mjs",
     "db:init": "node server/dev/db-init.mjs",
     "purge:sessions": "node server/session-purge.mjs",
-    "migrate:legacy-submissions": "node server/migrate-legacy-submissions.mjs"
+    "migrate:legacy-submissions": "node server/migrate-legacy-submissions.mjs",
+    "repair:submissions": "node server/repair-submission-fields.mjs",
+    "test:submission-records": "node --test server/dev/test-submission-records.mjs",
+    "test:classic-access": "node --test --test-force-exit server/dev/test-classic-access.mjs"
   },
   "engines": {
     "node": ">=20.9.0"

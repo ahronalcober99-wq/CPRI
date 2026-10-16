@@ -98,10 +98,18 @@ Final papers: `submitted` → checking → `approved` → `published` → `archi
 ### GET /
 - Auth: `requireAuth`.
 - Researchers: own submissions only.
-- Advisers / facilitators: every `student_researcher` submission, plus any record that names
-  them via `adviser_id` / `facilitator_id`.
-- `cpri_staff` / `admin`: all submissions.
-- Returns `{ submissions: [...] }` where each item includes `isOwner`.
+- Advisers / facilitators / `cpri_staff` / `admin`: every submission in the system,
+  newest first, with no filter on owner role, department, course, status or assignment.
+  The monitoring view reads BOTH stores — `research_submissions` and the classic
+  `submissions` table — and merges them: a migrated record keeps its id in both, so a
+  classic row is dropped when a module row already has that id, and when the two copies
+  disagree (a status moved on the classic page afterwards) the copy updated last wins.
+  Each item carries `sources` (`['module']`, `['classic']` or both) and `detailUrl`.
+- Returns `{ count, submissions: [...] }`. Every item includes id, title, status,
+  `statusLabel`, stage, `studentName`, `studentId`, `ownerRole`, `program`, `category`,
+  `research_type`, dates, `files` (each with a download `url`), `comments`, counts,
+  `source`, `detailUrl` and `isOwner`. Reads are wide; writes are not —
+  `canWriteSubmission` still requires the owner or the staff/admin who run the module.
 
 ### GET /:id
 - Auth: `requireAuth`.
@@ -143,7 +151,7 @@ Final papers: `submitted` → checking → `approved` → `published` → `archi
 ### POST /:id/comments
 - Auth: `requireAuth`.
 - Allowed commenters: the owner, anyone who can read the submission (which for an adviser or
-  facilitator means every student record they monitor), `cpri_staff`, `admin`, `ethics_reviewer`.
+  facilitator means every record in the system), `cpri_staff`, `admin`, `ethics_reviewer`.
   Commenting never implies the right to change a status.
 - Comment type is inferred from the session role: adviser/facilitator → `feedback`,
   ethics_reviewer → `revision_suggestion`, owner researcher → `response`, else `comment`.

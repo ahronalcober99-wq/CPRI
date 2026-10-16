@@ -12,6 +12,9 @@ import {
   MAX_SUBMISSION_FILE_BYTES,
   validateSubmissionUploadFile
 } from './storage/submission-files.js';
+// `adviser` and `facilitator` are the same supervision job under two spellings
+// (see lib/research-config.js): both monitor submissions read-only.
+import { ASSIGNED_ROLES } from './lib/research-config.js';
 
 const router = Router();
 
@@ -53,9 +56,11 @@ const REQUIRED_KEYS = FILE_FIELDS.filter(f => f.required).map(f => f.key);
 const SUBMIT_ROLES = ['admin', 'faculty_researcher', 'student_researcher', 'adviser', 'cpri_staff'];
 // Roles allowed to review / change status
 const REVIEW_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer'];
-// Roles that see the full submission list + stats (advisers supervise student
-// work, so they see all; they still cannot change statuses — that's REVIEW_ROLES).
-const VIEW_ALL_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer', 'adviser'];
+// Roles that see the full submission list + stats. Advisers supervise student
+// work, and `facilitator` is the research module's spelling of the same job
+// (the Adviser / Facilitator dashboard reads this table too), so both see all.
+// They still cannot change statuses — that stays with REVIEW_ROLES.
+const VIEW_ALL_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer', 'adviser', 'facilitator'];
 const { storeUploadedFiles, rollback: cleanupUploadedFiles } = createSubmissionFileStore();
 
 function createUploadMiddleware() {
@@ -105,7 +110,13 @@ function canAccess(me, sub) {
   // submission. Requiring a real user closes it without changing any
   // legitimate owner/reviewer behaviour.
   if (!me) return false;
-  return me.id === sub.submitterId || REVIEW_ROLES.includes(me.role);
+  // The submitter, the reviewers, and the Adviser / Facilitator who monitors
+  // submissions — that dashboard lists classic records and links to their files,
+  // so a facilitator must be able to download one. Whether a status may change
+  // is decided separately, by REVIEW_ROLES.
+  return me.id === sub.submitterId
+    || REVIEW_ROLES.includes(me.role)
+    || ASSIGNED_ROLES.has(me.role);
 }
 
 // Roles allowed to open a submission file in the preview modal.
@@ -114,6 +125,8 @@ function canAccess(me, sub) {
 // person's name (not a user id), so the match is by name and only for accounts
 // that actually hold the adviser role — this is deliberately narrower than
 // letting every adviser read every submission.
+// Unchanged: preview stays with the review roles (and the named adviser). The
+// Adviser / Facilitator dashboard links to DOWNLOADS, which follow canAccess.
 const FILE_VIEW_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer'];
 
 function canViewFile(me, sub) {
@@ -240,6 +253,30 @@ router.post('/', requireAuth, (req, res, next) => {
     console.error('[submissions] could not save submission after file upload:', error.message);
     return res.status(500).json({ ok: false, message: 'Could not save your submission. Please try again.' });
   }
+
+  // Tell the people who monitor it. The Adviser / Facilitator dashboard lists
+  // this table too, so a record created here has to notify the same people a
+  // module submission does — otherwise a new submission sits on that dashboard
+  // unnoticed until somebody happens to reload it. Never a failure the submitter
+  // should see: the record is already saved.
+  try {
+    const supervisors = await all(
+      "SELECT id FROM users WHERE role IN ('cpri_staff','admin','adviser','facilitator') AND status = 'active'"
+    );
+    for (const row of supervisors) {
+      if (row.id === me.id) continue;
+      await notify(
+        row.id,
+        'research_submission_new',
+        'New research submission',
+        `${sub.submitterName} submitted "${sub.title}"`,
+        `/submission.html?id=${sub.id}`
+      );
+    }
+  } catch (error) {
+    console.error('[submissions] could not notify the supervisors of a new submission:', error.message);
+  }
+
   res.status(201).json({ message: 'Research submitted successfully.', submission: sub });
 });
 
@@ -724,4 +761,15 @@ router.post('/:id/revisions', requireAuth, async (req, res, next) => {
   res.status(201).json({ message: 'Revision uploaded.', version, submission: updated });
 });
 
-export { router as submissionsRouter, STATUS_LABELS, RESEARCH_TYPES, FILE_FIELDS, COMMENT_TYPE_LABELS };
+// canAccess / canViewFile are exported for the tests: the read rules of this
+// router are the one thing a monitoring dashboard depends on, and they are pure
+// functions of (caller, row), so they can be pinned without a database.
+export {
+  router as submissionsRouter,
+  STATUS_LABELS,
+  RESEARCH_TYPES,
+  FILE_FIELDS,
+  COMMENT_TYPE_LABELS,
+  canAccess,
+  canViewFile
+};

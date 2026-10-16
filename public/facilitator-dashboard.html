@@ -59,14 +59,15 @@
             <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
               <div>
                 <h2>Student Submissions</h2>
-                <small style="color:var(--cpri-muted)" id="subs-sub">Every student research submission, with its current status.</small>
+                <small style="color:var(--cpri-muted)" id="subs-sub">Every research submission in the system, with its current status.</small>
+                <small style="display:block;color:var(--cpri-muted)" id="subs-updated"></small>
               </div>
               <span class="badge" style="background:var(--gold-tint);color:#8a6d1f;" id="subs-count">—</span>
             </div>
 
             <div id="submissions-loading" class="empty-state">Loading student submissions…</div>
             <div id="submissions-empty" class="empty-state" style="display:none;">
-              No student submissions yet. Please check back soon.
+              No submissions in the system yet. Please check back soon.
             </div>
             <div id="submissions-list"></div>
           </div>
@@ -91,11 +92,14 @@
     (function () {
       'use strict';
 
-      // A Research Adviser / Facilitator monitors STUDENT work: the server scopes
-      // GET /api/research-submissions to every student_researcher record for this
-      // role. Comments are read and written through the same endpoints the full
-      // submission page uses, so there is no second code path to keep in sync.
-      // Nothing here can change a status — the server refuses that with a 403.
+      // A Research Adviser / Facilitator monitors EVERY submission in the
+      // system: GET /api/research-submissions answers this role with every record
+      // from both research stores (the classic `submissions` table and the
+      // module's own), newest first, and this page renders all of them — there is
+      // no client-side filter that could hide one. Comments are read and written
+      // through the same endpoints the full submission page uses, so there is no
+      // second code path to keep in sync. Nothing here can change a status — the
+      // server refuses that with a 403.
 
       const STATUS_LABELS = {
         draft: 'Draft',
@@ -124,6 +128,25 @@
       };
 
       const STAGE_LABELS = { initial: 'Initial Submission', final: 'Final Submission' };
+      const TYPE_LABELS = {
+        student_thesis: 'Student Thesis',
+        capstone: 'Capstone',
+        feasibility: 'Feasibility Study',
+        action_research: 'Action Research',
+        institutional_research: 'Institutional Research',
+        faculty_research: 'Faculty Research',
+        non_teaching_research: 'Non-Teaching Research'
+      };
+      const ROLE_LABELS = {
+        student_researcher: 'Student Researcher',
+        faculty_researcher: 'Faculty Researcher',
+        non_teaching_researcher: 'Non-Teaching Researcher',
+        presenter: 'Presenter',
+        adviser: 'Research Adviser / Facilitator',
+        facilitator: 'Research Adviser / Facilitator',
+        cpri_staff: 'CPRI Staff',
+        admin: 'Administrator'
+      };
 
       const messageEl = document.getElementById('message');
       const shell = document.getElementById('shell');
@@ -132,6 +155,7 @@
       const loadingEl = document.getElementById('submissions-loading');
       const emptyEl = document.getElementById('submissions-empty');
       const countEl = document.getElementById('subs-count');
+      const lastLoadedEl = document.getElementById('subs-updated');
       const notifList = document.getElementById('notif-list');
 
       // Every value below is a database row or a person's typing, so it is
@@ -154,6 +178,11 @@
           esc(label || STATUS_LABELS[status] || status) + '</span>';
       }
 
+      function badge(text) {
+        return '<span class="badge" style="background:transparent;border:1px solid var(--cpri-border);' +
+          'color:var(--cpri-muted);margin:0;">' + esc(text) + '</span>';
+      }
+
       function showMsg(type, text) {
         messageEl.className = 'form-message ' + type;
         messageEl.textContent = text || '';
@@ -171,50 +200,93 @@
         return body;
       }
 
-      // The comment thread for one submission, loaded on first expand and kept
-      // in the DOM afterwards so a re-expand does not re-fetch.
-      function renderComments(container, submission) {
-        const comments = submission.comments || [];
-        const thread = comments.length
+      function commentThread(comments) {
+        return comments.length
           ? comments.map(c =>
               '<div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">' +
                 '<div class="meta">' + esc(c.comment_type || 'Comment') + ' · ' + esc(c.author_name || '—') +
-                ' (' + esc(c.author_role || '—') + ') · ' + when(c.created_at) + '</div>' +
+                (c.author_role ? ' (' + esc(ROLE_LABELS[c.author_role] || c.author_role) + ')' : '') +
+                ' · ' + when(c.created_at) + '</div>' +
                 '<p style="margin:6px 0 0;">' + esc(c.body) + '</p>' +
               '</div>').join('')
           : '<p class="form-note">No comments yet. Be the first to leave a recommendation.</p>';
+      }
+
+      // The comment thread for one submission, loaded on first expand and kept
+      // in the DOM afterwards so a re-expand does not re-fetch.
+      //
+      // A record that lives only in the classic store is commented on through the
+      // classic page: the module's comment endpoint has no row to attach to, so
+      // the thread is shown read-only here with a link that opens it there.
+      function renderComments(container, submission, entry) {
+        const comments = submission.comments || entry.comments || [];
+        const classicOnly = entry.source === 'classic';
+        const thread = commentThread(comments);
 
         container.innerHTML =
           '<h4 style="margin:14px 0 8px;">Comments and recommendations</h4>' +
           thread +
-          '<div class="form-group" style="margin-top:14px;">' +
-            '<label for="c-body-' + esc(submission.id) + '">Add a comment or recommendation</label>' +
-            '<textarea id="c-body-' + esc(submission.id) + '" rows="3" placeholder="Write your comment or recommendation…"></textarea>' +
-          '</div>' +
-          '<div id="c-msg-' + esc(submission.id) + '" class="form-message"></div>' +
-          '<button type="button" class="btn btn-primary btn-sm c-post" data-id="' + esc(submission.id) + '">Post comment</button>';
+          (classicOnly
+            ? '<p class="form-note" style="margin-top:14px;">This record is stored by the classic submissions module — ' +
+              '<a href="' + esc(entry.detailUrl) + '">open it there</a> to add a comment or change its status.</p>'
+            : '<div class="form-group" style="margin-top:14px;">' +
+                '<label for="c-body-' + esc(submission.id) + '">Add a comment or recommendation</label>' +
+                '<textarea id="c-body-' + esc(submission.id) + '" rows="3" placeholder="Write your comment or recommendation…"></textarea>' +
+              '</div>' +
+              '<div id="c-msg-' + esc(submission.id) + '" class="form-message"></div>' +
+              '<button type="button" class="btn btn-primary btn-sm c-post" data-id="' + esc(submission.id) + '">Post comment</button>');
+      }
+
+      // The documents on a record, as links that download them. The URL comes
+      // from the server (each store has its own download route), so nothing here
+      // has to know which table a record came from.
+      function documentsBlock(entry) {
+        const files = entry.files || [];
+        if (!files.length) return '<span class="form-note">No documents attached.</span>';
+        return '<details style="margin-top:8px;">' +
+          '<summary style="cursor:pointer;color:var(--cpri-secondary);font-size:.9rem;width:fit-content;">' +
+            'View ' + files.length + (files.length === 1 ? ' document' : ' documents') +
+          '</summary>' +
+          '<ul style="margin:8px 0 0;padding-left:18px;">' + files.map(f =>
+            '<li style="margin-bottom:4px;"><a href="' + esc(f.url) + '">' +
+              esc(f.label || f.slot_key || 'Document') + '</a>' +
+              ' <span class="form-note">' + esc(f.original_name || '') +
+              (f.version ? ' · v' + esc(f.version) : '') + '</span></li>').join('') +
+          '</ul></details>';
       }
 
       function renderSubmission(entry) {
         const card = document.createElement('div');
-        card.className = 'card';
+        card.className = 'card fac-card';
         card.style.marginTop = '18px';
+        card.dataset.id = entry.id || '';
 
         const head = document.createElement('div');
         head.style.cssText = 'display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start;justify-content:space-between;';
+        // Everything below is a database value, escaped individually. The two
+        // badges that are not: a status (unknown statuses included) and the stage.
         head.innerHTML =
           '<div style="min-width:240px;flex:1;">' +
             '<h3 style="margin:0 0 8px;">' + esc(entry.title || 'Untitled submission') + '</h3>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
               statusBadge(entry.status, entry.statusLabel) +
-              '<span class="badge" style="background:transparent;border:1px solid var(--cpri-border);color:var(--cpri-muted);margin:0;">' +
-                esc(STAGE_LABELS[entry.stage] || entry.stage || '') + '</span>' +
+              badge(STAGE_LABELS[entry.stage] || entry.stage || '—') +
+              (entry.source === 'classic' ? badge('Classic submissions record') : '') +
             '</div>' +
-            '<p class="form-note" style="margin:10px 0 0;">' +
-              esc(entry.authors || '—') + ' · ' + esc(entry.program || '—') +
+            '<p style="margin:10px 0 0;"><strong>' + esc(entry.studentName || '—') + '</strong>' +
+              (entry.ownerRole ? ' <span class="form-note">' + esc(ROLE_LABELS[entry.ownerRole] || entry.ownerRole) + '</span>' : '') +
             '</p>' +
-            '<p class="form-note" style="margin:4px 0 0;">Submitted ' + when(entry.created_at) +
-              ' · Last update ' + when(entry.updated_at) + '</p>' +
+            '<p class="form-note" style="margin:6px 0 0;">' +
+              'Department / Program: ' + esc(entry.program || '—') +
+              ' · Type: ' + esc(TYPE_LABELS[entry.research_type] || entry.research_type || '—') +
+              (entry.category ? ' · Category: ' + esc(entry.category) : '') +
+            '</p>' +
+            '<p class="form-note" style="margin:4px 0 0;">' +
+              'Submitted ' + when(entry.created_at) + ' · Last updated ' + when(entry.updated_at) +
+              ' · ' + (entry.fileCount || 0) + (entry.fileCount === 1 ? ' document' : ' documents') +
+              ' · ' + (entry.commentCount || 0) + (entry.commentCount === 1 ? ' comment' : ' comments') +
+            '</p>' +
+            documentsBlock(entry) +
           '</div>';
 
         const actions = document.createElement('div');
@@ -223,13 +295,15 @@
         const toggle = document.createElement('button');
         toggle.type = 'button';
         toggle.className = 'btn btn-navy btn-sm';
-        toggle.textContent = 'Comments';
+        toggle.textContent = 'Comments (' + (entry.commentCount || 0) + ')';
         toggle.setAttribute('aria-expanded', 'false');
         actions.appendChild(toggle);
 
         const openFull = document.createElement('a');
         openFull.className = 'btn btn-outline-dark btn-sm';
-        openFull.href = 'research-submission-detail.html?id=' + encodeURIComponent(entry.id);
+        // The server decides where a record's full page lives: the module's own
+        // page, or the classic submission page for a record only that store has.
+        openFull.href = entry.detailUrl || ('research-submission-detail.html?id=' + encodeURIComponent(entry.id));
         openFull.textContent = 'Open full page';
         actions.appendChild(openFull);
 
@@ -253,10 +327,17 @@
           toggle.setAttribute('aria-expanded', 'true');
           if (loaded) return;
           panel.innerHTML = '<p class="form-note">Loading comments…</p>';
+          // A classic-only record has no module row to read, so its comments come
+          // straight from the list payload.
+          if (entry.source === 'classic') {
+            renderComments(panel, {}, entry);
+            loaded = true;
+            return;
+          }
           try {
             const payload = await getJson('/api/research-submissions/' + encodeURIComponent(entry.id));
             if (!payload) return; // redirected to login
-            renderComments(panel, payload.submission || {});
+            renderComments(panel, payload.submission || {}, entry);
             loaded = true;
           } catch (err) {
             panel.innerHTML = '<p class="form-note" style="color:var(--cpri-secondary);">' +
@@ -337,6 +418,58 @@
         }
       });
 
+      // ---- The list, and how it stays current ----
+      //
+      // One loader used by the first paint, by the 30-second refresh and by the
+      // window-focus refresh, so all three can never disagree. It renders EVERY
+      // record the server returned: there is no .filter() anywhere below, because
+      // a hidden record is exactly the bug this dashboard had.
+      let loading = false;
+
+      async function loadSubmissions({ first = false } = {}) {
+        if (loading) return; // a refresh must never stack up on a slow request
+        loading = true;
+        if (first) loadingEl.style.display = '';
+        try {
+          const payload = await getJson('/api/research-submissions');
+          if (!payload) return; // redirected to login
+          const submissions = payload.submissions || [];
+          // Left in on purpose: it is what makes a wrong count debuggable from
+          // the browser console alone.
+          console.log('[facilitator] GET /api/research-submissions ->', payload.count, 'record(s)', submissions);
+
+          loadingEl.style.display = 'none';
+          // A load that succeeded clears the warning the previous failure left,
+          // so a recovered page never keeps accusing itself of being stale.
+          if (messageEl.classList.contains('error')) showMsg('', '');
+          listEl.textContent = '';
+          submissions.forEach(entry => listEl.appendChild(renderSubmission(entry)));
+
+          // The counter is the length of that array — never a separate number
+          // that could drift from what is on screen.
+          countEl.textContent = submissions.length === 1
+            ? '1 submission'
+            : submissions.length + ' submissions';
+          countEl.title = submissions.length
+            ? 'Newest first' + (payload.count === submissions.length ? '' : ` (server reported ${payload.count})`)
+            : 'Nothing to review yet';
+          emptyEl.style.display = submissions.length ? 'none' : '';
+          document.getElementById('subs-sub').textContent = submissions.length
+            ? 'Every research submission in the system, newest first.'
+            : 'Every research submission in the system, with its current status.';
+          lastLoadedEl.textContent = 'Updated ' + new Date().toLocaleTimeString() +
+            ' · refreshes every 30 seconds and whenever this tab is focused';
+        } catch (err) {
+          loadingEl.style.display = 'none';
+          // The list that is already on screen stays: a failed refresh must not
+          // wipe out what the reader is looking at.
+          showMsg('error', (err.message || 'Could not load the submissions.') +
+            ' — the list below may be out of date. Retrying every 30 seconds.');
+        } finally {
+          loading = false;
+        }
+      }
+
       (async function () {
         try {
           const meRes = await fetch('/api/auth/me');
@@ -357,19 +490,13 @@
             name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0]).join('').toUpperCase() || 'CP';
 
           await loadNotifications();
+          await loadSubmissions({ first: true });
 
-          const payload = await getJson('/api/research-submissions');
-          if (!payload) return;
-          const submissions = payload.submissions || [];
-
-          loadingEl.style.display = 'none';
-          countEl.textContent = submissions.length + (submissions.length === 1 ? ' submission' : ' submissions');
-
-          if (!submissions.length) {
-            emptyEl.style.display = '';
-            return;
-          }
-          submissions.forEach((entry) => listEl.appendChild(renderSubmission(entry)));
+          setInterval(() => { loadSubmissions(); }, 30000);
+          window.addEventListener('focus', () => { loadSubmissions(); });
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') loadSubmissions();
+          });
         } catch (err) {
           loadingEl.style.display = 'none';
           showMsg('error', err.message || 'Could not load the dashboard.');

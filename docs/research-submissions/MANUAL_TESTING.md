@@ -59,8 +59,8 @@ Create or use existing accounts with these roles:
 - `student_researcher` (can do Initial + Final)
 - `faculty_researcher` (can do Initial + Final)
 - `presenter` (Final only)
-- `adviser` / `facilitator` ("Research Adviser / Facilitator": every student submission,
-  read-only — comments but no status changes)
+- `adviser` / `facilitator` ("Research Adviser / Facilitator": EVERY submission in the
+  system — both research stores — read-only: comments but no status changes)
 - `cpri_staff` or `admin` (all submissions, status updates, compare)
 
 ### 2. Form page — role + stage branching
@@ -106,9 +106,12 @@ Create or use existing accounts with these roles:
     becomes `submitted` and the history shows Draft → Submitted.
 
 ### 4b. My Submissions
-- Open `my-submissions.html`: only your own submissions are listed (an adviser or
-  facilitator sees every student submission, staff/admin see everything — the endpoint
-  decides that, the page only renders the answer).
+- Open `my-submissions.html`: only your own submissions are listed (staff/admin see
+  everything — the endpoint decides that, the page only renders the answer).
+- Open `facilitator-dashboard.html` as an adviser/facilitator: it lists every submission
+  from both stores, newest first, and its count matches the admin overview's total. The
+  page prints the raw response to the browser console `[facilitator] GET …`, refreshes
+  every 30 seconds and on tab focus, and keeps the last list on screen if a refresh fails.
 - Every row carries a colour-coded status badge plus the stage, type and dates.
 - "Show details" expands in place to the status timeline, the documents with **every
   version** and a download link each, and the comment thread.

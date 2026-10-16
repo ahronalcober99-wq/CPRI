@@ -50,9 +50,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 //  `FROM <table>`, `col = ?` or `col = 'literal'` conditions joined by AND
 //  and/or OR, and an optional ORDER BY that the assertions do not depend on.
 //
-//  The OR matters: GET /api/research-submissions asks for "every student
-//  record, OR anything assigned to me" in one query for the Research Adviser /
-//  Facilitator monitoring view.
+//  The OR matters: GET /api/research-submissions asks for the caller's own
+//  records (any spelling of their id, email or username) in one query for a
+//  researcher; a monitoring role gets every row and the classic store on top,
+//  which the assertions below cover.
 // ---------------------------------------------------------------------------
 function whereMatcher(sql) {
   const afterWhere = sql.split(/\bWHERE\b/i)[1];
@@ -1062,54 +1063,106 @@ test('reviewer read/comment access is gated separately from status changes', () 
   }
 });
 
-test('a Research Adviser / Facilitator monitors every student submission, read-only', async () => {
+test('every monitoring role sees every submission in the system, read-only', async () => {
   const module = await startModule();
   try {
     const adviser = account('adviser');
     const otherAdviser = account('adviser');
+    const facilitator = account('facilitator');
     const student = account('student_researcher');
     const faculty = account('faculty_researcher');
 
     const base = {
       stage: 'initial', authors: 'A', program: 'P', category: 'C',
       school_year: '2026-2027', semester: '1st', status: 'submitted',
-      created_at: '2026-01-01 00:00:00', updated_at: '2026-01-01 00:00:00'
+      adviser_id: '', facilitator_id: ''
     };
     // A student record nobody named this adviser on, and a faculty record that
-    // does name them.
+    // does name them: BOTH are work to monitor, and the old scope hid the second
+    // one from every reviewer it did not name — which is how the facilitator
+    // dashboard ended up one record short of the admin overview.
     const studentSub = {
       ...base, id: randomUUID(), owner_id: student.id, owner_name: student.fullName,
       owner_role: student.role, title: 'Student work', research_type: 'student_thesis',
-      adviser_id: '', facilitator_id: ''
+      created_at: '2026-03-01 00:00:00', updated_at: '2026-03-01 00:00:00'
     };
     const facultySub = {
       ...base, id: randomUUID(), owner_id: faculty.id, owner_name: faculty.fullName,
       owner_role: faculty.role, title: 'Faculty work', research_type: 'faculty_research',
-      adviser_id: adviser.id, facilitator_id: ''
+      adviser_id: adviser.id, created_at: '2026-02-01 00:00:00', updated_at: '2026-02-01 00:00:00'
     };
-    await module.store.insert('research_submissions', studentSub);
-    await module.store.insert('research_submissions', facultySub);
+    // A record whose owner is neither a researcher nor this reviewer (staff ran
+    // "New Submission", or a legacy copy kept its own owner role).
+    const staffSub = {
+      ...base, id: randomUUID(), owner_id: 'u-cpri-staff-someone', owner_name: 'CPRI Staff',
+      owner_role: 'cpri_staff', title: 'Staff-recorded work', research_type: 'institutional_research',
+      created_at: '2026-01-15 00:00:00', updated_at: '2026-01-15 00:00:00'
+    };
+    for (const row of [studentSub, facultySub, staffSub]) {
+      await module.store.insert('research_submissions', row);
+    }
+    // The classic store: one record that was never copied into the module, and
+    // one that was (same id) — the second must not be listed twice.
+    await module.store.insert('submissions', {
+      id: 'legacy-1', submitterId: student.id, submitterName: 'Typed At The Time',
+      title: 'Legacy paper', authors: 'A, B', program: 'BS Biology', category: 'Life Sciences',
+      researchType: 'student_thesis', abstract: 'An abstract.', status: 'rejected',
+      createdAt: '2026-01-01 00:00:00', updatedAt: '2026-01-02 00:00:00',
+      files: JSON.stringify({
+        manuscript: { original_name: 'legacy-manuscript.pdf', storage_path: 'submissions/legacy-1/m.pdf', mime_type: PDF }
+      }),
+      additionalDocs: JSON.stringify([
+        { id: 'doc-1', original_name: 'extra.pdf', storage_path: 'submissions/legacy-1/extra.pdf', mime_type: PDF }
+      ]),
+      comments: JSON.stringify([{
+        id: 'c1', authorName: 'CPRI Staff', authorRole: 'cpri_staff',
+        type: 'feedback', body: 'Please revise the title.', createdAt: '2026-01-03 00:00:00'
+      }])
+    });
+    await module.store.insert('submissions', {
+      id: studentSub.id, submitterId: student.id, submitterName: student.fullName,
+      title: 'Already migrated', program: 'BS Biology', category: 'C',
+      researchType: 'student_thesis', status: 'submitted',
+      createdAt: '2026-03-01 00:00:00', updatedAt: '2026-03-01 00:00:00'
+    });
+    // The account behind the legacy row, renamed since it submitted.
+    await module.store.insert('users', {
+      id: student.id, username: student.username, email: 'student@example.org',
+      fullName: 'Renamed Student', role: 'student_researcher'
+    });
 
-    // The role's whole remit is monitoring student work, so every student
-    // record is visible — assigned to them or not — plus what names them.
-    const mine = await module.json(await module.call(adviser, '/'));
-    assert.deepEqual(
-      mine.body.submissions.map(s => s.id).sort(),
-      [facultySub.id, studentSub.id].sort(),
-      'the assigned adviser sees the student record and the one naming them'
-    );
+    const everyId = [staffSub.id, facultySub.id, studentSub.id, 'legacy-1'];
+    for (const role of ['adviser', 'facilitator', 'cpri_staff', 'admin']) {
+      const viewer = role === 'adviser' ? otherAdviser : account(role);
+      const list = await module.json(await module.call(viewer, '/'));
+      assert.equal(list.status, 200, `${role} can read the list`);
+      assert.deepEqual(
+        list.body.submissions.map(s => s.id),
+        // newest first: March, February, January 15, January 1
+        [studentSub.id, facultySub.id, staffSub.id, 'legacy-1'],
+        `${role} sees every record from both stores, once each`
+      );
+      assert.equal(list.body.count, everyId.length, `${role}'s count matches what it was given`);
+      assert.deepEqual(
+        list.body.submissions.map(s => s.created_at).map(d => new Date(d).getMonth()),
+        [2, 1, 0, 0],
+        'newest first'
+      );
+    }
 
-    const theirs = await module.json(await module.call(otherAdviser, '/'));
-    assert.deepEqual(
-      theirs.body.submissions.map(s => s.id), [studentSub.id],
-      'an unassigned adviser still monitors the student record, but not the faculty one'
-    );
-    assert.equal((await module.call(otherAdviser, `/${studentSub.id}`)).status, 200);
-    assert.equal((await module.call(otherAdviser, `/${facultySub.id}`)).status, 403,
-      'a faculty record is visible only to the adviser it names');
+    // A monitoring role sees the record even though it owns none of them...
+    assert.equal((await module.call(otherAdviser, `/${facultySub.id}`)).status, 200,
+      'a faculty record is readable by a reviewer it never named');
+    assert.equal((await module.call(otherAdviser, `/${staffSub.id}`)).status, 200,
+      'and so is a record owned by a staff account');
 
-    // Read-only by design: approving, rejecting and every other status move is
-    // refused, even on a record that names them.
+    // ...but never writes into one. The write rules are unchanged by this
+    // widening: the owner, or the staff/admin who run the module.
+    const uploaded = await module.call(otherAdviser, `/${facultySub.id}/files`, {
+      method: 'POST', body: uploadForm({ manuscript_docx: docx('sneak.docx') })
+    });
+    assert.equal(uploaded.status, 403, 'a reviewer cannot upload into a record that is not theirs');
+
     const moved = await module.call(adviser, `/${facultySub.id}/status`, {
       method: 'PATCH', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ status: 'under_initial_checking' })
@@ -1122,8 +1175,8 @@ test('a Research Adviser / Facilitator monitors every student submission, read-o
     });
     assert.equal(movedStudent.status, 403, 'and never approves a student submission');
 
-    // Commenting is exactly what the role may do.
-    const commented = await module.call(otherAdviser, `/${studentSub.id}/comments`, {
+    // Commenting is exactly what the role may do — on any record they can read.
+    const commented = await module.call(otherAdviser, `/${facultySub.id}/comments`, {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ body: 'Please justify the sample size.' })
     });
@@ -1131,6 +1184,30 @@ test('a Research Adviser / Facilitator monitors every student submission, read-o
     const posted = await commented.json();
     assert.equal(posted.comment.comment_type, 'feedback');
     assert.equal(posted.comment.author_role, 'adviser');
+
+    // The record shape a monitoring dashboard renders.
+    const list = await module.json(await module.call(otherAdviser, '/'));
+    const byId = new Map(list.body.submissions.map(s => [s.id, s]));
+    const moduleEntry = byId.get(studentSub.id);
+    assert.equal(moduleEntry.studentName, student.fullName, 'the card has a student name');
+    assert.equal(moduleEntry.program, 'P');
+    assert.equal(moduleEntry.research_type, 'student_thesis');
+    assert.match(moduleEntry.detailUrl, /^\/research-submission-detail\.html\?id=/);
+    assert.equal(moduleEntry.source, 'module');
+
+    const legacyEntry = byId.get('legacy-1');
+    assert.equal(legacyEntry.studentName, 'Renamed Student', 'the account behind the row, not the typed name');
+    assert.equal(legacyEntry.ownerRole, 'student_researcher');
+    assert.equal(legacyEntry.status, 'rejected');
+    assert.equal(legacyEntry.statusLabel, 'Rejected');
+    assert.equal(legacyEntry.source, 'classic');
+    assert.equal(legacyEntry.detailUrl, '/submission.html?id=legacy-1');
+    assert.equal(legacyEntry.fileCount, 2, 'the manuscript and the additional document');
+    assert.equal(legacyEntry.files[0].url, '/api/submissions/legacy-1/file?key=manuscript');
+    assert.equal(legacyEntry.files[1].url, '/api/submissions/legacy-1/file?key=additional&docId=doc-1');
+    assert.equal(legacyEntry.commentCount, 1);
+    assert.equal(legacyEntry.comments[0].body, 'Please revise the title.');
+    assert.equal(legacyEntry.created_at, '2026-01-01 00:00:00');
   } finally {
     await module.close();
     await module.cleanup();

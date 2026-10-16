@@ -315,6 +315,17 @@ matching more than one account is never guessed at (`--strict-owner` turns the
 name matching off entirely, `--include-orphans` copies rows with no account at
 all).
 
+**Submissions that cannot describe themselves.** A row restored from a backup, written
+by an older form, or copied between the two research stores can be missing its submitter
+name, stage, status or dates, and a monitoring dashboard then cannot show it. This fills
+those blanks from the account the row points at — and only blanks: nothing is overwritten,
+renamed or deleted, and a second run reports nothing to do.
+
+```bash
+npm run repair:submissions              # dry run — reports only
+npm run repair:submissions -- --apply   # back up, then fill the blanks
+```
+
 Then set the origin in `public/assets/js/main.js` (§4), commit, push, and let the
 Pages workflow redeploy.
 

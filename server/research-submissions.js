@@ -44,6 +44,15 @@ import {
 import { notify as defaultNotify } from './notifications.js';
 import { sendNotificationEmail as defaultSendEmail } from './lib/mail.js';
 import { createResearchStorage } from './lib/research-storage.js';
+// The record shape every reader of a submission shares, plus the status
+// labels. A monitoring dashboard reads BOTH stores, so a classic row and a
+// module row have to come back identical — see lib/submission-records.js.
+import {
+  statusLabelFor,
+  slotLabelFor,
+  STAGE_LABELS,
+  listLegacySubmissions
+} from './lib/submission-records.js';
 
 // The caller's own user row, resolved from the session only. The router never
 // trusts a role / owner_id sent by the client, so this is the single place
@@ -287,24 +296,37 @@ function isOwnerOf(user, ownerId) {
   return ownerRefsFor(user).some(ref => ref.toLowerCase() === value);
 }
 
+// READING. A researcher reads their own record; every monitoring role reads
+// every record. Monitoring used to be narrowed to student-owned records plus the
+// ones naming the reviewer, which hid real submissions (a record owned by a
+// staff account, or a legacy record whose owner role differs) from the very
+// dashboard that is supposed to oversee them. Reading is not writing — see
+// canWriteSubmission() below and STATUS_CHANGE_ROLES for those.
 function canReadSubmission(user, sub) {
   if (!user) return false;
   if (RESEARCHER_ROLES.has(user.role)) return isOwnerOf(user, sub.owner_id);
-  if (ASSIGNED_ROLES.has(user.role)) {
-    if (sub.owner_role === 'student_researcher') return true;
-    if (user.role === 'adviser' && sub.adviser_id === user.id) return true;
-    if (user.role === 'facilitator' && sub.facilitator_id === user.id) return true;
-    // Not a student record and not assigned to this reviewer; fall through.
-  }
+  if (ASSIGNED_ROLES.has(user.role)) return true;
   if (user.role === 'cpri_staff' || user.role === 'admin') return true;
   return false;
 }
 
+// WRITING. Deliberately NOT the read rule: widening monitoring reads must never
+// let a reviewer upload into, or edit, somebody else's record. Editing is still
+// only possible while the submission is with its owner (a draft, or one that
+// came back for revision), and then only for the owner or the staff/admin who
+// run the module (plus the narrow adviser/facilitator cases this module has
+// always allowed: a student's own record, or one that names them).
 function canWriteSubmission(user, sub) {
-  // Editing is allowed while the submission is still with its owner: a draft
-  // being filled in, or one that came back with a revision request.
+  if (!user) return false;
   if (!['draft', 'submitted', 'for_revision'].includes(sub.status)) return false;
-  return canReadSubmission(user, sub);
+  if (isOwnerOf(user, sub.owner_id)) return true;
+  if (ASSIGNED_ROLES.has(user.role)) {
+    if (sub.owner_role === 'student_researcher') return true;
+    if (user.role === 'adviser' && sub.adviser_id === user.id) return true;
+    if (user.role === 'facilitator' && sub.facilitator_id === user.id) return true;
+    return false;
+  }
+  return user.role === 'cpri_staff' || user.role === 'admin';
 }
 
 // ---------------------------------------------------------------------------
@@ -620,11 +642,18 @@ router.post(
     // In-app notification (console-based since no mail/SMS wiring here yet).
     console.log(`[research-submissions] new submission ${sub.id} by ${user.fullName || user.username} (${role}) stage=${requestedStage} status=${sub.status}`);
 
-  // Tell the people who now have to look at it: CPRI staff review every
-  // submission, and a student's adviser/facilitator see what is assigned to
-  // them (only when the submission actually names them).
-  const reviewers = await all("SELECT id FROM users WHERE role IN ('cpri_staff','admin') AND status = 'active'").catch(() => []);
-  const watchers = new Set(reviewers.map(r => r.id));
+  // Tell the people who now have to look at it. CPRI staff and admins review
+  // everything, and the Adviser / Facilitator dashboard monitors EVERY
+  // submission in the system — so every active adviser/facilitator is notified,
+  // whether or not the form happened to name them. (A research record created by
+  // staff or an admin is covered by the same rule: it is still work to monitor,
+  // which is exactly the case the old "student submissions only" scope missed.)
+  const watchers = new Set();
+  const supervisors = await all(
+    "SELECT id FROM users WHERE role IN ('cpri_staff','admin','adviser','facilitator') AND status = 'active'"
+  ).catch(() => []);
+  for (const row of supervisors) watchers.add(row.id);
+
   // The adviser/facilitator fields are typed by the student, so they may hold a
   // user id, a username or a full name. Only an exact, single match becomes a
   // watcher — a guess would notify the wrong person.
@@ -659,15 +688,102 @@ router.post(
 
 // ---------------------------------------------------------------------------
 //  GET /api/research-submissions
-//  Caller's own (researcher) OR every student record (adviser/facilitator)
-//  OR all (staff/admin).
+//  The caller's own records (researcher), or EVERY submission in the system
+//  (adviser / facilitator / cpri_staff / admin).
+//
+//  A monitoring role has no filter here on purpose. Earlier versions scoped the
+//  adviser/facilitator view with
+//  `owner_role = 'student_researcher' OR adviser_id = ? OR facilitator_id = ?`,
+//  which silently hid every record whose owner is not a student account (a
+//  record created by staff, or a legacy record whose owner role is different):
+//  the admin dashboard counted 2 submissions while the facilitator saw 1.
+//  Monitoring is read-only — the status routes enforce that separately — so the
+//  list itself has nothing to narrow.
+//
+//  The same view also reads the CLASSIC `submissions` table and merges it in.
+//  Both stores hold real submissions (public/submission.html still writes to the
+//  classic one), a migrated record keeps its id in both, and the merge drops a
+//  classic row whose id is already a module row — so nothing is ever listed
+//  twice and nothing is ever missing.
 // ---------------------------------------------------------------------------
+function groupBySubmission(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const key = row.submission_id;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(row);
+  }
+  return map;
+}
+
+// One module row -> the shared record shape (see lib/submission-records.js).
+function moduleRecord(row, { user, files = [], comments = [] }) {
+  const stage = row.stage || 'initial';
+  return {
+    id: row.id,
+    title: row.title || 'Untitled submission',
+    status: row.status || '',
+    statusLabel: statusLabelFor(row.status, stage),
+    stage,
+    stageLabel: STAGE_LABELS[stage] || stage,
+
+    // Who submitted it. `studentName` is the field name the monitoring
+    // dashboards read; owner_name is written from the session at creation time,
+    // so it is never blank for a record the module itself accepted.
+    studentName: row.owner_name || row.owner_id || '—',
+    studentId: row.owner_id,
+    ownerRole: row.owner_role || '',
+
+    authors: row.authors || '',
+    program: row.program || '',
+    category: row.category || '',
+    research_type: row.research_type || '',
+    school_year: row.school_year || '',
+    semester: row.semester || '',
+    adviser: row.adviser_id || '',
+    facilitator: row.facilitator_id || '',
+
+    fileCount: files.length,
+    files: files.map(f => ({
+      id: f.id,
+      slot_key: f.slot_key,
+      label: slotLabelFor(f.slot_key),
+      original_name: f.original_name || 'document',
+      version: f.version == null ? null : Number(f.version),
+      uploaded_at: f.uploaded_at || null,
+      url: `/api/research-submissions/${encodeURIComponent(row.id)}/files/${encodeURIComponent(f.id)}`,
+      source: 'module'
+    })),
+    commentCount: comments.length,
+    comments,
+
+    created_at: row.created_at,
+    updated_at: row.updated_at || row.created_at,
+    source: 'module',
+    sources: ['module'],
+    detailUrl: `/research-submission-detail.html?id=${encodeURIComponent(row.id)}`,
+    isOwner: isOwnerOf(user, row.owner_id)
+  };
+}
+
+const recordTime = (value) => {
+  const time = new Date(value == null ? 0 : value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+};
+
 router.get('/', requireAuth, async (req, res) => {
   const user = await callerUser(req);
   if (!user) return res.status(401).json({ error: 'Not authenticated.' });
 
+  const isResearcher = RESEARCHER_ROLES.has(user.role);
+  // Every role that monitors work rather than owning it. Read-only: none of
+  // these may change a status (see STATUS_CHANGE_ROLES).
+  const isMonitor = !isResearcher && (
+    ASSIGNED_ROLES.has(user.role) || user.role === 'cpri_staff' || user.role === 'admin'
+  );
+
   let rows;
-  if (RESEARCHER_ROLES.has(user.role)) {
+  if (isResearcher) {
     // Only ever the caller's own identifiers — see ownerRefsFor().
     const refs = ownerRefsFor(user);
     rows = await all(
@@ -676,39 +792,61 @@ router.get('/', requireAuth, async (req, res) => {
         ORDER BY created_at DESC`,
       refs
     );
-  } else if (ASSIGNED_ROLES.has(user.role)) {
-    // The monitoring view: every student submission, plus anything assigned to
-    // this reviewer even when the owner is faculty. Mirrors canReadSubmission().
-    rows = await all(
-      `SELECT * FROM research_submissions
-        WHERE owner_role = 'student_researcher' OR adviser_id = ? OR facilitator_id = ?
-        ORDER BY created_at DESC`,
-      [user.id, user.id]
-    );
-  } else if (user.role === 'cpri_staff' || user.role === 'admin') {
+  } else if (isMonitor) {
     rows = await all('SELECT * FROM research_submissions ORDER BY created_at DESC');
   } else {
     return res.status(403).json({ error: 'Access denied.' });
   }
 
-  const payload = {
-    submissions: rows.map(s => ({
-      id: s.id,
-      stage: s.stage,
-      title: s.title,
-      authors: s.authors,
-      program: s.program,
-      category: s.category,
-      research_type: s.research_type,
-      status: s.status,
-      statusLabel: statusLabelFor(s.status, s.stage),
-      created_at: s.created_at,
-      updated_at: s.updated_at,
-      isOwner: isOwnerOf(user, s.owner_id)
-    }))
-  };
+  // Files and comments for the listed records. Both tables are read whole and
+  // grouped here rather than with a per-record query, so the list costs two
+  // reads no matter how many records it returns — and so the offline test's
+  // simple fake data layer sees the same shapes production does.
+  const ids = new Set(rows.map(r => r.id));
+  const filesBy = ids.size
+    ? groupBySubmission(await all('SELECT * FROM research_submission_files ORDER BY slot_key, version DESC'))
+    : new Map();
+  const commentsBy = ids.size
+    ? groupBySubmission(await all('SELECT * FROM research_comments ORDER BY created_at ASC'))
+    : new Map();
 
-  res.json(payload);
+  let submissions = rows.map(row => moduleRecord(row, {
+    user,
+    files: filesBy.get(row.id) || [],
+    comments: commentsBy.get(row.id) || []
+  }));
+
+  // The classic store, for a monitoring role: this is what makes the dashboard's
+  // count agree with the admin overview, which counts that table.
+  if (isMonitor) {
+    const byId = new Map(submissions.map(s => [s.id, s]));
+    const legacy = await listLegacySubmissions({ all, isOwner: ref => isOwnerOf(user, ref) });
+    for (const record of legacy) {
+      if (!record.id) continue;
+      const existing = byId.get(record.id);
+      if (!existing) {
+        byId.set(record.id, record);
+        continue;
+      }
+      // A migrated record keeps its id in both tables, so one record can be
+      // stored twice — and the copies can drift (a status moved on the classic
+      // page after the copy was taken). One card per record: `sources` names
+      // every store that holds it, and the copy that was updated last wins,
+      // so the dashboard never shows a status the record has moved past.
+      const sources = [...new Set([...(existing.sources || [existing.source]), record.source])];
+      const newest = recordTime(record.updated_at) > recordTime(existing.updated_at) ? record : existing;
+      newest.sources = sources;
+      byId.set(record.id, newest);
+    }
+    submissions = [...byId.values()];
+  }
+
+  submissions.sort((a, b) => recordTime(b.created_at) - recordTime(a.created_at));
+
+  res.json({
+    count: submissions.length,
+    submissions
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1332,12 +1470,8 @@ router.post(
 // ---------------------------------------------------------------------------
 //  Helpers
 // ---------------------------------------------------------------------------
-function statusLabelFor(status, stage) {
-  if (stage === 'initial') {
-    return INITIAL_STATUSES.find(s => s.value === status)?.label || status;
-  }
-  return FINAL_STATUSES.find(s => s.value === status)?.label || status;
-}
+// statusLabelFor() now lives in lib/submission-records.js, next to the classic
+// records that need the same labels (imported above).
 
 // The field keys the config declares for a role+stage. Used to decide which
 // client-supplied values may be stored, so a field belonging to another role
