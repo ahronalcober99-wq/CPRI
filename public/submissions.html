@@ -90,7 +90,11 @@
       for (const r of modules) {
         // Someone else's unfinished draft is not a submission yet.
         if (r.status === 'draft' && !r.isOwner) continue;
-        const inModule = (r.sources || [r.source]).includes('module');
+        // A migrated record lives in both stores and the server shows the copy
+        // updated last. Status changes must go to THAT copy, with its rules —
+        // a classic copy carries no module nextStatuses, which used to leave
+        // a record like a Published classic paper with no dropdown at all.
+        const inModule = r.source === 'module';
         byId.set(r.id, {
           id: r.id,
           title: r.title,
@@ -180,9 +184,13 @@
       }
       if (s.kind === 'module') {
         if (!s.nextStatuses.length) {
+          // Rejected and Archived end the workflow; anything else is waiting on
+          // a step this account does not take (e.g. the ethics decision).
           const why = s.stage === 'initial' && s.status === 'under_ethics_review'
-            ? 'Awaiting the ethics decision.'
-            : 'No status change available from here.';
+            ? 'Awaiting the ethics reviewer\'s decision.'
+            : (['rejected', 'archived'].includes(s.status)
+              ? 'Final status — no further changes.'
+              : 'No status change available for your account.');
           return `<div style="min-width:220px;"><label class="form-note">Update status</label>
             <p class="form-note" style="margin:6px 0 0;">${esc(why)} <a href="${esc(s.detailUrl)}">Open</a></p></div>`;
         }
