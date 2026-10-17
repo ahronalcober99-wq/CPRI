@@ -70,6 +70,17 @@
             </div>
           </div>
 
+          <!-- Full text read on the page (PDF only). The toolbar of the
+               browser's PDF viewer is hidden to discourage saving; the server
+               is what actually refuses downloads to view-only accounts. -->
+          <div id="fulltext-viewer" class="card" style="display:none;margin-top:22px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+              <h3 style="margin:0;">Full Text</h3>
+              <button type="button" class="btn btn-outline-dark btn-sm" id="fulltext-close"><i class="bi bi-x-lg"></i> Close</button>
+            </div>
+            <iframe id="fulltext-frame" title="Full text" style="width:100%;height:80vh;border:1px solid var(--cpri-border);border-radius:10px;background:#fff;"></iframe>
+          </div>
+
           <!-- Admin management -->
           <div id="admin-edit" class="card" style="display:none;margin-top:22px;">
             <h3>Manage Record (CPRI Staff / Admin)</h3>
@@ -104,6 +115,29 @@
   <script src="assets/js/recommendations.js"></script>
   <script>
     const message = document.getElementById('message');
+
+    // "View Full Text": shows the PDF inside the page. #toolbar=0 hides the
+    // download/print bar of Chrome and Edge's viewer.
+    function viewButton(r) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-primary';
+      button.innerHTML = '<i class="bi bi-eye"></i> View Full Text';
+      button.addEventListener('click', () => {
+        const viewer = document.getElementById('fulltext-viewer');
+        document.getElementById('fulltext-frame').src =
+          '/api/repository/' + encodeURIComponent(String(r.id)) + '/file/view#toolbar=0&navpanes=0';
+        viewer.style.display = 'block';
+        viewer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      return button;
+    }
+
+    document.getElementById('fulltext-close').addEventListener('click', () => {
+      document.getElementById('fulltext-viewer').style.display = 'none';
+      document.getElementById('fulltext-frame').src = 'about:blank';
+    });
+    document.getElementById('fulltext-viewer').addEventListener('contextmenu', (e) => e.preventDefault());
     const detail = document.getElementById('detail');
     const id = new URLSearchParams(location.search).get('id');
 
@@ -133,7 +167,7 @@
         showNotFound();
         return;
       }
-      const { record: r, categoryLabel, accessLabel, canDownload } = detailData;
+      const { record: r, categoryLabel, accessLabel, canDownload, canViewInline, viewOnly } = detailData;
       let currentUser = null;
       let isLoggedOut = false;
       try {
@@ -171,7 +205,8 @@
         note.textContent = 'Full text is restricted; only the abstract is public.';
         fa.append(note);
       } else if (canDownload) {
-        const label = r.accessLevel === 'viewable' ? 'View Full Text' : 'Download Full Text';
+        if (canViewInline) fa.append(viewButton(r), ' ');
+        const label = 'Download Full Text';
         const button = document.createElement('button');
         button.className = 'btn btn-primary';
         button.type = 'button';
@@ -209,6 +244,17 @@
           }
         });
         fa.append(button);
+      } else if (viewOnly) {
+        // Student researchers (other than the author) read the full text here
+        // but cannot download it.
+        if (canViewInline) {
+          fa.append(viewButton(r));
+          note.textContent = 'You can read this research here. Downloading is limited to CPRI staff, advisers, facilitators, and the author.';
+        } else {
+          note.textContent = 'The full text is a Word document, which cannot be read in the browser. Downloading is limited to CPRI staff, advisers, facilitators, and the author.';
+        }
+        note.style.marginTop = '10px';
+        fa.append(note);
       } else if (isLoggedOut) {
         const login = document.createElement('a');
         const next = location.pathname + location.search + location.hash;

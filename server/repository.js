@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { readUsers, requireAuth, requireAdmin } from './auth.js';
 import { all, get, run, insert, update, withTransaction } from './server/db/queries.js';
@@ -61,6 +62,24 @@ function isPrivileged(user) {
 
 function isPublicStatus(status) {
   return PUBLIC_STATUSES.has(String(status || '').toLowerCase());
+}
+
+// Who may DOWNLOAD a full text, as opposed to reading it on the page. The
+// features document limits downloads to CPRI staff, the student who uploaded
+// it, and advisers/facilitators; any other student researcher reads it in the
+// browser only (GET /:id/file/view) and the download route refuses them.
+const VIEW_ONLY_ROLES = new Set(['student_researcher']);
+
+function mayDownloadFile(user, owner) {
+  if (!user) return false;
+  if (owner || isPrivileged(user)) return true;
+  return !VIEW_ONLY_ROLES.has(user.role);
+}
+
+// Only a PDF can be shown in the browser's own viewer.
+function isPdfFile(meta) {
+  return Boolean(meta) && (meta.mime_type === 'application/pdf' ||
+    /\.pdf$/i.test(String(meta.original_name || meta.storage_path || '')));
 }
 
 function manuscriptMetadata(files) {
@@ -196,16 +215,21 @@ router.get('/:id', async (req, res) => {
     return res.status(404).json({ error: 'Record not found.' });
   }
   const access = canAccessFile(r.accessLevel, user);
-  const fileAvailable = Boolean(manuscriptMetadata(sub?.files));
+  const meta = manuscriptMetadata(sub?.files);
+  const fileAvailable = Boolean(meta);
   const record = { ...r, fileAvailable };
   delete record.sourceSubmissionId;
+  const downloadLevel = ['downloadable', 'viewable', 'restricted_institutional', 'restricted_staff'].includes(r.accessLevel);
   res.json({
     record,
     categoryLabel: CATEGORY_TYPES[r.category] || r.category,
     accessLabel: ACCESS_LEVELS[r.accessLevel] || r.accessLevel,
     canView: access,
-    canDownload: fileAvailable && access &&
-      ['downloadable', 'viewable', 'restricted_institutional', 'restricted_staff'].includes(r.accessLevel)
+    canDownload: fileAvailable && access && downloadLevel && mayDownloadFile(user, owner),
+    // Read on the page (a PDF in the browser's viewer), for everyone who may
+    // open the full text — including those who may not download it.
+    canViewInline: fileAvailable && access && downloadLevel && isPdfFile(meta),
+    viewOnly: fileAvailable && access && downloadLevel && !mayDownloadFile(user, owner)
   });
 });
 
@@ -247,6 +271,9 @@ router.get('/:id/file', async (req, res) => {
     return res.status(403).json({ error: 'This research item is not available for download.' });
   }
   if (!canAccessFile(r.accessLevel, user)) return res.status(403).json({ error: 'You do not have access to this file.' });
+  if (!mayDownloadFile(user, owner)) {
+    return res.status(403).json({ error: 'Your account can read this file on the page but not download it.', viewOnly: true });
+  }
 
   const meta = manuscriptMetadata(sub?.files);
   if (!meta) return res.status(404).json(MISSING_FILE_RESPONSE);
@@ -264,6 +291,47 @@ router.get('/:id/file', async (req, res) => {
   } catch (error) {
     console.error('[repository] signed file download failed:', error.message);
     return res.status(502).json({ ok: false, message: 'Could not prepare the file download. Please try again.' });
+  }
+});
+
+// ---------- Read the full text on the page ----------
+// Streams the PDF through this server (never a signed link that could be
+// shared) with `inline` disposition, so the browser shows it instead of
+// saving it. Same access rules as the download, minus the download right.
+router.get('/:id/file/view', async (req, res) => {
+  const user = await resolveUser(req);
+  if (!user) return res.status(401).json({ error: 'Login required to access files.' });
+  const r = await queries.get('SELECT * FROM repository WHERE id = ?', [req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Record not found.' });
+  const sub = r.sourceSubmissionId
+    ? await queries.get('SELECT id, submitterId, files FROM submissions WHERE id = ?', [r.sourceSubmissionId])
+    : null;
+  const owner = Boolean(sub && sub.submitterId === user.id);
+  if (!isPublicStatus(r.status) && !owner && !isPrivileged(user)) {
+    return res.status(403).json({ error: 'This research item is not available.' });
+  }
+  if (!canAccessFile(r.accessLevel, user)) return res.status(403).json({ error: 'You do not have access to this file.' });
+
+  const meta = manuscriptMetadata(sub?.files);
+  if (!meta) return res.status(404).json(MISSING_FILE_RESPONSE);
+  if (!isPdfFile(meta)) {
+    return res.status(415).json({ error: 'Only PDF files can be read in the browser.' });
+  }
+
+  try {
+    const response = await storage.downloadObject({ path: meta.storage_path });
+    if (!response || !response.body) return res.status(404).json(MISSING_FILE_RESPONSE);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    Readable.fromWeb(response.body).on('error', (err) => {
+      console.error('[repository] file view stream failed:', err.message);
+      if (!res.headersSent) res.status(502).end(); else res.end();
+    }).pipe(res);
+  } catch (error) {
+    console.error('[repository] file view failed:', error.message);
+    return res.status(502).json({ ok: false, message: 'Could not open the file. Please try again.' });
   }
 });
 

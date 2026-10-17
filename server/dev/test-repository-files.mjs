@@ -47,6 +47,11 @@ async function startApi({ records, submissions, users = {}, storage = {} }) {
         calls.push({ method: 'sign', options });
         if (storage.signError) throw storage.signError;
         return storage.signedUrl || 'https://project.example.test/signed-file';
+      },
+      async downloadObject(options) {
+        calls.push({ method: 'download', options });
+        if (storage.exists === false) return null;
+        return new Response(storage.body || '%PDF-1.4 full text');
       }
     }
   });
@@ -102,7 +107,9 @@ const users = {
   owner: { id: 'owner-id', role: 'student_researcher', status: 'active' },
   other: { id: 'other-id', role: 'student_researcher', status: 'active' },
   admin: { id: 'admin-id', role: 'admin', status: 'active' },
-  staff: { id: 'staff-id', role: 'cpri_staff', status: 'active' }
+  staff: { id: 'staff-id', role: 'cpri_staff', status: 'active' },
+  faculty: { id: 'faculty-id', role: 'faculty_researcher', status: 'active' },
+  adviser: { id: 'adviser-id', role: 'adviser', status: 'active' }
 };
 
 test('repository list only exposes approved/published records to visitors and other users', async () => {
@@ -223,7 +230,7 @@ test('repository download returns a signed URL for an authorized published file'
   });
 
   try {
-    const result = await requestJson(`${api.url}/published/file`, { user: 'other' });
+    const result = await requestJson(`${api.url}/published/file`, { user: 'faculty' });
     assert.deepEqual(result, {
       status: 200,
       body: { ok: true, url: 'https://project.example.test/signed-file' }
@@ -282,5 +289,73 @@ test('repository download reports legacy, missing, and failed storage objects sa
     });
   } finally {
     await errorApi.close();
+  }
+});
+
+test('a student researcher reads a published full text on the page but cannot download it', async () => {
+  const api = await startApi({
+    records: [record('published', 'published')],
+    submissions: [submission('submission-1', 'owner-id', 'submissions/p1/random.pdf')],
+    users
+  });
+
+  try {
+    const detail = await requestJson(`${api.url}/published`, { user: 'other' });
+    assert.equal(detail.status, 200);
+    assert.equal(detail.body.canDownload, false, 'no Download button for another student');
+    assert.equal(detail.body.viewOnly, true);
+    assert.equal(detail.body.canViewInline, true, 'a PDF can be read on the page');
+
+    const download = await requestJson(`${api.url}/published/file`, { user: 'other' });
+    assert.equal(download.status, 403, 'the server refuses the download, not just the button');
+    assert.equal(download.body.viewOnly, true);
+    assert.ok(!api.calls.some(call => call.method === 'sign'), 'no signed link is ever made for them');
+
+    const view = await fetch(`${api.url}/published/file/view`, { headers: { 'x-user': 'other' } });
+    assert.equal(view.status, 200);
+    assert.equal(view.headers.get('content-type'), 'application/pdf');
+    assert.equal(view.headers.get('content-disposition'), 'inline');
+    assert.match(view.headers.get('cache-control'), /no-store/);
+    assert.equal(await view.text(), '%PDF-1.4 full text');
+
+    assert.equal((await fetch(`${api.url}/published/file/view`)).status, 401, 'visitors must log in');
+  } finally {
+    await api.close();
+  }
+});
+
+test('the author, CPRI staff, advisers and faculty may still download', async () => {
+  const api = await startApi({
+    records: [record('published', 'published')],
+    submissions: [submission('submission-1', 'owner-id', 'submissions/p1/random.pdf')],
+    users
+  });
+
+  try {
+    for (const who of ['owner', 'staff', 'admin', 'adviser', 'faculty']) {
+      const detail = await requestJson(`${api.url}/published`, { user: who });
+      assert.equal(detail.body.canDownload, true, `${who} sees Download`);
+      assert.equal(detail.body.viewOnly, false);
+      const download = await requestJson(`${api.url}/published/file`, { user: who });
+      assert.equal(download.status, 200, `${who} downloads`);
+    }
+  } finally {
+    await api.close();
+  }
+});
+
+test('a Word full text cannot be read in the browser', async () => {
+  const word = submission('submission-1', 'owner-id', 'submissions/p1/random.docx');
+  word.files.manuscript.original_name = 'Paper.docx';
+  word.files.manuscript.mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const api = await startApi({ records: [record('published', 'published')], submissions: [word], users });
+
+  try {
+    const detail = await requestJson(`${api.url}/published`, { user: 'other' });
+    assert.equal(detail.body.canViewInline, false);
+    assert.equal(detail.body.viewOnly, true);
+    assert.equal((await requestJson(`${api.url}/published/file/view`, { user: 'other' })).status, 415);
+  } finally {
+    await api.close();
   }
 });
