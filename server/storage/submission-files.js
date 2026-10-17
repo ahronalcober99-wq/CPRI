@@ -55,7 +55,10 @@ export function createSubmissionFileStore({ storage = supabaseStorage, logger = 
         files[field] = {
           storage_path: storagePath,
           original_name: file.originalname,
-          mime_type: file.mimetype
+          mime_type: file.mimetype,
+          // Recorded so the File Manager can show folder sizes and dates.
+          size: file.size || (file.buffer ? file.buffer.length : 0),
+          uploaded_at: new Date().toISOString()
         };
       }
 
@@ -77,7 +80,10 @@ export function createSubmissionFileStore({ storage = supabaseStorage, logger = 
           id: randomUUID(),
           storage_path: storagePath,
           original_name: file.originalname,
-          mime_type: file.mimetype
+          mime_type: file.mimetype,
+          // Recorded so the File Manager can show folder sizes and dates.
+          size: file.size || (file.buffer ? file.buffer.length : 0),
+          uploaded_at: new Date().toISOString()
         });
       }
     } catch (error) {

@@ -8,6 +8,47 @@
   <meta name="theme-color" content="#240000">
   <link rel="stylesheet" href="assets/css/styles.css">
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+  <style>
+    /* Folder view: one card per researcher. Theme tokens only, so it follows
+       light and dark mode like the rest of the admin console. */
+    .fm-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+    .fm-head h3 { margin: 0; display: flex; gap: 8px; align-items: center; }
+    .fm-totals { color: var(--cpri-muted); font-size: .85rem; }
+    .fm-filters { display: grid; grid-template-columns: 1fr 180px 180px; gap: 10px; margin-bottom: 16px; }
+    .fm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+    .fm-folder { text-align: left; width: 100%; cursor: pointer; background: var(--cpri-card); color: var(--cpri-text);
+      border: 1px solid var(--cpri-border); border-radius: 12px; padding: 16px 16px 14px; font: inherit;
+      transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease; }
+    .fm-folder:hover, .fm-folder:focus-visible { border-color: rgba(128,0,0,.35); box-shadow: var(--shadow-sm); transform: translateY(-2px); outline: none; }
+    .fm-folder.dashed { border-style: dashed; }
+    .fm-top { display: flex; gap: 12px; align-items: flex-start; }
+    .fm-top > i { font-size: 1.5rem; color: var(--cpri-secondary, #800000); line-height: 1; margin-top: 2px; }
+    .fm-folder.dashed .fm-top > i { color: var(--cpri-muted); }
+    .fm-who { flex: 1; min-width: 0; }
+    .fm-name { font-weight: 700; font-family: var(--font-head); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .fm-id { font-size: .8rem; color: var(--cpri-muted); }
+    .fm-badge { font-size: .72rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+    .fm-badge.student { background: rgba(59,130,246,.16); color: #2563eb; }
+    .fm-badge.faculty { background: rgba(16,185,129,.16); color: #0b7a56; }
+    .fm-badge.presenter { background: rgba(245,158,11,.18); color: #b45309; }
+    .fm-badge.nonteaching { background: rgba(139,92,246,.16); color: #6d28d9; }
+    .fm-badge.other { background: rgba(0,0,0,.07); color: var(--cpri-muted); }
+    [data-theme="dark"] .fm-badge.student { color: #93c5fd; }
+    [data-theme="dark"] .fm-badge.faculty { color: #6ee7b7; }
+    [data-theme="dark"] .fm-badge.presenter { color: #fbbf24; }
+    [data-theme="dark"] .fm-badge.nonteaching { color: #c4b5fd; }
+    .fm-stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; font-size: .85rem; }
+    .fm-last { margin-top: 4px; font-size: .8rem; color: var(--cpri-muted); }
+    .fm-review { margin-top: 4px; font-size: .8rem; color: #dc2626; }
+    .fm-back { margin-bottom: 14px; }
+    .fm-sub { border: 1px solid var(--cpri-border); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; }
+    .fm-sub-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+    .fm-sub-head b { font-family: var(--font-head); }
+    .fm-files { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .fm-files td, .fm-files th { padding: 8px 6px; border-bottom: 1px solid var(--cpri-border); text-align: left; vertical-align: middle; }
+    .fm-files th { color: var(--cpri-muted); font-weight: 600; font-size: .78rem; }
+    @media (max-width: 720px) { .fm-filters { grid-template-columns: 1fr; } }
+  </style>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -18,7 +59,7 @@
       <div class="container-xl">
         <span class="badge" style="background:rgba(255,255,255,.16);color:#fff;">Document Management</span>
         <h1>File Manager</h1>
-        <p>Browse, upload, and manage documents and research files.</p>
+        <p>Research files grouped by researcher, plus other uploaded documents.</p>
       </div>
     </section>
 
@@ -55,18 +96,42 @@
 
           <!-- Main -->
           <div class="admin-main">
-            <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;">
-              <div>
-                <h2>File Manager</h2>
-                <small style="color:var(--cpri-muted)">Upload and manage documents</small>
+            <div class="admin-card" id="fm-card">
+              <!-- Folder grid -->
+              <div id="fm-list-view">
+                <div class="fm-head">
+                  <h3><i class="bi bi-folder"></i> File Manager</h3>
+                  <span class="fm-totals" id="fm-totals">Loading…</span>
+                </div>
+                <div class="fm-filters">
+                  <input type="search" id="fm-search" placeholder="Search user, title, or file name" aria-label="Search user, title, or file name">
+                  <select id="fm-role" aria-label="Role"><option value="">All roles</option></select>
+                  <select id="fm-stage" aria-label="Stage">
+                    <option value="all">All stages</option>
+                    <option value="initial">Initial</option>
+                    <option value="final">Final</option>
+                  </select>
+                </div>
+                <div class="fm-grid" id="fm-grid"></div>
+                <p class="form-note" id="fm-empty" style="display:none;margin:8px 0 0;">No folders match your search.</p>
+              </div>
+
+              <!-- One folder's contents -->
+              <div id="fm-folder-view" style="display:none;">
+                <button type="button" class="btn btn-outline-dark btn-sm fm-back" id="fm-back"><i class="bi bi-arrow-left"></i> All folders</button>
+                <div class="fm-head">
+                  <h3 id="fm-folder-title"><i class="bi bi-folder2-open"></i> <span></span></h3>
+                  <span class="fm-totals" id="fm-folder-totals"></span>
+                </div>
+                <div id="fm-folder-body"></div>
               </div>
             </div>
 
             <div class="admin-card">
-              <h3><i class="bi bi-upload"></i> Upload File</h3>
+              <h3><i class="bi bi-upload"></i> Upload to Other documents</h3>
               <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end;">
                 <div class="form-group" style="margin:0;flex:1;min-width:200px;">
-                  <label>Select file</label>
+                  <label for="file-input">Select file</label>
                   <input type="file" id="file-input" multiple>
                 </div>
                 <button class="btn btn-primary" id="upload-btn"><i class="bi bi-cloud-upload"></i> Upload</button>
@@ -74,13 +139,6 @@
               <div id="upload-progress" style="margin-top:10px;display:none;">
                 <div class="gc-bar"><span id="progress-bar" style="width:0%;background:var(--grad-brand);"></span></div>
                 <small id="progress-text" class="form-note">Uploading…</small>
-              </div>
-            </div>
-
-            <div class="admin-card">
-              <h3><i class="bi bi-files"></i> Uploaded Files</h3>
-              <div id="file-list">
-                <p class="form-note">Loading files…</p>
               </div>
             </div>
           </div>
@@ -92,146 +150,248 @@
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
   <script>
-    const message = document.getElementById('message');
+    (function () {
+      'use strict';
 
-    function showMsg(type, text) {
-      message.className = 'form-message ' + type;
-      message.textContent = text;
-    }
+      const el = (id) => document.getElementById(id);
+      const message = el('message');
 
-    function escapeHtml(text) {
-      if (!text) return '—';
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
+      // Research files (GET /api/admin/files/folders) and every other uploaded
+      // document (GET /api/admin/files: ethics, publications, events,
+      // innovation and the files uploaded here).
+      let data = null;
+      let otherFiles = [];
 
-    function formatFileSize(bytes) {
-      if (bytes === 0) return '0 B';
-      const k = 1024;
-      const sizes = ['B', 'KB', 'MB', 'GB'];
-      const i = Math.floor(Math.log(bytes) / Math.log(k));
-      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    }
-
-    function formatDate(ts) {
-      return new Date(ts).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-    }
-
-    function getFileIcon(name) {
-      const ext = name.split('.').pop().toLowerCase();
-      const icons = {
-        pdf: 'bi-filetype-pdf',
-        doc: 'bi-filetype-doc',
-        docx: 'bi-filetype-docx',
-        xls: 'bi-filetype-xls',
-        xlsx: 'bi-filetype-xlsx',
-        ppt: 'bi-filetype-ppt',
-        pptx: 'bi-filetype-pptx',
-        jpg: 'bi-filetype-jpg',
-        jpeg: 'bi-filetype-jpg',
-        png: 'bi-filetype-png',
-        gif: 'bi-filetype-gif',
-        svg: 'bi-filetype-svg',
-        txt: 'bi-filetype-txt',
-        csv: 'bi-filetype-csv',
-        zip: 'bi-filetype-zip',
-        json: 'bi-filetype-json',
-        html: 'bi-filetype-html',
-        js: 'bi-filetype-js',
-        css: 'bi-filetype-css'
-      };
-      return icons[ext] || 'bi-file-earmark';
-    }
-
-    async function loadFiles() {
-      const res = await fetch('/api/admin/files');
-      const el = document.getElementById('file-list');
-      if (!res.ok) {
-        el.innerHTML = '<p class="form-note">Failed to load files.</p>';
-        return;
-      }
-      const data = await res.json();
-
-      if (!data.files || !data.files.length) {
-        el.innerHTML = '<p class="form-note">No files uploaded yet.</p>';
-        return;
+      function showMsg(type, text) {
+        message.className = 'form-message ' + type;
+        message.textContent = text;
       }
 
-      el.innerHTML = `
-        <div style="overflow-x:auto;">
-          <table>
-            <thead>
-              <tr>
-                <th></th>
-                <th>Name</th>
-                <th>Size</th>
-                <th>Type</th>
-                <th>Uploaded</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${data.files.map(f => `
-                <tr>
-                  <td style="font-size:1.3rem;color:var(--cpri-secondary);"><i class="bi ${getFileIcon(f.name)}"></i></td>
-                  <td><b style="font-family:var(--font-head);color:var(--cpri-text)">${escapeHtml(f.name)}</b></td>
-                  <td>${formatFileSize(f.size)}</td>
-                  <td><span class="tag">${escapeHtml((f.type || f.name.split('.').pop() || 'unknown').toUpperCase())}</span></td>
-                  <td style="white-space:nowrap;">${formatDate(f.uploadedAt || f.mtime || Date.now())}</td>
-                  <td>
-                    <a class="btn btn-soft btn-sm" href="${escapeHtml(f.path)}" target="_blank" download="${escapeHtml(f.name)}"><i class="bi bi-download"></i> Download</a>
-                    <button class="btn btn-outline btn-sm delete-file" data-path="${escapeHtml(f.path || f.name)}" data-name="${escapeHtml(f.name)}" aria-label="Delete ${escapeHtml(f.name)}" title="Delete ${escapeHtml(f.name)}" style="border-color:#b23b32;color:#b23b32;margin-left:4px;"><i class="bi bi-trash"></i></button>
-                  </td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>`;
+      function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[ch]);
+      }
 
-      el.querySelectorAll('.delete-file').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          const fileName = btn.dataset.name || btn.dataset.path.split('/').pop() || 'this file';
-          // Native confirm() is silently blocked in sandboxed iframes (e.g.
-          // the Freebuff preview), so confirm via the shared in-page dialog
-          // that main.js injects site-wide (fallback to native if absent).
-          const ask = window.confirmDialog || ((msg) => Promise.resolve(window.confirm(msg)));
-          const ok = await ask(`Delete "${fileName}"? This cannot be undone.`, 'Delete');
-          if (!ok) return;
-          const filePath = btn.dataset.path;
-          const res = await fetch('/api/admin/files/delete', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: filePath })
-          });
-          const out = await res.json();
-          if (!res.ok) return showMsg('error', out.error || 'Failed to delete file.');
-          showMsg('success', 'File deleted.');
-          loadFiles();
-        });
+      function size(bytes) {
+        const n = Number(bytes) || 0;
+        if (n === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.min(units.length - 1, Math.floor(Math.log(n) / Math.log(1024)));
+        return (n / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+      }
+
+      function day(value) {
+        const d = new Date(value);
+        return isNaN(d) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+
+      const plural = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
+
+      function badgeClass(role) {
+        return {
+          student_researcher: 'student', faculty_researcher: 'faculty',
+          presenter: 'presenter', non_teaching_researcher: 'nonteaching'
+        }[role] || 'other';
+      }
+
+      // ---- Folder grid ----
+      function folderMatches(folder, q) {
+        if (!q) return true;
+        const hay = [folder.name, folder.displayId, folder.roleLabel]
+          .concat(folder.submissions.flatMap(s => [s.title].concat(s.files.map(f => f.name))));
+        return hay.some(v => String(v || '').toLowerCase().includes(q));
+      }
+
+      function renderGrid() {
+        const q = el('fm-search').value.trim().toLowerCase();
+        const role = el('fm-role').value;
+        const folders = data.folders.filter(f => (!role || f.role === role) && folderMatches(f, q));
+
+        const cards = folders.map((f, i) => `
+          <button type="button" class="fm-folder" data-folder="${i}" data-key="${esc(f.key)}">
+            <div class="fm-top">
+              <i class="bi bi-folder"></i>
+              <div class="fm-who"><div class="fm-name">${esc(f.name)}</div><div class="fm-id">ID ${esc(f.displayId)}</div></div>
+              <span class="fm-badge ${badgeClass(f.role)}">${esc(f.roleLabel)}</span>
+            </div>
+            <div class="fm-stats"><span>${plural(f.submissionCount, 'submission')}</span><span>${plural(f.fileCount, 'file')}</span><span>${size(f.bytes)}</span></div>
+            <div class="fm-last">Last upload ${esc(day(f.lastUpload))}</div>
+          </button>`);
+
+        // Unassigned and Other documents are always reachable unless a search
+        // or role filter is narrowing the list to people.
+        if (!role) {
+          const u = data.unassigned;
+          if (!q || u.files.some(f => f.name.toLowerCase().includes(q)) || 'unassigned'.includes(q)) {
+            cards.push(`
+              <button type="button" class="fm-folder dashed" data-special="unassigned">
+                <div class="fm-top"><i class="bi bi-folder-x"></i>
+                  <div class="fm-who"><div class="fm-name">Unassigned</div><div class="fm-id">Old files with no matching submission</div></div>
+                </div>
+                <div class="fm-stats"><span>${plural(u.fileCount, 'file')}</span><span>${size(u.bytes)}</span></div>
+                ${u.fileCount ? '<div class="fm-review">Needs admin review</div>' : '<div class="fm-last">Nothing to review</div>'}
+              </button>`);
+          }
+          const otherBytes = otherFiles.reduce((n, f) => n + (Number(f.size) || 0), 0);
+          if (!q || otherFiles.some(f => String(f.name).toLowerCase().includes(q)) || 'other documents'.includes(q)) {
+            cards.push(`
+              <button type="button" class="fm-folder dashed" data-special="other">
+                <div class="fm-top"><i class="bi bi-folder2"></i>
+                  <div class="fm-who"><div class="fm-name">Other documents</div><div class="fm-id">Ethics, publications, events, innovation and admin uploads</div></div>
+                </div>
+                <div class="fm-stats"><span>${plural(otherFiles.length, 'file')}</span><span>${size(otherBytes)}</span></div>
+              </button>`);
+          }
+        }
+
+        el('fm-grid').innerHTML = cards.join('');
+        el('fm-empty').style.display = cards.length ? 'none' : '';
+        const t = data.totals;
+        el('fm-totals').textContent = `${plural(t.researchers, 'researcher')} · ${plural(t.submissions, 'submission')} · ${plural(t.files, 'file')}`;
+      }
+
+      // ---- One folder ----
+      function openView(title, totals, bodyHtml) {
+        el('fm-folder-title').querySelector('span').textContent = title;
+        el('fm-folder-totals').textContent = totals;
+        el('fm-folder-body').innerHTML = bodyHtml;
+        el('fm-list-view').style.display = 'none';
+        el('fm-folder-view').style.display = '';
+        el('fm-card').scrollIntoView({ block: 'start' });
+      }
+
+      function openFolder(folder) {
+        const body = folder.submissions.map(s => `
+          <div class="fm-sub">
+            <div class="fm-sub-head">
+              <div><b>${esc(s.title)}</b> <span class="form-note">· ${esc(s.stage === 'final' ? 'Final' : 'Initial')} · ${esc(s.statusLabel || s.status)} · ${s.source === 'module' ? 'Research Submission' : 'Classic form'}</span></div>
+              <a class="btn btn-outline-dark btn-sm" href="${esc(s.detailUrl)}">Open submission</a>
+            </div>
+            ${s.files.length ? `<table class="fm-files">
+              <thead><tr><th>Document</th><th>File</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
+              <tbody>${s.files.map(f => `<tr>
+                <td>${esc(f.label)}${f.version ? ` <span class="form-note">v${esc(f.version)}</span>` : ''}</td>
+                <td>${esc(f.name)}</td>
+                <td>${size(f.size)}</td>
+                <td style="white-space:nowrap;">${esc(day(f.uploadedAt))}</td>
+                <td><a class="btn btn-soft btn-sm" href="${esc(f.url)}"><i class="bi bi-download"></i> Download</a></td>
+              </tr>`).join('')}</tbody></table>` : '<p class="form-note" style="margin:0;">No files on this submission.</p>'}
+          </div>`).join('');
+        openView(folder.name, `${folder.roleLabel} · ${plural(folder.submissionCount, 'submission')} · ${plural(folder.fileCount, 'file')} · ${size(folder.bytes)}`, body);
+      }
+
+      function openUnassigned() {
+        const u = data.unassigned;
+        const body = u.files.length
+          ? `<p class="form-note">These files belong to no existing submission — usually the leftovers of a deleted record. Review them before removing anything from storage.</p>
+             <table class="fm-files"><thead><tr><th>File</th><th>Kind</th><th>Where</th><th>Size</th><th>Date</th></tr></thead>
+             <tbody>${u.files.map(f => `<tr><td>${esc(f.name)}</td><td>${esc(f.label)}</td><td>${esc(f.location)}</td><td>${size(f.size)}</td><td style="white-space:nowrap;">${esc(day(f.uploadedAt))}</td></tr>`).join('')}</tbody></table>`
+          : '<p class="form-note">No unassigned files. Every research file belongs to a submission.</p>';
+        openView('Unassigned', `${plural(u.fileCount, 'file')} · ${size(u.bytes)}`, body);
+      }
+
+      function openOther() {
+        const body = otherFiles.length
+          ? `<table class="fm-files"><thead><tr><th>File</th><th>Module</th><th>Record</th><th>Size</th><th>Uploaded</th><th></th></tr></thead>
+             <tbody>${otherFiles.map(f => `<tr>
+               <td>${esc(f.name)}</td><td>${esc(f.module || '—')}</td><td>${esc(f.recordTitle || '—')}</td>
+               <td>${size(f.size)}</td><td style="white-space:nowrap;">${esc(day(f.uploadedAt || f.mtime))}</td>
+               <td style="white-space:nowrap;">
+                 <a class="btn btn-soft btn-sm" href="${esc(f.path)}" target="_blank" rel="noopener" download="${esc(f.name)}"><i class="bi bi-download"></i></a>
+                 <button type="button" class="btn btn-outline btn-sm delete-file" data-path="${esc(f.path || f.name)}" data-name="${esc(f.name)}" aria-label="Delete ${esc(f.name)}" title="Delete ${esc(f.name)}" style="border-color:#b23b32;color:#b23b32;margin-left:4px;"><i class="bi bi-trash"></i></button>
+               </td></tr>`).join('')}</tbody></table>`
+          : '<p class="form-note">No other documents uploaded yet.</p>';
+        openView('Other documents', plural(otherFiles.length, 'file'), body);
+      }
+
+      el('fm-grid').addEventListener('click', (e) => {
+        const card = e.target.closest('.fm-folder');
+        if (!card) return;
+        if (card.dataset.special === 'unassigned') return openUnassigned();
+        if (card.dataset.special === 'other') return openOther();
+        const folder = data.folders.find(f => f.key === card.dataset.key);
+        if (folder) openFolder(folder);
       });
-    }
 
-    document.getElementById('upload-btn').addEventListener('click', async () => {
-      const input = document.getElementById('file-input');
-      if (!input.files.length) {
-        showMsg('error', 'Please select at least one file to upload.');
-        return;
+      el('fm-back').addEventListener('click', () => {
+        el('fm-folder-view').style.display = 'none';
+        el('fm-list-view').style.display = '';
+      });
+
+      // Delete: Other documents only (uploaded files under /assets/uploads).
+      // Research files are part of their submission's record and version
+      // history, so they are never deleted from here.
+      el('fm-folder-body').addEventListener('click', async (e) => {
+        const btn = e.target.closest('.delete-file');
+        if (!btn) return;
+        const ask = window.confirmDialog || ((msg) => Promise.resolve(window.confirm(msg)));
+        if (!await ask(`Delete "${btn.dataset.name}"? This cannot be undone.`, 'Delete')) return;
+        const res = await fetch('/api/admin/files/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: btn.dataset.path })
+        });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) return showMsg('error', out.error || 'Failed to delete file.');
+        showMsg('success', 'File deleted.');
+        await loadOther();
+        openOther();
+        renderGrid();
+      });
+
+      // ---- Loading ----
+      async function loadFolders() {
+        const stage = el('fm-stage').value;
+        const res = await fetch('/api/admin/files/folders?stage=' + encodeURIComponent(stage));
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'Failed to load research files.');
+        data = out;
+        const roles = [...new Map(data.folders.map(f => [f.role, f.roleLabel])).entries()].filter(([r]) => r);
+        const current = el('fm-role').value;
+        el('fm-role').innerHTML = '<option value="">All roles</option>' +
+          roles.map(([r, label]) => `<option value="${esc(r)}">${esc(label)}</option>`).join('');
+        if (roles.some(([r]) => r === current)) el('fm-role').value = current;
       }
 
-      const formData = new FormData();
-      for (const file of input.files) {
-        formData.append('files', file);
+      async function loadOther() {
+        const res = await fetch('/api/admin/files');
+        const out = await res.json().catch(() => ({}));
+        // Submission files are in the researcher folders already.
+        otherFiles = res.ok ? (out.files || []).filter(f => !/^Submission/.test(f.module || '')) : [];
       }
 
-      const progress = document.getElementById('upload-progress');
-      const progressBar = document.getElementById('progress-bar');
-      const progressText = document.getElementById('progress-text');
-      progress.style.display = 'block';
-      progressBar.style.width = '0%';
-      progressText.textContent = 'Uploading…';
+      async function reload() {
+        try {
+          await Promise.all([loadFolders(), loadOther()]);
+          renderGrid();
+        } catch (err) {
+          el('fm-totals').textContent = '';
+          el('fm-grid').innerHTML = `<p class="form-note">${esc(err.message)}</p>`;
+        }
+      }
 
-      try {
+      el('fm-search').addEventListener('input', () => data && renderGrid());
+      el('fm-role').addEventListener('change', () => data && renderGrid());
+      el('fm-stage').addEventListener('change', reload);
+
+      // ---- Upload (Other documents) ----
+      el('upload-btn').addEventListener('click', () => {
+        const input = el('file-input');
+        if (!input.files.length) {
+          showMsg('error', 'Please select at least one file to upload.');
+          return;
+        }
+        const formData = new FormData();
+        for (const file of input.files) formData.append('files', file);
+
+        const progress = el('upload-progress');
+        const progressBar = el('progress-bar');
+        const progressText = el('progress-text');
+        progress.style.display = 'block';
+        progressBar.style.width = '0%';
+        progressText.textContent = 'Uploading…';
+
         const xhr = new XMLHttpRequest();
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) {
@@ -240,49 +400,42 @@
             progressText.textContent = `Uploading… ${pct}%`;
           }
         };
-
         xhr.onload = () => {
           if (xhr.status === 200 || xhr.status === 201) {
             progressBar.style.width = '100%';
             progressText.textContent = 'Upload complete!';
-            showMsg('success', 'Files uploaded successfully.');
+            showMsg('success', 'Files uploaded to Other documents.');
             input.value = '';
             setTimeout(() => { progress.style.display = 'none'; }, 1500);
-            loadFiles();
+            reload();
           } else {
             progressText.textContent = 'Upload failed.';
             showMsg('error', 'Failed to upload files.');
           }
         };
-
         xhr.onerror = () => {
           progressText.textContent = 'Upload failed.';
           showMsg('error', 'Network error during upload.');
         };
-
         // apiUrl() points the upload at the configured API origin, and
         // withCredentials keeps the session cookie attached when the front end
-        // is hosted on a different domain (GitHub Pages).
+        // is hosted on a different domain.
         xhr.open('POST', CPRI.apiUrl('/api/admin/files/upload'), true);
         xhr.withCredentials = true;
         xhr.send(formData);
-      } catch (e) {
-        progressText.textContent = 'Upload failed.';
-        showMsg('error', 'An error occurred.');
-      }
-    });
+      });
 
-    (async () => {
-      const meRes = await fetch('/api/auth/me');
-      if (!meRes.ok) { document.getElementById('access-denied').style.display = 'block'; return; }
-      const { user } = await meRes.json();
-      if (!['admin', 'cpri_staff'].includes(user.role)) {
-        document.getElementById('access-denied').style.display = 'block';
-        return;
-      }
-      loadFiles();
+      (async () => {
+        const meRes = await fetch('/api/auth/me');
+        if (!meRes.ok) { el('access-denied').style.display = 'block'; return; }
+        const { user } = await meRes.json();
+        if (!['admin', 'cpri_staff'].includes(user.role)) {
+          el('access-denied').style.display = 'block';
+          return;
+        }
+        reload();
+      })();
     })();
   </script>
 </body>
 </html>
-

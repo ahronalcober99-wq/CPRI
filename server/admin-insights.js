@@ -9,6 +9,8 @@ import { requireAdmin, readUsers } from './auth.js';
 import { all, get, update } from './server/db/queries.js';
 import { addLog } from './audit.js';
 import { listAllSubmissions } from './lib/submission-index.js';
+import { buildFileFolders } from './lib/file-folders.js';
+import { RESEARCH_SUBMISSIONS_UPLOAD_DIR } from './research-submissions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -331,6 +333,59 @@ async function collectUploadsFiles() {
   await walkDir(FILE_UPLOAD_DIR, '/assets/uploads/files', out);
   return out;
 }
+
+// ============================================================
+// FILE MANAGER — research files grouped into one folder per researcher
+// (lib/file-folders.js), from both submission forms, plus an "Unassigned"
+// folder for files whose submission no longer exists.
+// ============================================================
+const LEGACY_SUBMISSION_UPLOADS = join(PUBLIC_UPLOADS, 'submissions');
+const MODULE_SUBMISSION_UPLOADS = join(RESEARCH_SUBMISSIONS_UPLOAD_DIR, 'research-submissions');
+
+// Every file under <root>/<id>/… whose <id> is not a known submission.
+async function orphanUploadFiles(root, knownIds, label) {
+  const out = [];
+  let dirs = [];
+  try { dirs = await fs.readdir(root, { withFileTypes: true }); } catch { return out; }
+  for (const dir of dirs) {
+    if (!dir.isDirectory() || knownIds.has(dir.name)) continue;
+    const stack = [join(root, dir.name)];
+    while (stack.length) {
+      const current = stack.pop();
+      let entries = [];
+      try { entries = await fs.readdir(current, { withFileTypes: true }); } catch { continue; }
+      for (const entry of entries) {
+        const full = join(current, entry.name);
+        if (entry.isDirectory()) { stack.push(full); continue; }
+        const stat = await fs.stat(full).catch(() => null);
+        out.push({ name: entry.name, size: stat ? stat.size : 0, mtime: stat ? stat.mtime : null, location: `${label}/${dir.name}` });
+      }
+    }
+  }
+  return out;
+}
+
+router.get('/files/folders', requireAdmin, async (req, res) => {
+  try {
+    const stage = ['initial', 'final'].includes(String(req.query.stage)) ? String(req.query.stage) : 'all';
+    const safe = (promise) => promise.catch(() => []);
+    const [users, moduleRows, moduleFiles, classicRows] = await Promise.all([
+      all('SELECT id, username, email, fullName, role, studentId FROM users')
+        .catch(() => safe(all('SELECT id, username, email, fullName, role FROM users'))),
+      safe(all('SELECT id, owner_id, owner_name, owner_role, stage, title, status, created_at FROM research_submissions')),
+      safe(all('SELECT id, submission_id, slot_key, original_name, size, version, uploaded_at FROM research_submission_files')),
+      safe(all('SELECT id, submitterId, submitterName, title, status, files, additionalDocs, createdAt, updatedAt FROM submissions'))
+    ]);
+    const orphanDiskFiles = [
+      ...await orphanUploadFiles(MODULE_SUBMISSION_UPLOADS, new Set(moduleRows.map(r => r.id)), 'server/data/research-submissions'),
+      ...await orphanUploadFiles(LEGACY_SUBMISSION_UPLOADS, new Set(classicRows.map(r => r.id)), 'assets/uploads/submissions')
+    ];
+    res.json(buildFileFolders({ users, moduleRows, moduleFiles, classicRows, orphanDiskFiles, stage }));
+  } catch (err) {
+    console.error('[admin-insights] file folders error:', err);
+    res.status(500).json({ error: 'Failed to list research files.' });
+  }
+});
 
 router.get('/files', requireAdmin, async (req, res) => {
   try {
