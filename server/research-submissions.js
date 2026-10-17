@@ -44,6 +44,9 @@ import {
 import { notify as defaultNotify } from './notifications.js';
 import { sendNotificationEmail as defaultSendEmail } from './lib/mail.js';
 import { createResearchStorage } from './lib/research-storage.js';
+import { fromModuleSubmission, syncSubmissionVisibility } from './lib/repository-publishing.js';
+import { profileOf, recommendationsFor } from './lib/recommendations.js';
+import { CATEGORY_TYPES } from './repository.js';
 // The record shape every reader of a submission shares, plus the status
 // labels. A monitoring dashboard reads BOTH stores, so a classic row and a
 // module row have to come back identical — see lib/submission-records.js.
@@ -51,7 +54,8 @@ import {
   statusLabelFor,
   slotLabelFor,
   STAGE_LABELS,
-  listLegacySubmissions
+  listLegacySubmissions,
+  mergeSubmissionRecords
 } from './lib/submission-records.js';
 
 // The caller's own user row, resolved from the session only. The router never
@@ -764,11 +768,6 @@ function moduleRecord(row, { user, files = [], comments = [] }) {
   };
 }
 
-const recordTime = (value) => {
-  const time = new Date(value == null ? 0 : value).getTime();
-  return Number.isNaN(time) ? 0 : time;
-};
-
 router.get('/', requireAuth, async (req, res) => {
   const user = await callerUser(req);
   if (!user) return res.status(401).json({ error: 'Not authenticated.' });
@@ -816,30 +815,12 @@ router.get('/', requireAuth, async (req, res) => {
 
   // The classic store, for a monitoring role: this is what makes the dashboard's
   // count agree with the admin overview, which counts that table.
-  if (isMonitor) {
-    const byId = new Map(submissions.map(s => [s.id, s]));
-    const legacy = await listLegacySubmissions({ all, isOwner: ref => isOwnerOf(user, ref) });
-    for (const record of legacy) {
-      if (!record.id) continue;
-      const existing = byId.get(record.id);
-      if (!existing) {
-        byId.set(record.id, record);
-        continue;
-      }
-      // A migrated record keeps its id in both tables, so one record can be
-      // stored twice — and the copies can drift (a status moved on the classic
-      // page after the copy was taken). One card per record: `sources` names
-      // every store that holds it, and the copy that was updated last wins,
-      // so the dashboard never shows a status the record has moved past.
-      const sources = [...new Set([...(existing.sources || [existing.source]), record.source])];
-      const newest = recordTime(record.updated_at) > recordTime(existing.updated_at) ? record : existing;
-      newest.sources = sources;
-      byId.set(record.id, newest);
-    }
-    submissions = [...byId.values()];
-  }
-
-  submissions.sort((a, b) => recordTime(b.created_at) - recordTime(a.created_at));
+  // One card per record even when a migrated record lives in both stores (see
+  // mergeSubmissionRecords) — the admin dashboard merges the same way.
+  const legacy = isMonitor
+    ? await listLegacySubmissions({ all, isOwner: ref => isOwnerOf(user, ref) })
+    : [];
+  submissions = mergeSubmissionRecords(submissions, legacy);
 
   res.json({
     count: submissions.length,
@@ -926,6 +907,32 @@ router.get('/:id', requireAuth, async (req, res) => {
       statusHistory
     }
   });
+});
+
+// ---------------------------------------------------------------------------
+//  GET /api/research-submissions/:id/recommendations
+//  Related research from the PUBLIC repository only (never other people's
+//  submissions), ranked by shared keywords, then category, then department.
+// ---------------------------------------------------------------------------
+router.get('/:id/recommendations', requireAuth, async (req, res) => {
+  const user = await callerUser(req);
+  if (!user) return res.status(401).json({ error: 'Not authenticated.' });
+
+  const sub = await get('SELECT * FROM research_submissions WHERE id = ?', [req.params.id]);
+  if (!sub) return res.status(404).json({ error: 'Submission not found.' });
+  if (!canReadSubmission(user, sub)) return res.status(403).json({ error: 'You don\'t have access to this submission.' });
+
+  const recommendations = await recommendationsFor({
+    all,
+    profile: profileOf({
+      keywords: sub.keywords,
+      categories: [sub.research_type, sub.category],
+      department: sub.program
+    }),
+    sourceId: sub.id,
+    categoryLabel: c => CATEGORY_TYPES[c]
+  });
+  res.json({ recommendations });
 });
 
 // ---------------------------------------------------------------------------
@@ -1298,8 +1305,12 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
   // Validate transition. Faculty initial work goes straight to ethics review,
   // so the allowed table depends on the researcher's role as well as the stage.
   const allowed = validTransitionsFor(sub.stage, sub.owner_role);
-  // If it's not in allowed, reject.
-  if (!allowed[targetStatus]) {
+  // The target must be a status of this workflow. (This used to test
+  // `allowed[targetStatus]`, i.e. whether the target is a state you can move
+  // ON from — and nothing moves on from "rejected", so no submission could
+  // ever be rejected here.)
+  const stageStatuses = sub.stage === 'initial' ? INITIAL_STATUSES : FINAL_STATUSES;
+  if (!stageStatuses.some(s => s.value === targetStatus)) {
     return res.status(400).json({ error: `Cannot move to "${targetStatus}".` });
   }
   // "toStatus" must be achievable from current status.
@@ -1351,6 +1362,8 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
 
   console.log(`[research-submissions] status ${sub.id}: ${fromStatus} -> ${targetStatus} by ${user.fullName || user.username}`);
 
+  const visibility = await syncPublicPages(sub, targetStatus, now);
+
   // Tell the owner, unless they made the change themselves (handing in a draft).
   if (sub.owner_id !== user.id) {
     await notifyPerson(sub.owner_id, {
@@ -1364,9 +1377,35 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
   const updated = await get('SELECT * FROM research_submissions WHERE id = ?', [sub.id]);
   res.json({
     message: `Status updated to "${statusLabelFor(targetStatus, sub.stage)}".`,
-    submission: updated
+    submission: updated,
+    repository: visibility
   });
 });
+
+// ---------------------------------------------------------------------------
+//  The repository + Publications page follow a submission's status
+//  (lib/repository-publishing.js). A Final Submission is finished research, so
+//  approving it publishes it. An approved Initial Submission is only an
+//  ethics-cleared proposal: it is published only if an admin already chose to
+//  (the "Publish" button on the admin dashboard). Rejecting — or any other
+//  non-public status — hides it again either way.
+//
+//  The status change has already been saved, so a failure here is logged and
+//  reported in the response, never turned into a failed request.
+// ---------------------------------------------------------------------------
+async function syncPublicPages(sub, status, at) {
+  try {
+    return await syncSubmissionVisibility(
+      { get, all, insert, update, remove },
+      fromModuleSubmission(sub),
+      status,
+      { autoPublish: sub.stage === 'final', at }
+    );
+  } catch (err) {
+    console.error(`[research-submissions] repository sync failed for ${sub.id}:`, err.message);
+    return 'failed';
+  }
+}
 
 // ---------------------------------------------------------------------------
 //  Multer single-file upload for /:id/ethics (optional PDF).
@@ -1451,6 +1490,8 @@ router.post(
     console.error('[research-submissions] ethics decision failed:', err.message);
     return res.status(500).json({ error: 'Could not record the ethics decision. Please try again.' });
   }
+
+  await syncPublicPages(sub, decision === 'approved' ? 'approved' : 'rejected', now);
 
   await notifyPerson(sub.owner_id, {
     action: 'research_submission_ethics',

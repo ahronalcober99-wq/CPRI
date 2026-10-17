@@ -102,6 +102,16 @@
                   <canvas id="chart-ethics"></canvas>
                 </div>
               </div>
+
+              <!-- Newest submissions from BOTH forms (drafts excluded), with
+                   whether each one is in the public repository. -->
+              <div class="admin-card" id="recent-submissions-card" style="margin-top:24px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+                  <h3 style="margin:0;"><i class="bi bi-clock-history"></i> Recent Submissions</h3>
+                  <small id="recent-submissions-note" style="color:var(--cpri-muted)"></small>
+                </div>
+                <div id="recent-submissions"><p class="form-note">Loading…</p></div>
+              </div>
             </div>
 
             <div class="admin-panel" data-panel="users">
@@ -405,27 +415,31 @@
     const CARD_CONFIG = {
       submitted: {
         filterKey: 'submitted',
+        withRepository: true,
         endpoint: '/api/research',
         title: 'Total Submitted Research',
-        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status', 'Repository']
       },
       approved: {
         filterKey: 'approved',
+        withRepository: true,
         endpoint: '/api/research?status=approved',
         title: 'Total Approved Researches',
-        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status', 'Repository']
       },
       rejected: {
         filterKey: 'rejected',
+        withRepository: true,
         endpoint: '/api/research?status=rejected',
         title: 'Total Rejected Researches',
-        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status', 'Repository']
       },
       archived: {
         filterKey: 'archived',
+        withRepository: true,
         endpoint: '/api/research?status=archived',
         title: 'Total Archived Researches',
-        columns: ['Title', 'Author', 'Department', 'Year', 'Status']
+        columns: ['Title', 'Author', 'Department', 'Year', 'Status', 'Repository']
       },
       published: {
         filterKey: 'published',
@@ -536,11 +550,12 @@
                 <tbody>
                   ${records.map(r => `
                     <tr>
-                      <td><b>${escapeHtml(r.title || '')}</b></td>
+                      <td>${recordTitle(r)}</td>
                       <td>${escapeHtml(r.author || r.authors || '—')}</td>
                       <td>${escapeHtml(r.department || '—')}</td>
                       <td>${escapeHtml(String(r.year || '—'))}</td>
-                      <td><span class="status-pill ${['approved','published'].includes(r.status)?'active':['rejected','archived','disapproved'].includes(r.status)?'pending':'active'}">${escapeHtml(r.status || 'submitted')}</span></td>
+                      <td>${statusPill(r)}</td>
+                      ${config.withRepository ? `<td>${repositoryCell(r)}</td>` : ''}
                     </tr>
                   `).join('')}
                 </tbody>
@@ -554,6 +569,97 @@
         if (containerEl) containerEl.innerHTML = `<div class="form-message error" style="display:block; padding:16px;">Failed to load records for this category: ${escapeHtml(err.message)}. Please try again.</div>`;
       }
     }
+
+    // ---- Submission rows: shared by the record lists and Recent Submissions ----
+    function statusPill(r) {
+      const kind = ['approved', 'published'].includes(r.status) ? 'active'
+        : ['rejected', 'archived', 'disapproved'].includes(r.status) ? 'pending' : 'active';
+      return `<span class="status-pill ${kind}">${escapeHtml(r.statusLabel || r.status || 'submitted')}</span>`;
+    }
+
+    function recordTitle(r) {
+      const title = `<b>${escapeHtml(r.title || '')}</b>`;
+      // Only same-site paths become links.
+      return r.detailUrl && String(r.detailUrl).startsWith('/')
+        ? `<a href="${escapeHtml(r.detailUrl)}">${title}</a>` : title;
+    }
+
+    // In the public repository, hidden there (e.g. rejected after approval), or
+    // not there yet — with a Publish button for anything that may go public.
+    function repositoryCell(r) {
+      if (r.inRepository) {
+        const link = r.repositoryId ? ` <a href="/repository-detail.html?id=${encodeURIComponent(r.repositoryId)}">View</a>` : '';
+        return `<span class="status-pill active">In repository</span>${link}`;
+      }
+      const state = r.repositoryStatus
+        ? `<span class="status-pill pending" title="Repository entry status: ${escapeHtml(r.repositoryStatus)}">Hidden</span>`
+        : '<span class="status-pill disabled">Not in repository</span>';
+      const button = r.canPublish
+        ? ` <button type="button" class="btn btn-navy publish-sub" data-id="${escapeHtml(r.id)}" data-title="${escapeHtml(r.title || '')}" style="padding:4px 10px;font-size:.8rem;margin-left:6px;">Publish</button>`
+        : '';
+      return state + button;
+    }
+
+    const SOURCE_LABELS = { module: 'Research Submission', classic: 'Classic form' };
+
+    async function loadRecentSubmissions() {
+      const el = document.getElementById('recent-submissions');
+      const note = document.getElementById('recent-submissions-note');
+      if (!el) return;
+      try {
+        const res = await fetch('/api/admin/dashboard/recent-submissions?limit=10');
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || 'Failed to load recent submissions.');
+        const rows = json.data || [];
+        note.textContent = rows.length ? `Latest ${rows.length} of ${json.total} submissions (drafts excluded)` : '';
+        if (!rows.length) {
+          el.innerHTML = '<p class="form-note">No submissions yet.</p>';
+          return;
+        }
+        el.innerHTML = `
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Title</th><th>Submitted by</th><th>Form</th><th>Submitted</th><th>Status</th><th>Repository</th></tr></thead>
+              <tbody>
+                ${rows.map(r => `
+                  <tr>
+                    <td>${recordTitle(r)}</td>
+                    <td>${escapeHtml(r.submittedBy || r.author || '—')}</td>
+                    <td>${escapeHtml(SOURCE_LABELS[r.source] || r.source || '—')}${r.source === 'module' && r.stage ? `<br><small style="color:var(--cpri-muted)">${escapeHtml(r.stage === 'final' ? 'Final' : 'Initial')}</small>` : ''}</td>
+                    <td style="white-space:nowrap;">${escapeHtml(r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—')}</td>
+                    <td>${statusPill(r)}</td>
+                    <td>${repositoryCell(r)}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>`;
+      } catch (err) {
+        el.innerHTML = `<div class="form-message error" style="display:block;">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    async function publishToRepository(id, title) {
+      if (!await adminConfirmDialog(`Publish "${title}" to the public repository and the Publications page?`, 'Publish')) return;
+      try {
+        const res = await fetch('/api/admin/submissions/' + encodeURIComponent(id) + '/publish', { method: 'POST' });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) return showMsg('error', out.error || 'Could not publish this submission.');
+        showMsg('success', out.message || 'Published.');
+        await Promise.all([loadSummary(), loadRecentSubmissions()]);
+        if (activeFilterKey) fetchAndRenderRecords(activeFilterKey);
+        // The department / year charts are drawn from the repository.
+        chartInstances.forEach(c => c && c.destroy());
+        chartInstances = (await loadCharts()) || [];
+      } catch (err) {
+        showMsg('error', err.message || 'Could not publish this submission.');
+      }
+    }
+
+    // Delegated, so the buttons keep working after every re-render.
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.publish-sub');
+      if (btn) publishToRepository(btn.dataset.id, btn.dataset.title || 'this submission');
+    });
 
     async function loadSummary() {
       try {
@@ -1314,6 +1420,7 @@
       const summary = await loadSummary();
       if (!summary) return;
       chartInstances = (await loadCharts()) || [];
+      loadRecentSubmissions();
       loadUserManagement();
       loadLogs();
       loadEventsList();

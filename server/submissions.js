@@ -3,7 +3,7 @@ import multer from 'multer';
 import { randomUUID } from 'crypto';
 import { Readable } from 'stream';
 import { requireAuth, requireAdmin, requireRole, readUsers } from './auth.js';
-import { all, get, run, insert, update, remove, withTransaction } from './server/db/queries.js';
+import { all, get, insert, update, remove, withTransaction } from './server/db/queries.js';
 import { addLog } from './audit.js';
 import { notify } from './notifications.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
@@ -15,6 +15,9 @@ import {
 // `adviser` and `facilitator` are the same supervision job under two spellings
 // (see lib/research-config.js): both monitor submissions read-only.
 import { ASSIGNED_ROLES } from './lib/research-config.js';
+import { fromClassicSubmission, syncSubmissionVisibility } from './lib/repository-publishing.js';
+import { profileOf, recommendationsFor } from './lib/recommendations.js';
+import { CATEGORY_TYPES } from './repository.js';
 
 const router = Router();
 
@@ -361,6 +364,25 @@ router.get('/:id', requireAuth, async (req, res) => {
   res.json({ submission: sub, statusLabel: STATUS_LABELS[sub.status] || sub.status });
 });
 
+// ---------- Recommended research (from the public repository only) ----------
+router.get('/:id/recommendations', requireAuth, async (req, res) => {
+  const me = await caller(req);
+  const sub = await get('SELECT * FROM submissions WHERE id = ?', [req.params.id]);
+  if (!sub) return res.status(404).json({ error: 'Submission not found.' });
+  if (!canAccess(me, sub)) return res.status(403).json({ error: 'Access denied.' });
+  const recommendations = await recommendationsFor({
+    all,
+    profile: profileOf({
+      keywords: sub.keywords,
+      categories: [sub.researchType, sub.category],
+      department: sub.program
+    }),
+    sourceId: sub.id,
+    categoryLabel: c => CATEGORY_TYPES[c]
+  });
+  res.json({ recommendations });
+});
+
 export async function deleteSubmissionAndPublication(submissionId, transaction = withTransaction) {
   return transaction(async ({ get: transactionGet, run: transactionRun }) => {
     const submission = await transactionGet('SELECT id FROM submissions WHERE id = ?', [submissionId]);
@@ -402,10 +424,10 @@ router.patch('/:id/status', requireRole(...REVIEW_ROLES), async (req, res) => {
   const now = new Date().toISOString();
   await update('submissions', sub.id, { status, statusHistory: JSON.stringify(statusHistory), updatedAt: now });
 
-  // Keep repository + publications in sync on EVERY status change: published
-  // submissions surface on the Publications page, and any other status hides
-  // the auto-added publication again.
-  await syncRepository(sub, status, { role: me.role, at: now });
+  // Keep repository + publications in sync on EVERY status change: an approved
+  // or published submission appears in both, and any other status (rejected,
+  // sent back for revision, archived) hides it again.
+  await syncSubmissionVisibility(PUBLISH_DB, fromClassicSubmission(sub), status, { role: me.role, at: now });
 
   await addLog(`submission_${status}`, `${STATUS_LABELS[status] || status} submission "${sub.title}"`, req);
 
@@ -422,104 +444,9 @@ router.patch('/:id/status', requireRole(...REVIEW_ROLES), async (req, res) => {
   res.json({ message: 'Status updated.', submission: updated });
 });
 
-// A submission marked "published" automatically appears on the Publications
-// page as a publication record, linked back via sourceSubmissionId so staff
-// can remove it from Publications without affecting the submission or its
-// repository entry. Upserts so re-publishing never creates duplicates.
-export async function syncPublication(sub, role, publishedAt) {
-  const year = (sub.schoolYear && sub.schoolYear.match(/\d{4}/g))
-    ? sub.schoolYear.match(/\d{4}/g).pop()
-    : new Date(sub.createdAt).getFullYear();
-
-  const authorType = (role === 'admin' || role === 'cpri_staff' || role === 'faculty_researcher')
-    ? 'faculty'
-    : (role === 'student_researcher' ? 'student' : 'other');
-
-  const at = publishedAt || new Date().toISOString();
-  const base = {
-    title: sub.title,
-    authors: sub.authors,
-    journalOrConference: sub.program || 'CPRI',
-    publicationDate: at.slice(0, 10),
-    pubType: 'institutional_journal',
-    status: 'published',
-    authorType,
-    department: sub.program || '',
-    schoolYear: sub.schoolYear || '',
-    proofDocuments: JSON.stringify([]),
-    submitterId: sub.submitterId,
-    submitterName: sub.submitterName,
-    sourceSubmissionId: sub.id,
-    updatedAt: at
-  };
-
-  const existing = await get('SELECT * FROM publications WHERE sourceSubmissionId = ?', [sub.id]);
-  if (existing) {
-    await update('publications', existing.id, base);
-  } else {
-    await insert('publications', { id: randomUUID(), ...base, createdAt: at });
-  }
-}
-
-// Keep the institutional repository in sync with approved/published submissions
-async function syncRepository(sub, newStatus, ctx = {}) {
-  const year = (sub.schoolYear && sub.schoolYear.match(/\d{4}/g))
-    ? sub.schoolYear.match(/\d{4}/g).pop()
-    : new Date(sub.createdAt).getFullYear();
-
-  let rec = await get('SELECT * FROM repository WHERE sourceSubmissionId = ?', [sub.id]);
-
-  const base = {
-    title: sub.title,
-    authors: sub.authors,
-    adviser: sub.adviser || '',
-    department: sub.program,
-    abstract: sub.abstract,
-    keywords: sub.keywords || '',
-    category: sub.researchType,
-    yearCompleted: String(year),
-    status: newStatus,
-    fileAvailable: sub.files && sub.files.manuscript ? 1 : 0
-  };
-
-  if (rec) {
-    const citation = rec.citation && rec.citation.mla ? rec.citation : {
-      apa: `${sub.authors} (${year}). ${sub.title}. ${sub.program}.`,
-      mla: `${sub.authors}. "${sub.title}." ${sub.program}, ${year}.`,
-      institutional: `CPRI (${year}). ${sub.title}. ${sub.authors}. ${sub.program}.`
-    };
-    await update('repository', rec.id, {
-      ...base,
-      citation: JSON.stringify(citation),
-      updatedAt: new Date().toISOString()
-    });
-  } else if (newStatus === 'approved' || newStatus === 'published') {
-    const citationObj = {
-      apa: `${sub.authors} (${year}). ${sub.title}. ${sub.program}.`,
-      mla: `${sub.authors}. "${sub.title}." ${sub.program}, ${year}.`,
-      institutional: `CPRI (${year}). ${sub.title}. ${sub.authors}. ${sub.program}.`
-    };
-    const recData = {
-      id: randomUUID(),
-      sourceSubmissionId: sub.id,
-      ...base,
-      accessLevel: 'downloadable',
-      citation: JSON.stringify(citationObj),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-    await insert('repository', recData);
-  }
-
-  // Published submissions surface on the Publications page automatically;
-  // moving to any other status hides it again — the auto-added publication is
-  // removed while the submission and its repository record stay untouched.
-  if (newStatus === 'published') {
-    await syncPublication(sub, ctx.role, ctx.at);
-  } else {
-    await run('DELETE FROM publications WHERE sourceSubmissionId = ?', [sub.id]);
-  }
-}
+// The repository + Publications sync lives in lib/repository-publishing.js,
+// shared with the Research Submission Module and the admin "Publish" button.
+const PUBLISH_DB = { get, all, insert, update, remove };
 
 // ---------- Secure file download (supports versioned files) ----------
 router.get('/:id/file', requireAuth, async (req, res) => {

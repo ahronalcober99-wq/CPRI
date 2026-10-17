@@ -36,7 +36,10 @@
     "migrate:legacy-submissions": "node server/migrate-legacy-submissions.mjs",
     "repair:submissions": "node server/repair-submission-fields.mjs",
     "test:submission-records": "node --test server/dev/test-submission-records.mjs",
-    "test:classic-access": "node --test --test-force-exit server/dev/test-classic-access.mjs"
+    "test:classic-access": "node --test --test-force-exit server/dev/test-classic-access.mjs",
+    "test:recommendations": "node --test server/dev/test-recommendations.mjs",
+    "test:repository-publishing": "node --test server/dev/test-repository-publishing.mjs",
+    "test:dashboard-publishing:db": "node --test --test-force-exit server/dev/test-dashboard-publishing-db.mjs"
   },
   "engines": {
     "node": ">=20.9.0"

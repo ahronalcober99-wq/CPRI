@@ -1776,3 +1776,108 @@ test('the owner of an email-keyed record can still edit it and add a new version
     await module.cleanup();
   }
 });
+
+// ===========================================================================
+//  Repository + Publications follow the status (lib/repository-publishing.js)
+// ===========================================================================
+function finalSubmissionRow(owner, fields = {}) {
+  return {
+    id: randomUUID(), owner_id: owner.id, owner_name: owner.fullName,
+    owner_role: owner.role, stage: 'final', title: 'Finished paper', status: 'submitted',
+    authors: 'A. Author', program: 'BS Biology', category: 'Life Sciences',
+    research_type: 'student_thesis', school_year: '2026-2027', semester: '1st',
+    abstract: 'Abstract.', keywords: 'water, climate',
+    created_at: '2026-01-01 00:00:00', updated_at: '2026-01-01 00:00:00',
+    ...fields
+  };
+}
+
+test('approving a Final Submission publishes it; rejecting it later hides it again', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const admin = account('admin');
+    const row = finalSubmissionRow(student);
+    await module.store.insert('research_submissions', row);
+    const move = async (status) => module.json(await module.call(admin, `/${row.id}/status`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status })
+    }));
+
+    assert.equal((await move('under_initial_checking')).body.repository, 'unchanged');
+    assert.equal(module.store.rowsOf('repository').length, 0, 'nothing is public before approval');
+
+    const approved = await move('approved');
+    assert.equal(approved.status, 200);
+    assert.equal(approved.body.repository, 'published');
+    const [entry] = module.store.rowsOf('repository');
+    assert.equal(entry.sourceSubmissionId, row.id);
+    assert.equal(entry.status, 'approved');
+    assert.equal(entry.title, 'Finished paper');
+    const [publication] = module.store.rowsOf('publications');
+    assert.equal(publication.sourceSubmissionId, row.id);
+    assert.equal(publication.status, 'published');
+
+    const rejected = await move('rejected');
+    assert.equal(rejected.status, 200, JSON.stringify(rejected.body));
+    assert.equal(rejected.body.repository, 'hidden');
+    assert.equal(module.store.rowsOf('repository').length, 1, 'the entry is kept');
+    assert.equal(module.store.rowsOf('repository')[0].status, 'rejected', 'but no longer public');
+    assert.equal(module.store.rowsOf('publications').length, 0, 'and off the Publications page');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('an approved Initial Submission (a proposal) is not published by itself', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const reviewer = account('ethics_reviewer');
+    const staff = account('cpri_staff');
+    const submission = await createStudentInitial(module, student);
+    for (const status of ['under_initial_checking', 'under_ethics_review']) {
+      await module.call(staff, `/${submission.id}/status`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status })
+      });
+    }
+    const approved = await module.call(reviewer, `/${submission.id}/ethics`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ decision: 'approved' })
+    });
+    assert.equal(approved.status, 200);
+    assert.equal(module.store.rowsOf('repository').length, 0);
+    assert.equal(module.store.rowsOf('publications').length, 0);
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('recommendations come from the public repository, for people who may read the submission', async () => {
+  const module = await startModule();
+  try {
+    const owner = account('student_researcher');
+    const stranger = account('student_researcher');
+    const row = finalSubmissionRow(owner);
+    await module.store.insert('research_submissions', row);
+    for (const entry of [
+      { id: 'r-kw', title: 'Shares keywords', keywords: 'Climate; water', category: 'capstone', department: 'BS IT', yearCompleted: '2024', status: 'published' },
+      { id: 'r-cat', title: 'Same category', keywords: '', category: 'student_thesis', department: 'BS IT', yearCompleted: '2024', status: 'approved' },
+      { id: 'r-hidden', title: 'Hidden', keywords: 'water', category: 'student_thesis', department: 'BS Biology', yearCompleted: '2024', status: 'rejected' },
+      { id: 'r-self', sourceSubmissionId: row.id, title: 'Itself', keywords: 'water', department: 'BS Biology', status: 'approved' }
+    ]) await module.store.insert('repository', entry);
+
+    const forbidden = await module.call(stranger, `/${row.id}/recommendations`);
+    assert.equal(forbidden.status, 403, 'another student cannot probe the submission');
+
+    const res = await module.json(await module.call(owner, `/${row.id}/recommendations`));
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body.recommendations.map(r => r.id), ['r-kw', 'r-cat'],
+      'keywords first, then category; hidden entries and the record itself are never offered');
+    assert.deepEqual(res.body.recommendations[0].reasons, ['Shares 2 keywords: Climate, water']);
+    assert.deepEqual(res.body.recommendations[1].reasons, ['Same category: Student Thesis']);
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});

@@ -110,6 +110,14 @@
               </form>
             </div>
           </div>
+          <!-- Related public research, ranked and explained by the server
+               (assets/js/recommendations.js). Hidden until it has loaded. -->
+          <div class="card" id="recommended-research" data-recommend-endpoint="/api/submissions/{id}/recommendations" style="margin-top:22px;display:none;">
+            <h3>Recommended Research</h3>
+            <p class="form-note" style="margin:0 0 6px;">Related work in the CPRI repository, matched by shared keywords, then category, then department.</p>
+            <ul data-recommend-list style="margin:0;padding:0;"></ul>
+            <p class="form-note" data-recommend-empty style="display:none;margin:8px 0 0;">No related research in the repository yet.</p>
+          </div>
         </div>
       </div>
     </section>
@@ -134,6 +142,7 @@
     </div>
   </div>
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/recommendations.js"></script>
   <script>
     const message = document.getElementById('message');
     const detail = document.getElementById('detail');

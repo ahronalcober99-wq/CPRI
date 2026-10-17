@@ -4,6 +4,7 @@ import { readUsers, requireAuth, requireAdmin } from './auth.js';
 import { all, get, run, insert, update, withTransaction } from './server/db/queries.js';
 import { addLog } from './audit.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
+import { profileOf, recommendationsFor } from './lib/recommendations.js';
 
 // ---------- Access levels ----------
 const ACCESS_LEVELS = {
@@ -202,6 +203,29 @@ router.get('/:id', async (req, res) => {
   });
 });
 
+// ---------- Recommended research ----------
+// Related public entries, ranked by shared keywords, then category, then
+// department (lib/recommendations.js). Readable by whoever may read the entry.
+router.get('/:id/recommendations', async (req, res) => {
+  const user = await resolveUser(req);
+  const r = await queries.get('SELECT * FROM repository WHERE id = ?', [req.params.id]);
+  if (!r) return res.status(404).json({ error: 'Record not found.' });
+  if (!isPublicStatus(r.status) && !isPrivileged(user)) {
+    const sub = r.sourceSubmissionId
+      ? await queries.get('SELECT id, submitterId FROM submissions WHERE id = ?', [r.sourceSubmissionId])
+      : null;
+    if (!(user && sub && sub.submitterId === user.id)) return res.status(404).json({ error: 'Record not found.' });
+  }
+  const recommendations = await recommendationsFor({
+    all: queries.all,
+    profile: profileOf({ keywords: r.keywords, categories: [r.category], department: r.department }),
+    repositoryId: r.id,
+    sourceId: r.sourceSubmissionId,
+    categoryLabel: c => CATEGORY_TYPES[c]
+  });
+  res.json({ recommendations });
+});
+
 // ---------- Secure full-text file ----------
 router.get('/:id/file', async (req, res) => {
   const user = await resolveUser(req);
@@ -329,7 +353,7 @@ router.patch('/:id', async (req, res) => {
 // JSON, so the pointer is unlinked in the same transaction and the object is
 // deleted from storage afterwards. A storage failure must not undo a deletion
 // the admin already confirmed, so it is logged instead of thrown. The
-// submission itself is kept — syncRepository() in submissions.js already treats
+// submission itself is kept — lib/repository-publishing.js already treats
 // submissions and repository entries as separate records the owner still sees.
 // The check for other repository rows pointing at the same submission avoids
 // unlinking a file another record still uses.

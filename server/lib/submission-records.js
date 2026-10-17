@@ -194,6 +194,19 @@ export function legacyComments(row) {
   }));
 }
 
+// When a record was first approved (or published), from its status history.
+// Classic history entries are `{ status, at }`; module rows are
+// `{ to_status, changed_at }`. Null when it never was.
+export function firstApprovalAt(history) {
+  for (const entry of asArray(history)) {
+    const status = clean(entry?.status ?? entry?.to_status);
+    if (status === 'approved' || status === 'published') {
+      return entry?.at ?? entry?.changed_at ?? null;
+    }
+  }
+  return null;
+}
+
 // The classic module has no stages; a status that only exists in the Final
 // workflow (published, archived) means the record belongs there.
 export function stageForStatus(status) {
@@ -240,6 +253,8 @@ export function normalizeLegacySubmission(row, { isOwner, account } = {}) {
     semester: clean(row?.semester),
     adviser: clean(row?.adviser),
     facilitator: '',
+    abstract: clean(row?.abstract),
+    keywords: clean(row?.keywords),
 
     fileCount: files.length,
     files,
@@ -248,6 +263,7 @@ export function normalizeLegacySubmission(row, { isOwner, account } = {}) {
 
     created_at: createdAt,
     updated_at: row?.updatedAt || createdAt,
+    approved_at: firstApprovalAt(row?.statusHistory),
     source: 'classic',
     // A record copied into the module by the migration exists in both stores;
     // the list route widens this to ['module', 'classic'] for those.
@@ -257,6 +273,40 @@ export function normalizeLegacySubmission(row, { isOwner, account } = {}) {
     detailUrl: `/submission.html?id=${encodeURIComponent(row?.id || '')}`,
     isOwner: typeof isOwner === 'function' ? Boolean(isOwner(row?.submitterId)) : false
   };
+}
+
+const recordTime = (value) => {
+  const time = new Date(value == null ? 0 : value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+};
+
+/**
+ * Module records and classic records -> one list, one entry per id.
+ *
+ * A migrated record keeps its id in both tables, so one record can be stored
+ * twice — and the copies can drift (a status moved on the classic page after
+ * the copy was taken). `sources` names every store that holds it, and the copy
+ * that was updated last wins, so nobody sees a status the record has moved
+ * past. Newest first.
+ */
+export function mergeSubmissionRecords(moduleRecords = [], legacyRecords = []) {
+  const byId = new Map();
+  for (const record of moduleRecords) {
+    if (record?.id) byId.set(record.id, record);
+  }
+  for (const record of legacyRecords) {
+    if (!record?.id) continue;
+    const existing = byId.get(record.id);
+    if (!existing) {
+      byId.set(record.id, record);
+      continue;
+    }
+    const sources = [...new Set([...(existing.sources || [existing.source]), record.source])];
+    const newest = recordTime(record.updated_at) > recordTime(existing.updated_at) ? record : existing;
+    newest.sources = sources;
+    byId.set(record.id, newest);
+  }
+  return [...byId.values()].sort((a, b) => recordTime(b.created_at) - recordTime(a.created_at));
 }
 
 /**

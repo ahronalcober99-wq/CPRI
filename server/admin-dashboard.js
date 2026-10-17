@@ -11,6 +11,8 @@ import { addLog } from './audit.js';
 import { notify } from './notifications.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
 import { cleanupEventImages, EVENT_IMAGE_FORMAT_ERROR, MAX_EVENT_IMAGE_SIZE, isEventImageObjectId, normalizeEventImage, validateEventImage } from './event-image-utils.js';
+import { listAllSubmissions } from './lib/submission-index.js';
+import { fromClassicSubmission, fromModuleSubmission, publishSubmission } from './lib/repository-publishing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -70,6 +72,19 @@ function parseDate(value) {
   return isNaN(date) ? null : date;
 }
 
+// Every submission from BOTH forms — the classic `submissions` table and the
+// Research Submission Module — once each, drafts excluded (lib/submission-index.js).
+// Mapped onto the classic column names the figures below were written for.
+async function submissionsForDashboard() {
+  const records = await listAllSubmissions({ all });
+  return records.map(r => ({
+    ...r,
+    submitterId: r.studentId,
+    createdAt: r.created_at,
+    approvedAt: r.approved_at
+  }));
+}
+
 async function calculateDashboardSummary() {
   const summary = {
     researchPapers: 0,
@@ -101,7 +116,7 @@ async function calculateDashboardSummary() {
       subsList, repoList, pubList, ethicsList, innoList,
       eventsList, usersList, researchersList
     ] = await Promise.all([
-      all('SELECT id, submitterId, status, statusHistory, createdAt FROM submissions'),
+      submissionsForDashboard(),
       all('SELECT id, status, sourceSubmissionId, createdAt FROM repository'),
       all("SELECT id, status, publicationDate FROM publications WHERE status = 'published'"),
       all('SELECT id FROM ethics'),
@@ -169,12 +184,9 @@ async function calculateDashboardSummary() {
     let eligibleCount = 0;
 
     subsList.forEach(sub => {
-      if (!Array.isArray(sub.statusHistory) || !sub.createdAt) return;
       const createdAt = parseDate(sub.createdAt);
-      if (!createdAt) return;
-      const approvalEntry = sub.statusHistory.find(history => ['approved', 'published'].includes(history.status));
-      if (!approvalEntry || !approvalEntry.at) return;
-      const approvedAt = parseDate(approvalEntry.at);
+      if (!createdAt || !sub.approvedAt) return;
+      const approvedAt = parseDate(sub.approvedAt);
       if (!approvedAt) return;
       eligibleCount += 1;
       if (approvedAt.getTime() - createdAt.getTime() <= REVIEW_WINDOW_DAYS * 24 * 60 * 60 * 1000) {
@@ -214,12 +226,75 @@ router.get('/public-summary', async (req, res) => {
 });
 
 // ---------- Dashboard Stats & Filtered Records API ----------
+// The KPI cards and the lists they open are built from the same records, so a
+// card's number always equals the length of its list. Submissions come from
+// both forms (submissionsForDashboard); repository entries that mirror a
+// submission are that submission, so only standalone entries add to a count.
+const STATUS_GROUPS = {
+  approved: ['approved', 'published'],
+  rejected: ['rejected'],
+  archived: ['archived'],
+  pending: ['submitted', 'under_initial_checking', 'for_revision', 'under_ethics_review']
+};
+
+// A standalone repository entry counts under its own exact status, as it
+// always has (a 'published' entry is not also an "approved research").
+function standaloneRepository(repoList, group) {
+  return repoList.filter(r => !r.sourceSubmissionId && r.status === group);
+}
+
+function yearOfRecord(schoolYear, createdAt) {
+  if (schoolYear) return schoolYear;
+  const d = toDate(createdAt);
+  return d ? d.getFullYear() : '';
+}
+
+// One row of a dashboard record list.
+function submissionRow(s) {
+  return {
+    id: s.id,
+    title: s.title,
+    author: s.authors || s.studentName || 'Unknown',
+    department: s.program || 'General',
+    year: yearOfRecord(s.school_year, s.created_at),
+    status: s.status,
+    statusLabel: s.statusLabel || s.status,
+    stage: s.stage,
+    source: s.source,
+    submittedBy: s.studentName || '',
+    createdAt: s.created_at,
+    detailUrl: s.detailUrl,
+    inRepository: s.inRepository,
+    repositoryId: s.repositoryId,
+    repositoryStatus: s.repositoryStatus,
+    canPublish: !s.inRepository && !['draft', 'rejected'].includes(s.status)
+  };
+}
+
+function repositoryRow(r) {
+  return {
+    id: r.id,
+    title: r.title,
+    author: r.authors || 'Unknown',
+    department: r.department || 'General',
+    year: r.yearCompleted || '',
+    status: r.status,
+    statusLabel: r.status,
+    source: 'repository',
+    detailUrl: `/repository-detail.html?id=${encodeURIComponent(r.id)}`,
+    inRepository: ['approved', 'published'].includes(r.status),
+    repositoryId: r.id,
+    repositoryStatus: r.status,
+    canPublish: false
+  };
+}
+
 router.get('/dashboard/stats', requireAdmin, async (req, res) => {
   try {
     const [
       subsList, repoList, pubList, ethicsList, innoList, usersList
     ] = await Promise.all([
-      all('SELECT id, status FROM submissions'),
+      submissionsForDashboard(),
       all('SELECT id, status, sourceSubmissionId FROM repository'),
       all("SELECT id FROM publications WHERE status = 'published'"),
       all('SELECT id FROM ethics'),
@@ -227,24 +302,24 @@ router.get('/dashboard/stats', requireAdmin, async (req, res) => {
       all('SELECT id, status FROM users')
     ]);
 
-    const approvedSubIds = new Set(subsList.filter(s => ['approved', 'published'].includes(s.status)).map(s => s.id));
-    const approved = approvedSubIds.size + repoList.filter(r => r.status === 'approved' && !r.sourceSubmissionId).length;
-
-    const rejectedSubIds = new Set(subsList.filter(s => s.status === 'rejected').map(s => s.id));
-    const rejected = rejectedSubIds.size + repoList.filter(r => r.status === 'rejected' && !r.sourceSubmissionId).length;
-
-    const archivedSubIds = new Set(subsList.filter(s => s.status === 'archived').map(s => s.id));
-    const archived = archivedSubIds.size + repoList.filter(r => r.status === 'archived' && !r.sourceSubmissionId).length;
-
-    const submitted = subsList.length;
-    const published = pubList.length;
-    const ethics = ethicsList.length;
-    const innovation = innoList.length;
-    const users = usersList.filter(u => u.status === 'active').length;
+    const countGroup = (key) =>
+      subsList.filter(s => STATUS_GROUPS[key].includes(s.status)).length +
+      standaloneRepository(repoList, key).length;
 
     res.json({
       success: true,
-      data: { submitted, approved, rejected, archived, published, ethics, innovation, users }
+      data: {
+        submitted: subsList.length,
+        approved: countGroup('approved'),
+        rejected: countGroup('rejected'),
+        archived: countGroup('archived'),
+        pending: subsList.filter(s => STATUS_GROUPS.pending.includes(s.status)).length,
+        inRepository: subsList.filter(s => s.inRepository).length,
+        published: pubList.length,
+        ethics: ethicsList.length,
+        innovation: innoList.length,
+        users: usersList.filter(u => u.status === 'active').length
+      }
     });
   } catch (err) {
     console.error('[dashboard/stats] error:', err);
@@ -259,49 +334,103 @@ router.get('/research', requireAdmin, async (req, res) => {
     const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
     const offset = (pageNum - 1) * limitNum;
 
-    let where = '1=1';
-    let params = [];
-
+    let rows;
     if (published === 'true') {
-      where += " AND (status = 'published' OR id IN (SELECT id FROM publications WHERE status = 'published'))";
-    } else if (status) {
+      // "Total Published Papers" counts the Publications page, so its list is
+      // the Publications page too.
+      const pubs = await all("SELECT id, title, authors, department, schoolYear, publicationDate, status, sourceSubmissionId FROM publications WHERE status = 'published' ORDER BY publicationDate DESC");
+      rows = pubs.map(p => ({
+        id: p.id,
+        title: p.title,
+        author: p.authors || 'Unknown',
+        department: p.department || 'General',
+        year: p.schoolYear || String(p.publicationDate || '').slice(0, 4),
+        status: p.status,
+        statusLabel: 'Published',
+        source: 'publication',
+        detailUrl: `/publication-detail.html?id=${encodeURIComponent(p.id)}`,
+        inRepository: Boolean(p.sourceSubmissionId),
+        canPublish: false
+      }));
+    } else {
       const allowedStatuses = ['submitted', 'approved', 'rejected', 'archived', 'pending', 'published', 'under_initial_checking', 'for_revision', 'under_ethics_review'];
-      if (!allowedStatuses.includes(status)) {
+      if (status && !allowedStatuses.includes(status)) {
         return res.status(400).json({ error: `Invalid status parameter: "${status}". Allowed values: ${allowedStatuses.join(', ')}` });
       }
-      if (status === 'submitted') {
-        // All submissions
-      } else if (status === 'approved') {
-        where += " AND status IN ('approved', 'published')";
-      } else if (status === 'pending') {
-        where += " AND status IN ('submitted', 'under_initial_checking', 'for_revision', 'under_ethics_review')";
-      } else if (status !== 'submitted') {
-        where += ' AND status = ?';
-        params.push(status);
+      const subs = await submissionsForDashboard();
+      if (!status || status === 'submitted') {
+        rows = subs.map(submissionRow);
+      } else {
+        const statuses = STATUS_GROUPS[status] || [status];
+        rows = subs.filter(s => statuses.includes(s.status)).map(submissionRow);
+        if (['approved', 'rejected', 'archived'].includes(status)) {
+          const repo = await all('SELECT id, title, authors, department, yearCompleted, status, sourceSubmissionId FROM repository');
+          rows = rows.concat(standaloneRepository(repo, status).map(repositoryRow));
+        }
       }
     }
 
-    const countRows = await all(`SELECT COUNT(*) as c FROM submissions WHERE ${where}`, params);
-    const total = countRows[0] ? Number(countRows[0].c) : 0;
-
-    const queryParams = [...params, limitNum, offset];
-    const rows = await all(`SELECT id, title, authors, program, schoolYear, status, createdAt FROM submissions WHERE ${where} ORDER BY createdAt DESC LIMIT ? OFFSET ?`, queryParams);
-
     res.json({
       success: true,
-      data: rows.map(r => ({
-        id: r.id,
-        title: r.title,
-        author: r.authors || 'Unknown',
-        department: r.program || 'General',
-        year: r.schoolYear || (r.createdAt ? new Date(r.createdAt).getFullYear() : ''),
-        status: r.status
-      })),
-      total
+      data: rows.slice(offset, offset + limitNum),
+      total: rows.length
     });
   } catch (err) {
     console.error('[research] error:', err);
     res.status(500).json({ error: 'Failed to load research records.' });
+  }
+});
+
+// ---------- Recent submissions (both forms, newest first) ----------
+router.get('/dashboard/recent-submissions', requireAdmin, async (req, res) => {
+  try {
+    const limitNum = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 10));
+    const subs = await submissionsForDashboard();
+    res.json({
+      success: true,
+      data: subs.slice(0, limitNum).map(submissionRow),
+      total: subs.length
+    });
+  } catch (err) {
+    console.error('[recent-submissions] error:', err);
+    res.status(500).json({ error: 'Failed to load recent submissions.' });
+  }
+});
+
+// ---------- Publish a submission to the repository + Publications ----------
+// Approval publishes automatically (see lib/repository-publishing.js). This is
+// the manual route for anything else an admin decides belongs on the public
+// pages — an approved Initial Submission, or a record approved before the
+// automatic step existed. Drafts and rejected work cannot be published.
+router.post('/submissions/:id/publish', requireAdmin, async (req, res) => {
+  try {
+    const id = String(req.params.id || '');
+    const moduleRow = await get('SELECT * FROM research_submissions WHERE id = ?', [id]).catch(() => null);
+    const classicRow = moduleRow ? null : await get('SELECT * FROM submissions WHERE id = ?', [id]);
+    const row = moduleRow || classicRow;
+    if (!row) return res.status(404).json({ error: 'Submission not found.' });
+    if (['draft', 'rejected'].includes(row.status)) {
+      return res.status(400).json({ error: `A ${row.status} submission cannot be published.` });
+    }
+
+    const admin = await get('SELECT role FROM users WHERE id = ?', [req.session.userId]);
+    const source = moduleRow ? fromModuleSubmission(moduleRow) : fromClassicSubmission(classicRow);
+    const result = await publishSubmission(
+      { get, insert, update },
+      source,
+      { status: row.status, role: admin?.role || 'admin' }
+    );
+
+    await addLog('submission_published', `Published "${row.title}" to the repository and Publications page`, req);
+    res.json({
+      success: true,
+      message: 'Published to the repository and Publications page.',
+      repositoryId: result.repositoryId,
+      publicationId: result.publicationId
+    });
+  } catch (err) {
+    console.error('[publish] error:', err);
+    res.status(500).json({ error: 'Could not publish this submission.' });
   }
 });
 
@@ -374,7 +503,7 @@ router.get('/hero-stats', async (req, res) => {
   try {
     const [pubs, subs] = await Promise.all([
       all('SELECT COUNT(*) AS c FROM publications'),
-      all('SELECT status FROM submissions')
+      submissionsForDashboard()
     ]);
     const publicationsAndBriefs = pubs[0] ? Number(pubs[0].c) : 0;
     const approved = subs.filter(s => ['approved', 'published'].includes(s.status)).length;
@@ -551,9 +680,9 @@ router.get('/reports/year', requireAdmin, async (req, res) => {
 
 router.get('/reports/submissions-status', requireAdmin, async (req, res) => {
   try {
-    const subs = await all("SELECT COALESCE(status, 'Unknown') AS status FROM submissions");
+    const subs = await submissionsForDashboard();
     const statusMap = {};
-    subs.forEach(s => { statusMap[s.status] = (statusMap[s.status] || 0) + 1; });
+    subs.forEach(s => { const key = s.status || 'Unknown'; statusMap[key] = (statusMap[key] || 0) + 1; });
     res.json({ report: Object.entries(statusMap).map(([status, count]) => ({ status, count })) });
   } catch (err) {
     res.status(500).json({ error: 'Failed to generate report.' });
