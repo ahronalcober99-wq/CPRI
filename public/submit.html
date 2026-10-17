@@ -185,19 +185,35 @@
         window.location.replace('login.html?next=submit.html');
       }
 
+      // The API always answers JSON. Anything else (an HTML page) means the
+      // request never reached the CPRI server: the page was opened from a
+      // file or a static preview (e.g. VS Code Live Server) instead of the
+      // running site, or the server is restarting. Say so plainly instead of
+      // surfacing a JSON parse error.
+      const SERVER_UNREACHABLE = 'Cannot reach the CPRI server right now. If the site is restarting, wait a minute and reload. ' +
+        '(If you opened this page from a file or Live Server, open it through the running site instead.)';
+
+      async function readJson(res) {
+        const type = res.headers.get('content-type') || '';
+        if (!type.includes('application/json')) throw new Error(SERVER_UNREACHABLE);
+        return res.json();
+      }
+
       async function me() {
         const res = await fetch('/api/research-submissions/me');
         if (res.status === 401) { toLogin(); return null; }
-        if (!res.ok) throw new Error((await res.json()).error || 'Request failed.');
-        return res.json();
+        const body = await readJson(res);
+        if (!res.ok) throw new Error(body.error || 'Request failed.');
+        return body;
       }
 
       async function formConfig() {
         const res = await fetch('/api/research-submissions/form-config');
         if (res.status === 401) { toLogin(); return null; }
         if (res.status === 403) return null; // account type cannot submit
-        if (!res.ok) throw new Error((await res.json()).error || 'Request failed.');
-        return res.json();
+        const body = await readJson(res);
+        if (!res.ok) throw new Error(body.error || 'Request failed.');
+        return body;
       }
 
       // ---- Messages ----

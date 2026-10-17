@@ -184,7 +184,9 @@ const CPRI = (() => {
           { label: 'Publications', href: 'publications.html', icon: 'bi-journal-richtext', desc: 'Papers & briefs' },
           { label: 'Researchers', href: 'researchers.html', icon: 'bi-people', desc: 'Our people' },
           { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb', desc: 'Applied work' },
-          { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph', desc: 'Annual reports' }
+          // Admin only: server.js serves reports.html to admins alone, so the
+          // link is not shown to anyone else (getNavItems filters adminOnly).
+          { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph', desc: 'Annual reports', adminOnly: true }
         ]}
       ]},
     ]
@@ -240,7 +242,17 @@ const CPRI = (() => {
     // works the ethics queue — open a small dropdown with the landing page
     // first and highlighted; a single dashboard is a plain link. A signed-out
     // visitor gets no Dashboard item at all, only the Login/Register pills.
-    const nav = SITE.baseNav.slice();
+    // Links only an admin may open (Reports) are left out for everyone else.
+    const isAdmin = Boolean(me && me.user && me.user.role === 'admin');
+    const allowed = (entry) => !entry.adminOnly || isAdmin;
+    const nav = SITE.baseNav.filter(allowed).map(item => (Array.isArray(item.group)
+      ? {
+          ...item,
+          group: item.group
+            .filter(allowed)
+            .map(g => (Array.isArray(g.items) ? { ...g, items: g.items.filter(allowed) } : g))
+        }
+      : item));
     if (dashboards.length) {
       const [primary, ...others] = dashboards;
       nav.push({
@@ -265,6 +277,7 @@ const CPRI = (() => {
       nav,
       auth,
       dashboards,
+      isAdmin,
       photo: (me && me.user && me.user.profilePhoto) || '',
       name: (me && me.user && (me.user.fullName || me.user.username)) || '',
       // First-time Google sign-ins must finish profile setup (pick a role).
@@ -394,7 +407,7 @@ const CPRI = (() => {
     </header>`;
   }
 
-  function footerHtml() {
+  function footerHtml(isAdmin = false) {
     return `
     <footer class="cpri-footer">
       <div class="container-xl">
@@ -416,7 +429,7 @@ const CPRI = (() => {
               <li><a href="publications.html">Publications</a></li>
               <li><a href="repository.html">Repository</a></li>
               <li><a href="ethics.html">Ethics Review</a></li>
-              <li><a href="reports.html">Reports</a></li>
+              ${isAdmin ? '<li><a href="reports.html">Reports</a></li>' : ''}
             </ul>
           </div>
           <div>
@@ -515,7 +528,7 @@ const CPRI = (() => {
         return;
       }
       if (headerEl) headerEl.outerHTML = headerHtml(active, navItems);
-      if (footerEl) footerEl.outerHTML = footerHtml();
+      if (footerEl) footerEl.outerHTML = footerHtml(navItems.isAdmin);
       document.body.insertAdjacentHTML('beforeend', CHROME);
       buildMobileNav(active, navItems);
       initNav();
@@ -667,10 +680,10 @@ const CPRI = (() => {
         { label: 'Ethics Review', href: 'ethics.html', icon: 'bi-shield-check' },
         { label: 'Research Gala', href: 'gala-form.html', icon: 'bi-mic' },
         { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb' },
-        { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph' },
+        { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph', adminOnly: true },
         { label: 'Contact', href: 'contact.html', icon: 'bi-envelope' }
       ];
-      const tiles = TILES.map(t => t.action
+      const tiles = TILES.filter(t => !t.adminOnly || navItems.isAdmin).map(t => t.action
         ? `<button type="button" class="ms-tile" data-action="${t.action}"><i class="bi ${t.icon}"></i><span>${t.label}</span></button>`
         : `<a class="ms-tile" href="${t.href}"><i class="bi ${t.icon}"></i><span>${t.label}</span></a>`
       ).join('');
