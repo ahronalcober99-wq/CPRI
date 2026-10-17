@@ -218,7 +218,10 @@
       // A record that lives only in the classic store is commented on through the
       // classic page: the module's comment endpoint has no row to attach to, so
       // the thread is shown read-only here with a link that opens it there.
-      function renderComments(container, submission, entry) {
+      // `entry` is the list record; after posting, only the freshly read
+      // submission is at hand, so it defaults to an empty record (a record you
+      // can post to is never classic-only).
+      function renderComments(container, submission, entry = {}) {
         const comments = submission.comments || entry.comments || [];
         const classicOnly = entry.source === 'classic';
         const thread = commentThread(comments);
