@@ -483,3 +483,41 @@ test('messages refuse research the sender cannot open and files that are not PDF
   const empty = await call(users.student, '/api/messages', { method: 'POST', body: JSON.stringify({ recipientId: users.staff.id, body: '' }) });
   assert.equal(empty.status, 400);
 });
+
+test('a photo can be sent, is shown inline to the two people, and fake images are refused', opts, async () => {
+  // A real 1x1 PNG.
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+  const form = new FormData();
+  form.append('recipientId', users.staff.id);
+  form.append('attachment', new Blob([png], { type: 'image/png' }), 'defense-photo.png');
+  const sent = await call(users.student, '/api/messages', { method: 'POST', body: form });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  assert.equal(sent.body.dm.attachment.isImage, true);
+  assert.equal(sent.body.dm.attachment.previewUrl, sent.body.dm.attachment.url + '?inline=1');
+
+  const inline = await fetch(base + sent.body.dm.attachment.previewUrl, { headers: { 'x-test-user': users.staff.id } });
+  assert.equal(inline.status, 200);
+  assert.equal(inline.headers.get('content-type'), 'image/png');
+  assert.match(inline.headers.get('content-disposition'), /^inline/);
+  assert.equal(inline.headers.get('x-content-type-options'), 'nosniff');
+  const download = await fetch(base + sent.body.dm.attachment.url, { headers: { 'x-test-user': users.staff.id } });
+  assert.match(download.headers.get('content-disposition'), /^attachment/, 'without ?inline=1 it is a download');
+  assert.equal((await call(users.other, sent.body.dm.attachment.previewUrl)).status, 403, 'nobody else can see it');
+
+  const admin = await call(users.admin, '/api/messages');
+  assert.ok(Array.isArray(admin.body.conversations));
+  const staffInbox = await call(users.staff, '/api/messages');
+  assert.ok(staffInbox.body.conversations.length >= 1);
+
+  for (const [name, type, bytes] of [
+    ['fake.png', 'image/png', Buffer.from('not really a png')],
+    ['drawing.svg', 'image/svg+xml', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')]
+  ]) {
+    const bad = new FormData();
+    bad.append('recipientId', users.staff.id);
+    bad.append('attachment', new Blob([bytes], { type }), name);
+    const refused = await call(users.student, '/api/messages', { method: 'POST', body: bad });
+    assert.equal(refused.status, 400, `${name} must be refused`);
+    assert.match(refused.body.error, /photo \(JPG, PNG, GIF, WEBP\)/);
+  }
+});

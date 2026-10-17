@@ -71,6 +71,18 @@
       padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,.14); }
     .dm-bubble.theirs .dm-extra { background: rgba(0,0,0,.06); }
     .dm-extra:hover { text-decoration: underline; }
+    .dm-photo { display: block; margin-top: 6px; }
+    .dm-photo img { display: block; max-width: 260px; max-height: 260px; width: auto; height: auto; border-radius: 12px; object-fit: cover; }
+
+    /* ---- Reply box attachment ---- */
+    .dm-attach-btn { flex: 0 0 44px; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+      border: 1px solid var(--cpri-border); background: var(--cpri-card); color: var(--cpri-text); font-size: 1.15rem; }
+    .dm-attach-btn:hover:not(:disabled) { color: var(--cpri-secondary, #800000); border-color: var(--cpri-secondary, #800000); }
+    .dm-attach-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .dm-file-chip { display: inline-flex; gap: 8px; align-items: center; margin-bottom: 10px; padding: 6px 12px; border-radius: 999px;
+      background: var(--cpri-bg-2, rgba(0,0,0,.05)); font-size: .85rem; }
+    .dm-file-chip[hidden] { display: none; }
+    .dm-file-chip button { background: none; border: 0; color: var(--cpri-muted); cursor: pointer; padding: 0 2px; }
   </style>
 </head>
 <body>
@@ -119,9 +131,15 @@
                 </div>
               </div>
               <div id="thread" class="dm-thread" style="max-height:440px;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px;"></div>
-              <form id="composer" style="padding:14px;border-top:1px solid var(--cpri-border);display:flex;gap:10px;">
-                <input type="text" id="dm-body" placeholder="Write a message…" maxlength="2000" aria-label="Message" style="flex:1;">
-                <button type="submit" class="btn btn-primary" id="send-btn" disabled><i class="bi bi-send"></i> Send</button>
+              <form id="composer" style="padding:14px;border-top:1px solid var(--cpri-border);">
+                <!-- The file picked for this reply, with a way to drop it. -->
+                <div id="dm-file-chip" class="dm-file-chip" hidden></div>
+                <div style="display:flex;gap:10px;align-items:center;">
+                  <button type="button" class="dm-attach-btn" id="dm-attach" title="Attach a PDF, Word file, or photo" aria-label="Attach a PDF, Word file, or photo" disabled><i class="bi bi-paperclip"></i></button>
+                  <input type="file" id="dm-file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/gif,image/webp" hidden>
+                  <input type="text" id="dm-body" placeholder="Write a message…" maxlength="2000" aria-label="Message" style="flex:1;">
+                  <button type="submit" class="btn btn-primary" id="send-btn" disabled><i class="bi bi-send"></i> Send</button>
+                </div>
               </form>
             </div>
           </div>
@@ -166,11 +184,11 @@
         <textarea id="nm-body" maxlength="1000" placeholder="Write your message…"></textarea>
         <div class="nm-meta">
           <span id="nm-attach-area">
-            <button type="button" class="nm-attach" id="nm-attach"><i class="bi bi-paperclip"></i> Attach PDF or Word file</button>
+            <button type="button" class="nm-attach" id="nm-attach"><i class="bi bi-paperclip"></i> Attach PDF, Word, or photo</button>
           </span>
           <span class="nm-count"><span id="nm-count">0</span> / 1000</span>
         </div>
-        <input type="file" id="nm-file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+        <input type="file" id="nm-file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png,image/gif,image/webp" hidden>
       </div>
 
       <p class="nm-error" id="nm-error" hidden></p>
@@ -191,6 +209,11 @@
     // presenters.
     const MESSAGE_ROLES = ['admin', 'cpri_staff', 'faculty_researcher', 'non_teaching_researcher', 'adviser', 'ethics_reviewer', 'student_researcher', 'presenter', 'public_visitor'];
     const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+    // The server re-checks every file (type AND signature); this only saves a
+    // round trip for an obvious mistake.
+    const ATTACHMENT_PATTERN = /\.(pdf|docx?|jpe?g|png|gif|webp)$/i;
+    const ATTACHMENT_TYPE_ERROR = 'Only PDF, Word (.doc, .docx), or photo (JPG, PNG, GIF, WEBP) files can be attached.';
+    const isPhoto = (file) => /\.(jpe?g|png|gif|webp)$/i.test(file.name);
 
     const el = (id) => document.getElementById(id);
 
@@ -260,7 +283,11 @@
       if (m.related) {
         html += `<a class="dm-extra" href="${escapeHtml(m.related.url)}"><i class="bi bi-file-earmark-text"></i> ${escapeHtml(m.related.title)}</a>`;
       }
-      if (m.attachment) {
+      if (m.attachment && m.attachment.isImage && m.attachment.previewUrl) {
+        html += `<a class="dm-photo" href="${escapeHtml(m.attachment.previewUrl)}" target="_blank" rel="noopener" title="${escapeHtml(m.attachment.name)}">
+          <img src="${escapeHtml(m.attachment.previewUrl)}" alt="${escapeHtml(m.attachment.name)}" loading="lazy"></a>
+          <a class="dm-extra" href="${escapeHtml(m.attachment.url)}"><i class="bi bi-download"></i> ${escapeHtml(m.attachment.name)} <span style="opacity:.75;">(${fmtSize(m.attachment.size)})</span></a>`;
+      } else if (m.attachment) {
         html += `<a class="dm-extra" href="${escapeHtml(m.attachment.url)}"><i class="bi bi-paperclip"></i> ${escapeHtml(m.attachment.name)} <span style="opacity:.75;">(${fmtSize(m.attachment.size)})</span></a>`;
       }
       return html;
@@ -287,6 +314,9 @@
         : '<p class="form-note" style="text-align:center;margin:auto;">No messages yet — say hello!</p>';
       thread.scrollTop = thread.scrollHeight;
       el('send-btn').disabled = false;
+      el('dm-attach').disabled = false;
+      // A file picked for another conversation does not follow you here.
+      if (el('composer').dataset.userId !== userId) { replyFile = null; renderReplyFile(); }
       el('composer').dataset.userId = userId;
       // Mark thread as read (open thread = read).
       try { await fetch('/api/messages/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }), credentials: 'include' }); } catch { /* best effort */ }
@@ -294,21 +324,54 @@
     }
 
     // ---- Composer (thread) ----
+    // A reply can carry one PDF, Word file, or photo (same 10 MB limit and checks as
+    // the New message dialog); text, a file, or both.
+    let replyFile = null;
+
+    function renderReplyFile() {
+      const chip = el('dm-file-chip');
+      if (!replyFile) { chip.hidden = true; chip.innerHTML = ''; return; }
+      chip.innerHTML = `<i class="bi ${isPhoto(replyFile) ? 'bi-image' : 'bi-paperclip'}"></i> ${escapeHtml(replyFile.name)} <span style="color:var(--cpri-muted);">(${fmtSize(replyFile.size)})</span>
+        <button type="button" id="dm-file-remove" aria-label="Remove attachment"><i class="bi bi-x-lg"></i></button>`;
+      chip.hidden = false;
+      el('dm-file-remove').addEventListener('click', () => { replyFile = null; el('dm-file').value = ''; renderReplyFile(); });
+    }
+
+    el('dm-attach').addEventListener('click', () => el('dm-file').click());
+    el('dm-file').addEventListener('change', () => {
+      const file = el('dm-file').files[0];
+      el('dm-file').value = '';
+      if (!file) return;
+      if (!ATTACHMENT_PATTERN.test(file.name)) return showMsg('error', ATTACHMENT_TYPE_ERROR);
+      if (file.size > MAX_ATTACHMENT_BYTES) return showMsg('error', 'The attachment is larger than 10 MB.');
+      replyFile = file;
+      renderReplyFile();
+      el('dm-body').focus();
+    });
+
     el('composer').addEventListener('submit', async (e) => {
       e.preventDefault();
       const userId = el('composer').dataset.userId;
       const body = el('dm-body').value.trim();
-      if (!userId || !body) return;
-      const res = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientId: userId, body }),
-        credentials: 'include'
-      });
-      const out = await res.json();
-      if (!res.ok) return showMsg('error', out.error);
-      el('dm-body').value = '';
-      openThread(userId);
+      if (!userId || (!body && !replyFile)) return;
+      const fd = new FormData();
+      fd.append('recipientId', userId);
+      fd.append('body', body);
+      if (replyFile) fd.append('attachment', replyFile, replyFile.name);
+      el('send-btn').disabled = true;
+      try {
+        const res = await fetch('/api/messages', { method: 'POST', body: fd, credentials: 'include' });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) return showMsg('error', out.error || 'The message could not be sent.');
+        el('dm-body').value = '';
+        replyFile = null;
+        renderReplyFile();
+        openThread(userId);
+      } catch {
+        showMsg('error', 'The message could not be sent. Check your connection and try again.');
+      } finally {
+        el('send-btn').disabled = false;
+      }
     });
 
     // ================= New message dialog =================
@@ -409,11 +472,11 @@
     function renderAttachment() {
       const area = el('nm-attach-area');
       if (!nm.file) {
-        area.innerHTML = '<button type="button" class="nm-attach" id="nm-attach"><i class="bi bi-paperclip"></i> Attach PDF or Word file</button>';
+        area.innerHTML = '<button type="button" class="nm-attach" id="nm-attach"><i class="bi bi-paperclip"></i> Attach PDF, Word, or photo</button>';
         el('nm-attach').addEventListener('click', () => el('nm-file').click());
         return;
       }
-      area.innerHTML = `<span class="nm-file"><i class="bi bi-paperclip"></i> ${escapeHtml(nm.file.name)} <span class="form-note" style="margin:0;">(${fmtSize(nm.file.size)})</span>
+      area.innerHTML = `<span class="nm-file"><i class="bi ${isPhoto(nm.file) ? 'bi-image' : 'bi-paperclip'}"></i> ${escapeHtml(nm.file.name)} <span class="form-note" style="margin:0;">(${fmtSize(nm.file.size)})</span>
         <button type="button" id="nm-file-remove" aria-label="Remove attachment"><i class="bi bi-x-lg"></i></button></span>`;
       el('nm-file-remove').addEventListener('click', () => { nm.file = null; el('nm-file').value = ''; renderAttachment(); });
     }
@@ -421,7 +484,7 @@
     el('nm-file').addEventListener('change', () => {
       const file = el('nm-file').files[0];
       if (!file) return;
-      if (!/\.(pdf|docx?)$/i.test(file.name)) { setError('Only PDF or Word (.doc, .docx) files can be attached.'); el('nm-file').value = ''; return; }
+      if (!ATTACHMENT_PATTERN.test(file.name)) { setError(ATTACHMENT_TYPE_ERROR); el('nm-file').value = ''; return; }
       if (file.size > MAX_ATTACHMENT_BYTES) { setError('The attachment is larger than 10 MB.'); el('nm-file').value = ''; return; }
       setError('');
       nm.file = file;

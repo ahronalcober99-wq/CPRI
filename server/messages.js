@@ -101,11 +101,30 @@ async function ensureMessagesTable() {
 const schemaReady = () => ensureMessagesTable().catch(() => {});
 
 // ---- Attachments ----
-// One PDF or Word file per message, up to 10 MB, checked by extension, MIME
-// type AND file signature. Stored privately (Supabase Storage when it is
-// configured, otherwise server/data/messages/) and served only to the two
-// people in the conversation — never from a public folder.
+// One file per message, up to 10 MB: a PDF, a Word document, or a photo
+// (JPG, PNG, GIF, WEBP — never SVG, which can carry script). Each is checked
+// by extension, MIME type AND file signature. Stored privately (Supabase
+// Storage when it is configured, otherwise server/data/messages/) and served
+// only to the two people in the conversation — never from a public folder.
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_TYPES_TEXT = 'PDF, Word (.doc, .docx), or photo (JPG, PNG, GIF, WEBP)';
+
+const IMAGE_RULES = new Map([
+  ['.jpg', { mimes: ['image/jpeg'], matches: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff }],
+  ['.jpeg', { mimes: ['image/jpeg'], matches: (b) => b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff }],
+  ['.png', { mimes: ['image/png'], matches: (b) => b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) }],
+  ['.gif', { mimes: ['image/gif'], matches: (b) => b.subarray(0, 4).toString('latin1') === 'GIF8' }],
+  ['.webp', { mimes: ['image/webp'], matches: (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP' }]
+]);
+
+function isImageAttachment(file) {
+  const rule = IMAGE_RULES.get(extname(String(file?.originalname || '')).toLowerCase());
+  return Boolean(rule && rule.mimes.includes(file.mimetype) && file.buffer && rule.matches(file.buffer));
+}
+
+function isAllowedAttachment(file) {
+  return validateSubmissionUploadFile(file) || isImageAttachment(file);
+}
 const attachmentStore = createResearchStorage({ uploadDir: join(process.cwd(), 'server', 'data') });
 const attachmentUpload = multer({
   storage: multer.memoryStorage(),
@@ -118,7 +137,7 @@ function handleAttachmentUpload(req, res, next) {
     if (!err) return next();
     const tooBig = err.code === 'LIMIT_FILE_SIZE';
     return res.status(400).json({
-      error: tooBig ? 'The attachment is larger than 10 MB.' : 'Attach a single PDF or Word file.'
+      error: tooBig ? 'The attachment is larger than 10 MB.' : `Attach a single ${ATTACHMENT_TYPES_TEXT} file.`
     });
   });
 }
@@ -161,15 +180,23 @@ function relatedOf(m) {
 
 function attachmentOf(m) {
   if (!m.attachmentName || !m.attachmentPath) return null;
+  const url = `/api/messages/attachment/${encodeURIComponent(m.id)}`;
+  const isImage = /^image\/(jpeg|png|gif|webp)$/.test(String(m.attachmentMime || ''));
   return {
     name: m.attachmentName,
     size: Number(m.attachmentSize) || 0,
-    url: `/api/messages/attachment/${encodeURIComponent(m.id)}`
+    url,
+    isImage,
+    // Photos are shown in the conversation; the same authorized route serves
+    // them inline instead of as a download.
+    previewUrl: isImage ? `${url}?inline=1` : null
   };
 }
 
 // The inbox preview for a message that is only a file.
-const previewOf = (m) => m.body || (m.attachmentName ? `Attachment: ${m.attachmentName}` : '');
+const previewOf = (m) => m.body || (m.attachmentName
+  ? (/^image\//.test(String(m.attachmentMime || '')) ? 'Photo' : `Attachment: ${m.attachmentName}`)
+  : '');
 
 // Async middleware: requireAuth + the user must be active and in DM_ROLES.
 function requireDMRole(req, res, next) {
@@ -320,8 +347,8 @@ router.post('/', requireDMRole, handleAttachmentUpload, async (req, res) => {
     if (!body && !file) return res.status(400).json({ error: 'Write a message or attach a file.' });
     if (body.length > 2000) return res.status(400).json({ error: 'Message is too long (max 2000 characters).' });
     if (recipientId === me) return res.status(400).json({ error: 'You cannot send a message to yourself.' });
-    if (file && !validateSubmissionUploadFile(file)) {
-      return res.status(400).json({ error: 'Only PDF or Word (.doc, .docx) files can be attached.' });
+    if (file && !isAllowedAttachment(file)) {
+      return res.status(400).json({ error: `Only ${ATTACHMENT_TYPES_TEXT} files can be attached.` });
     }
 
     const recipient = await get('SELECT id, role, status, fullName, username FROM users WHERE id = ?', [recipientId]);
@@ -402,8 +429,12 @@ router.get('/attachment/:messageId', requireDMRole, async (req, res) => {
 
     const stream = await attachmentStore.open({ path: m.attachmentPath, backend: m.attachmentBackend });
     if (!stream) return res.status(404).json({ error: 'The attachment is no longer available.' });
+    // ?inline=1 lets a photo display in the conversation; anything else is
+    // always a download.
+    const inline = req.query.inline === '1' && /^image\/(jpeg|png|gif|webp)$/.test(String(m.attachmentMime || ''));
     res.setHeader('Content-Type', m.attachmentMime || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURI(m.attachmentName || 'attachment')}"`);
+    res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${encodeURI(m.attachmentName || 'attachment')}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
     stream.pipe(res);
     stream.on('error', (err) => {
