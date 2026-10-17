@@ -1881,3 +1881,38 @@ test('recommendations come from the public repository, for people who may read t
     await module.cleanup();
   }
 });
+
+test('the list offers each caller exactly the status moves the server accepts', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const staff = account('cpri_staff');
+    const finalRow = finalSubmissionRow(student, { status: 'under_initial_checking' });
+    const initialRow = finalSubmissionRow(student, { stage: 'initial', status: 'under_ethics_review' });
+    await module.store.insert('research_submissions', finalRow);
+    await module.store.insert('research_submissions', initialRow);
+
+    const list = async (as) => (await module.json(await module.call(as, '/'))).body.submissions;
+    const moves = (records, id) => records.find(r => r.id === id).nextStatuses.map(n => n.value);
+
+    const staffView = await list(staff);
+    assert.deepEqual(moves(staffView, finalRow.id), ['for_revision', 'approved', 'rejected']);
+    assert.equal(staffView.find(r => r.id === finalRow.id).nextStatuses[1].label, 'Approved');
+    assert.deepEqual(moves(staffView, initialRow.id), ['rejected'],
+      'approving a proposal goes through the ethics decision, never the list');
+
+    const ownView = await list(student);
+    assert.deepEqual(moves(ownView, finalRow.id), [], 'a researcher cannot move their own status');
+
+    // Every move offered is one PATCH /:id/status accepts.
+    for (const status of moves(staffView, finalRow.id).slice(0, 1)) {
+      const res = await module.call(staff, `/${finalRow.id}/status`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status })
+      });
+      assert.equal(res.status, 200);
+    }
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});

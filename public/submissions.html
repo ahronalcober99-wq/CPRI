@@ -51,23 +51,85 @@
     let isAdmin = false;
 
     const STATUS_LABELS = {
-      submitted: 'Submitted', under_initial_checking: 'Under Initial Checking',
+      draft: 'Draft', submitted: 'Submitted', under_initial_checking: 'Under Initial Checking',
       for_revision: 'For Revision', under_ethics_review: 'Under Ethics Review',
       approved: 'Approved', published: 'Published', archived: 'Archived', rejected: 'Rejected'
     };
     const STATUS_ORDER = ['submitted','under_initial_checking','for_revision','under_ethics_review','approved','published','archived','rejected'];
+    const RESEARCH_TYPE_LABELS = {
+      institutional: 'Institutional Research', institutional_research: 'Institutional Research',
+      faculty: 'Faculty Research', faculty_research: 'Faculty Research',
+      non_teaching_research: 'Non-Teaching Research', student_thesis: 'Student Thesis',
+      capstone: 'Capstone', feasibility: 'Feasibility Study', action_research: 'Action Research'
+    };
 
-    (async () => {
-      const meRes = await fetch('/api/auth/me');
-      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
-      const { user } = await meRes.json();
-      isReviewer = ['admin','cpri_staff','ethics_reviewer'].includes(user.role);
-      isAdmin = user.role === 'admin' && user.status === 'active';
-      if (isReviewer) document.getElementById('reviewer-banner').style.display = 'block';
+    function esc(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
 
-      const res = await fetch('/api/submissions');
-      if (!res.ok) { notLogged.style.display = 'block'; return; }
-      const { submissions } = await res.json();
+    // Submissions arrive through two forms that keep them in two tables:
+    //   * the classic form       -> /api/submissions
+    //   * Research Submission    -> /api/research-submissions (for staff/admin
+    //     this list already includes the classic records, merged by id)
+    // Both are read and merged here, one card per submission. Each card keeps
+    // which store it lives in, because the two have different status rules.
+    async function loadSubmissions() {
+      const [classicRes, moduleRes] = await Promise.all([
+        fetch('/api/submissions'),
+        fetch('/api/research-submissions')
+      ]);
+      if (!classicRes.ok) return null;
+      const classic = (await classicRes.json()).submissions || [];
+      // A role without access to the Research Submission module (e.g. an
+      // ethics reviewer) gets 403 there; the classic list still shows.
+      const modules = moduleRes.ok ? ((await moduleRes.json()).submissions || []) : [];
+
+      const byId = new Map();
+      for (const r of modules) {
+        // Someone else's unfinished draft is not a submission yet.
+        if (r.status === 'draft' && !r.isOwner) continue;
+        const inModule = (r.sources || [r.source]).includes('module');
+        byId.set(r.id, {
+          id: r.id,
+          title: r.title,
+          authors: r.authors,
+          program: r.program,
+          researchType: r.research_type,
+          status: r.status,
+          statusLabel: r.statusLabel || STATUS_LABELS[r.status] || r.status,
+          createdAt: r.created_at,
+          detailUrl: r.detailUrl || ('submission.html?id=' + encodeURIComponent(r.id)),
+          kind: inModule ? 'module' : 'classic',
+          stage: inModule ? r.stage : null,
+          nextStatuses: r.nextStatuses || []
+        });
+      }
+      for (const s of classic) {
+        if (byId.has(s.id)) continue;
+        byId.set(s.id, {
+          ...s,
+          detailUrl: 'submission.html?id=' + encodeURIComponent(s.id),
+          kind: 'classic',
+          stage: null,
+          nextStatuses: []
+        });
+      }
+      const time = (v) => { const t = new Date(v).getTime(); return Number.isNaN(t) ? 0 : t; };
+      return [...byId.values()].sort((a, b) => time(b.createdAt) - time(a.createdAt));
+    }
+
+    function formTag(s) {
+      const text = s.kind === 'module'
+        ? 'Research Submission · ' + (s.stage === 'final' ? 'Final' : 'Initial')
+        : 'Classic form';
+      return `<span class="form-note" style="font-size:.8rem;">${esc(text)}</span>`;
+    }
+
+    async function render() {
+      const submissions = await loadSubmissions();
+      if (!submissions) { notLogged.style.display = 'block'; return; }
       listArea.style.display = 'block';
 
       if (!submissions.length) {
@@ -78,37 +140,63 @@
         <div class="card" style="margin-bottom:16px;">
           <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:flex-start;">
             <div>
-              <h3 style="margin:0 0 6px;"><a href="submission.html?id=${s.id}">${s.title}</a></h3>
-              <div class="meta">${s.authors} · ${s.program} · ${STATUS_LABELS[s.researchType] || s.researchType}</div>
-              <div style="margin-top:8px;"><span class="badge">${s.statusLabel}</span> <span class="form-note">${new Date(s.createdAt).toLocaleDateString()}</span></div>
+              <h3 style="margin:0 0 6px;"><a href="${esc(s.detailUrl)}">${esc(s.title)}</a></h3>
+              <div class="meta">${esc([s.authors, s.program, RESEARCH_TYPE_LABELS[s.researchType] || s.researchType].filter(Boolean).join(' · '))}</div>
+              <div style="margin-top:8px;"><span class="badge">${esc(s.statusLabel)}</span> <span class="form-note">${esc(s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '')}</span> · ${formTag(s)}</div>
             </div>
             ${isReviewer ? statusControl(s) : ''}
-            ${isAdmin ? deleteControl(s) : ''}
+            ${isAdmin && s.kind === 'classic' ? deleteControl(s) : ''}
           </div>
         </div>`).join('');
 
-      if (isReviewer) {
-        submissionsEl.querySelectorAll('select.status-select').forEach(sel => {
-          sel.addEventListener('change', (e) => updateStatus(e.target.dataset.id, e.target.value));
-        });
-      }
-      if (isAdmin) {
-        submissionsEl.querySelectorAll('button.delete-submission').forEach(btn => {
-          btn.addEventListener('click', () => deleteSubmission(btn));
-        });
-      }
+      submissionsEl.querySelectorAll('select.status-select').forEach(sel => {
+        sel.addEventListener('change', (e) => updateStatus(e.target.dataset.id, e.target.dataset.kind, e.target.value));
+      });
+      submissionsEl.querySelectorAll('button.delete-submission').forEach(btn => {
+        btn.addEventListener('click', () => deleteSubmission(btn));
+      });
+    }
+
+    (async () => {
+      const meRes = await fetch('/api/auth/me');
+      if (!meRes.ok) { notLogged.style.display = 'block'; return; }
+      const { user } = await meRes.json();
+      isReviewer = ['admin','cpri_staff','ethics_reviewer'].includes(user.role);
+      isAdmin = user.role === 'admin' && user.status === 'active';
+      if (isReviewer) document.getElementById('reviewer-banner').style.display = 'block';
+      await render();
     })();
 
+    // Classic records keep their free status list. A Research Submission
+    // follows its stage's workflow, so it offers only the moves the server
+    // will accept from where it is now (sent with the record).
     function statusControl(s) {
+      if (s.kind === 'module') {
+        if (!s.nextStatuses.length) {
+          const why = s.stage === 'initial' && s.status === 'under_ethics_review'
+            ? 'Awaiting the ethics decision.'
+            : 'No status change available from here.';
+          return `<div style="min-width:220px;"><label class="form-note">Update status</label>
+            <p class="form-note" style="margin:6px 0 0;">${esc(why)} <a href="${esc(s.detailUrl)}">Open</a></p></div>`;
+        }
+        const opts = [`<option value="" selected>${esc(s.statusLabel)} (current)</option>`]
+          .concat(s.nextStatuses.map(n => `<option value="${esc(n.value)}">${esc(n.label)}</option>`)).join('');
+        const hint = s.stage === 'initial' && s.status === 'under_ethics_review'
+          ? '<p class="form-note" style="margin:6px 0 0;font-size:.8rem;">Approval is recorded by the ethics reviewer.</p>' : '';
+        return `<div style="min-width:220px;">
+          <label class="form-note">Update status</label>
+          <select class="status-select" data-id="${esc(s.id)}" data-kind="module" style="margin-top:4px;">${opts}</select>${hint}
+        </div>`;
+      }
       const opts = STATUS_ORDER.map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${STATUS_LABELS[st]}</option>`).join('');
       return `<div style="min-width:220px;">
         <label class="form-note">Update status</label>
-        <select class="status-select" data-id="${s.id}" style="margin-top:4px;">${opts}</select>
+        <select class="status-select" data-id="${esc(s.id)}" data-kind="classic" style="margin-top:4px;">${opts}</select>
       </div>`;
     }
 
     function deleteControl(s) {
-      return `<button type="button" class="btn btn-outline btn-sm delete-submission" data-id="${s.id}">
+      return `<button type="button" class="btn btn-outline btn-sm delete-submission" data-id="${esc(s.id)}">
         <i class="bi bi-trash"></i> Delete submission
       </button>`;
     }
@@ -141,21 +229,24 @@
       }
     }
 
-    async function updateStatus(id, status) {
-      const res = await fetch('/api/submissions/' + id + '/status', {
+    async function updateStatus(id, kind, status) {
+      if (!status) return;
+      const url = (kind === 'module' ? '/api/research-submissions/' : '/api/submissions/') + encodeURIComponent(id) + '/status';
+      const res = await fetch(url, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status })
       });
-      const out = await res.json();
+      const out = await res.json().catch(() => ({}));
       if (!res.ok) {
         message.className = 'form-message error';
         message.textContent = out.error || 'Update failed';
+        await render(); // put the dropdown back to the real status
         return;
       }
       message.className = 'form-message success';
       message.textContent = 'Status updated to "' + (STATUS_LABELS[status] || status) + '".';
-      const badge = document.querySelector(`select.status-select[data-id="${id}"]`).closest('.card').querySelector('.badge');
-      badge.textContent = STATUS_LABELS[status] || status;
+      // The next allowed moves depend on the new status, so redraw.
+      await render();
     }
   </script>
 </body>

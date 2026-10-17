@@ -718,6 +718,21 @@ function groupBySubmission(rows) {
   return map;
 }
 
+// The statuses THIS caller may move a record to from where it is now — the
+// same rules PATCH /:id/status enforces, so a list page can offer exactly the
+// moves that will succeed. Approving an Initial Submission is left out: it
+// goes through the ethics decision (POST /:id/ethics), which attaches the
+// clearance.
+function nextStatusesFor(user, row) {
+  if (!user || !STATUS_CHANGE_ROLES.has(user.role)) return [];
+  if (user.role === 'ethics_reviewer' && row.status !== 'under_ethics_review') return [];
+  const stage = row.stage || 'initial';
+  const next = validTransitionsFor(stage, row.owner_role)[row.status] || [];
+  return next
+    .filter(status => !(stage === 'initial' && status === 'approved'))
+    .map(status => ({ value: status, label: statusLabelFor(status, stage) }));
+}
+
 // One module row -> the shared record shape (see lib/submission-records.js).
 function moduleRecord(row, { user, files = [], comments = [] }) {
   const stage = row.stage || 'initial';
@@ -764,7 +779,8 @@ function moduleRecord(row, { user, files = [], comments = [] }) {
     source: 'module',
     sources: ['module'],
     detailUrl: `/research-submission-detail.html?id=${encodeURIComponent(row.id)}`,
-    isOwner: isOwnerOf(user, row.owner_id)
+    isOwner: isOwnerOf(user, row.owner_id),
+    nextStatuses: nextStatusesFor(user, row)
   };
 }
 
