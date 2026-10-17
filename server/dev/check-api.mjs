@@ -27,7 +27,7 @@ const PUBLIC_ENDPOINTS = [
   '/api/site', '/api/announcements', '/api/events', '/api/research', '/api/agenda',
   '/api/researchers', '/api/researchers/stats', '/api/researchers/directory',
   '/api/publications', '/api/events-module',
-  '/api/repository', '/api/innovation-extension', '/api/notifications',
+  '/api/repository', '/api/notifications',
   // Read-only aggregates the public home page renders; deliberately open.
   '/api/admin/hero-stats', '/api/admin/public-summary'
 ];
@@ -35,7 +35,9 @@ const PUBLIC_ENDPOINTS = [
 const PROTECTED_ENDPOINTS = [
   '/api/auth/me', '/api/submissions', '/api/ethics', '/api/messages',
   '/api/admin/summary', '/api/admin/analytics', '/api/admin/users',
-  '/api/admin/impact-dashboard'
+  '/api/admin/impact-dashboard',
+  // Innovation & Extension is admin only.
+  '/api/innovation-extension'
 ];
 
 const results = [];

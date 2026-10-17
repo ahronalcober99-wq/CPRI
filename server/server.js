@@ -264,7 +264,9 @@ app.use('/api/messages', messagesRouter);
 // Pages — has no server to run this; there the API guard is what protects data.)
 const ADMIN_ONLY_PAGES = new Set([
   'admin-dashboard.html', 'research-impact-dashboard.html', 'audit-logs.html',
-  'calendar.html', 'file-manager.html', 'email-notifications.html', 'reports.html'
+  'calendar.html', 'file-manager.html', 'email-notifications.html', 'reports.html',
+  // Innovation & Extension is an admin-only module (list, detail and form).
+  'innovation-extension.html', 'innovation-extension-detail.html', 'innovation-extension-form.html'
 ]);
 const MEMBER_ONLY_PAGES = new Set([
   'account.html', 'profile.html', 'messages.html',

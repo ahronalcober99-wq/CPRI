@@ -183,9 +183,10 @@ const CPRI = (() => {
           { label: 'Repository', href: 'repository.html', icon: 'bi-archive', desc: 'Open repository' },
           { label: 'Publications', href: 'publications.html', icon: 'bi-journal-richtext', desc: 'Papers & briefs' },
           { label: 'Researchers', href: 'researchers.html', icon: 'bi-people', desc: 'Our people' },
-          { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb', desc: 'Applied work' },
-          // Admin only: server.js serves reports.html to admins alone, so the
-          // link is not shown to anyone else (getNavItems filters adminOnly).
+          { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb', desc: 'Applied work', adminOnly: true },
+          // Admin only (here and Innovation & Extension above): server.js serves
+          // those pages to admins alone, so the links are not shown to anyone
+          // else (getNavItems filters adminOnly).
           { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph', desc: 'Annual reports', adminOnly: true }
         ]}
       ]},
@@ -679,7 +680,7 @@ const CPRI = (() => {
         { label: 'Researchers', href: 'researchers.html', icon: 'bi-people' },
         { label: 'Ethics Review', href: 'ethics.html', icon: 'bi-shield-check' },
         { label: 'Research Gala', href: 'gala-form.html', icon: 'bi-mic' },
-        { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb' },
+        { label: 'Innovation & Extension', href: 'innovation-extension.html', icon: 'bi-lightbulb', adminOnly: true },
         { label: 'Reports', href: 'reports.html', icon: 'bi-file-earmark-bar-graph', adminOnly: true },
         { label: 'Contact', href: 'contact.html', icon: 'bi-envelope' }
       ];

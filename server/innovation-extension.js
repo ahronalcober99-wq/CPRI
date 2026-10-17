@@ -5,7 +5,7 @@ import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, join, extname } from 'path';
 import { promises as fs } from 'fs';
-import { requireAuth, requireRole, readUsers } from './auth.js';
+import { requireAuth, requireAdmin, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -14,12 +14,19 @@ const UPLOAD_DIR = join(__dirname, '..', 'public', 'assets', 'uploads', 'innovat
 
 const router = Router();
 
+// Admin only: every route below — reading included — needs an active admin
+// session (401 when signed out, 403 for any other role). The pages are
+// admin-only too (ADMIN_ONLY_PAGES in server.js).
+router.use(requireAdmin);
+
 const PROJECT_TYPES = {
   innovation_project: 'Innovation Project',
   extension_research: 'Extension-Based Research'
 };
 
-const STAFF_ROLES = ['admin', 'cpri_staff'];
+// Who may add, edit and delete records. Kept as the module's single list;
+// with the whole router behind requireAdmin it is admin only.
+const STAFF_ROLES = ['admin'];
 
 async function caller(req) {
   const users = await readUsers();
