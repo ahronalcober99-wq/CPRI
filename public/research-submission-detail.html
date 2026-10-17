@@ -311,10 +311,22 @@
         document.getElementById('d-stage').textContent = STAGE_LABELS[s.stage] || s.stage || '—';
         document.getElementById('d-sy').textContent = s.school_year || '—';
         document.getElementById('d-sem').textContent = s.semester || '—';
-        document.getElementById('d-adviser').textContent = s.adviser_id || '—';
-        document.getElementById('d-facilitator').textContent = s.facilitator_id || '—';
-        document.getElementById('d-institution').textContent = s.institution || '—';
-        document.getElementById('d-nationality').textContent = s.nationality || '—';
+        // Role-specific fields: Adviser and Facilitator are on the student
+        // form only, Institution and Nationality on the presenter form only.
+        // A row that is not part of the owner's form is hidden instead of
+        // showing a permanent "—" (it still shows if a value was recorded,
+        // e.g. on a record copied from the classic form).
+        const ROLE_FIELDS = [
+          ['d-adviser', s.adviser_id, ['student_researcher']],
+          ['d-facilitator', s.facilitator_id, ['student_researcher']],
+          ['d-institution', s.institution, ['presenter']],
+          ['d-nationality', s.nationality, ['presenter']]
+        ];
+        for (const [fieldId, value, roles] of ROLE_FIELDS) {
+          const span = document.getElementById(fieldId);
+          span.textContent = value || '—';
+          span.closest('.contact-row').style.display = (value || roles.includes(s.owner_role)) ? '' : 'none';
+        }
         document.getElementById('d-keywords').textContent = s.keywords || '—';
         document.getElementById('d-abstract').textContent = s.abstract || '—';
         document.getElementById('d-status').textContent = STATUS_LABELS[s.status] || s.status;
