@@ -311,6 +311,10 @@ function canReadSubmission(user, sub) {
   if (RESEARCHER_ROLES.has(user.role)) return isOwnerOf(user, sub.owner_id);
   if (ASSIGNED_ROLES.has(user.role)) return true;
   if (user.role === 'cpri_staff' || user.role === 'admin') return true;
+  // The ethics reviewer checks Initial papers (and issues the Ethics
+  // Clearance), so it reads that stage — never someone's unfinished draft, and
+  // never the Final papers that do not go through ethics review.
+  if (user.role === 'ethics_reviewer') return sub.stage === 'initial' && sub.status !== 'draft';
   return false;
 }
 
@@ -780,7 +784,8 @@ function moduleRecord(row, { user, files = [], comments = [] }) {
     sources: ['module'],
     detailUrl: `/research-submission-detail.html?id=${encodeURIComponent(row.id)}`,
     isOwner: isOwnerOf(user, row.owner_id),
-    nextStatuses: nextStatusesFor(user, row)
+    nextStatuses: nextStatusesFor(user, row),
+    canDecideEthics: Boolean(user) && user.role === 'ethics_reviewer' && row.status === 'under_ethics_review'
   };
 }
 
@@ -794,6 +799,7 @@ router.get('/', requireAuth, async (req, res) => {
   const isMonitor = !isResearcher && (
     ASSIGNED_ROLES.has(user.role) || user.role === 'cpri_staff' || user.role === 'admin'
   );
+  const isEthicsReviewer = user.role === 'ethics_reviewer';
 
   let rows;
   if (isResearcher) {
@@ -807,6 +813,10 @@ router.get('/', requireAuth, async (req, res) => {
     );
   } else if (isMonitor) {
     rows = await all('SELECT * FROM research_submissions ORDER BY created_at DESC');
+  } else if (isEthicsReviewer) {
+    // Same rule as canReadSubmission(): the Initial papers ethics review covers.
+    rows = (await all('SELECT * FROM research_submissions ORDER BY created_at DESC'))
+      .filter(row => canReadSubmission(user, row));
   } else {
     return res.status(403).json({ error: 'Access denied.' });
   }
@@ -909,9 +919,28 @@ router.get('/:id', requireAuth, async (req, res) => {
     [sub.id]
   );
 
+  // Ethics decisions, without the storage path (the file is fetched through
+  // the authorized clearance route).
+  const ethicsClearances = (await all(
+    'SELECT * FROM research_ethics_clearances WHERE submission_id = ? ORDER BY decided_at ASC',
+    [sub.id]
+  )).map(c => ({
+    id: c.id,
+    decision: c.decision,
+    reviewer_name: c.reviewer_name,
+    decided_at: c.decided_at,
+    file_name: c.file_name || null,
+    hasFile: Boolean(c.file_path)
+  }));
+
   res.json({
     submission: {
       ...sub,
+      // The moves this caller may make from here (PATCH /:id/status), and
+      // whether the ethics decision buttons apply (POST /:id/ethics).
+      nextStatuses: nextStatusesFor(user, sub),
+      canDecideEthics: user.role === 'ethics_reviewer' && sub.status === 'under_ethics_review',
+      ethicsClearances,
       // The server decides ownership (see ownerRefsFor) — the detail page must
       // not re-decide it by comparing raw ids, or a record keyed by email would
       // look like somebody else's to its own owner.
@@ -1149,6 +1178,43 @@ router.get('/:id/files/:fileId', requireAuth, async (req, res) => {
   stream.on('error', (err) => {
     if (!res.headersSent) res.status(500).json({ error: 'Could not stream the file.' });
     console.error('[research-submissions] file stream error:', err.message);
+  });
+});
+
+// ---------------------------------------------------------------------------
+//  GET /api/research-submissions/:id/ethics-clearance/:clearanceId
+//  The Ethics Clearance PDF attached to an ethics decision. Same read rule as
+//  every other document of the submission.
+// ---------------------------------------------------------------------------
+router.get('/:id/ethics-clearance/:clearanceId', requireAuth, async (req, res) => {
+  const user = await callerUser(req);
+  if (!user) return res.status(401).json({ error: 'Not authenticated.' });
+
+  const sub = await get('SELECT * FROM research_submissions WHERE id = ?', [req.params.id]);
+  if (!sub) return res.status(404).json({ error: 'Submission not found.' });
+  if (!canReadSubmission(user, sub)) return res.status(403).json({ error: 'You don\'t have access to this submission.' });
+
+  const clearance = await get(
+    'SELECT * FROM research_ethics_clearances WHERE id = ? AND submission_id = ?',
+    [req.params.clearanceId, sub.id]
+  );
+  if (!clearance || !clearance.file_path) return res.status(404).json({ error: 'No clearance file was attached.' });
+
+  let stream;
+  try {
+    stream = await fileStore.open({ path: clearance.file_path, backend: clearance.storage_backend });
+  } catch (err) {
+    console.error('[research-submissions] clearance could not be opened:', err.message);
+    return res.status(502).json({ error: 'The stored file could not be retrieved. Please try again.' });
+  }
+  if (!stream) return res.status(404).json({ error: 'File is no longer available.' });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="${encodeURI(clearance.file_name || 'ethics-clearance.pdf')}"`);
+  stream.pipe(res);
+  stream.on('error', (err) => {
+    if (!res.headersSent) res.status(500).json({ error: 'Could not stream the file.' });
+    console.error('[research-submissions] clearance stream error:', err.message);
   });
 });
 

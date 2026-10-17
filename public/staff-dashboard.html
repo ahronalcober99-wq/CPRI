@@ -133,7 +133,7 @@
 
       // CPRI Staff land here after sign-in (homePageForRole in server/auth.js).
       // Every card reads an endpoint this role already has permission for —
-      // GET /api/submissions returns ALL records for cpri_staff (VIEW_ALL_ROLES),
+      // GET /api/research-submissions returns BOTH submission stores for staff,
       // GET /api/ethics returns the full queue (REVIEWER_ROLES), and
       // GET /api/announcements is the public content feed. No new API routes.
       // The server is the real gate; this role check only decides what renders.
@@ -225,19 +225,26 @@
             }
           };
 
-          loadCard('/api/submissions', 'submissions-list', (payload) => {
-            const subs = payload.submissions || [];
+          // Both submission forms: for staff, GET /api/research-submissions
+          // returns the Research Submission records AND the classic ones,
+          // merged so a migrated record appears once. Someone else's
+          // unfinished draft is not a submission yet.
+          loadCard('/api/research-submissions', 'submissions-list', (payload) => {
+            const subs = (payload.submissions || []).filter(s => s.status !== 'draft' || s.isOwner);
             el('stat-submissions').textContent = subs.length;
             if (!subs.length) {
               el('submissions-list').innerHTML = emptyState('No research submissions yet. Please check back soon.');
               return;
             }
+            const formOf = (s) => (s.sources || [s.source]).includes('module')
+              ? 'Research Submission · ' + (s.stage === 'final' ? 'Final' : 'Initial')
+              : 'Classic form';
             el('submissions-list').innerHTML = subs.slice(0, 6).map(s =>
               '<div style="border-bottom:1px solid var(--cpri-border);padding:10px 0;">' +
-                '<h4 style="margin:0 0 6px;"><a href="submission.html?id=' + encodeURIComponent(s.id) + '">' + esc(s.title || 'Untitled submission') + '</a></h4>' +
+                '<h4 style="margin:0 0 6px;"><a href="' + esc(s.detailUrl || ('submission.html?id=' + encodeURIComponent(s.id))) + '">' + esc(s.title || 'Untitled submission') + '</a></h4>' +
                 '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">' +
                   statusBadge(s.status, s.statusLabel) +
-                  '<span class="meta">' + esc(s.authors || '—') + ' · ' + when(s.createdAt) + '</span>' +
+                  '<span class="meta">' + esc(s.authors || s.studentName || '—') + ' · ' + when(s.created_at) + ' · ' + esc(formOf(s)) + '</span>' +
                 '</div>' +
               '</div>').join('') +
               (subs.length > 6 ? '<p class="form-note" style="margin:10px 0 0;">Showing the 6 most recent of ' + subs.length + ' submissions.</p>' : '');

@@ -268,3 +268,17 @@ test('a store that cannot be read leaves the other one on the dashboard', async 
   const list = await listAllSubmissions({ all, log: () => {} });
   assert.deepEqual(list.map(r => r.id), ['c-only']);
 });
+
+test('a published entry carries the facilitator and the researcher\'s own category', async () => {
+  const db = memoryStore();
+  await publishSubmission(db, fromModuleSubmission(moduleRow('m-fac', { facilitator_id: 'Ms. Facilitator' })), { status: 'approved' });
+  const [moduleEntry] = db.rows('repository');
+  assert.equal(moduleEntry.facilitator, 'Ms. Facilitator');
+  assert.equal(moduleEntry.researchCategory, 'Life Sciences', 'the free-text category, kept apart from the research type');
+  assert.equal(moduleEntry.category, 'student_thesis');
+
+  await publishSubmission(db, fromClassicSubmission(classicRow('c-fac', { category: 'Robotics' })), { status: 'approved' });
+  const classicEntry = db.rows('repository').find(r => r.sourceSubmissionId === 'c-fac');
+  assert.equal(classicEntry.researchCategory, 'Robotics');
+  assert.equal(classicEntry.facilitator, null, 'the classic form never asked for one');
+});

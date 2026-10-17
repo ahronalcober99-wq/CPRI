@@ -155,6 +155,9 @@ router.get('/', async (req, res) => {
   if (q.year) { sql += ' AND r.yearCompleted = ?'; params.push(q.year); }
   if (q.keywords) { sql += ' AND r.keywords LIKE ?'; params.push(`%${q.keywords}%`); }
   if (q.category) { sql += ' AND r.category = ?'; params.push(q.category); }
+  // The researcher's own category ("Life Sciences"), as typed on the form.
+  if (q.researchCategory) { sql += ' AND r.researchCategory LIKE ?'; params.push(`%${q.researchCategory}%`); }
+  if (q.facilitator) { sql += ' AND r.facilitator LIKE ?'; params.push(`%${q.facilitator}%`); }
 
   sql += ' ORDER BY r.yearCompleted DESC';
   const list = await queries.all(sql, params);
@@ -167,6 +170,9 @@ router.get('/', async (req, res) => {
       department: r.department,
       category: r.category,
       categoryLabel: CATEGORY_TYPES[r.category] || r.category,
+      researchCategory: r.researchCategory || '',
+      adviser: r.adviser || '',
+      facilitator: r.facilitator || '',
       yearCompleted: r.yearCompleted,
       status: r.status,
       accessLevel: r.accessLevel,
@@ -277,10 +283,12 @@ router.post('/', async (req, res) => {
       title: sub.title,
       authors: sub.authors,
       adviser: sub.adviser || '',
+      facilitator: b.facilitator ? String(b.facilitator).trim() : null,
       department: sub.program,
       abstract: sub.abstract,
       keywords: sub.keywords || '',
       category: sub.researchType,
+      researchCategory: sub.category || null,
       yearCompleted: String(year),
       status: sub.status,
       accessLevel: b.accessLevel && ACCESS_LEVELS[b.accessLevel] ? b.accessLevel : 'downloadable',
@@ -295,10 +303,12 @@ router.post('/', async (req, res) => {
       title: String(b.title).trim(),
       authors: String(b.authors).trim(),
       adviser: b.adviser ? String(b.adviser).trim() : '',
+      facilitator: b.facilitator ? String(b.facilitator).trim() : null,
       department: String(b.department).trim(),
       abstract: b.abstract ? String(b.abstract).trim() : '',
       keywords: b.keywords ? String(b.keywords).trim() : '',
       category: b.category || 'institutional',
+      researchCategory: b.researchCategory ? String(b.researchCategory).trim() : null,
       yearCompleted: String(b.yearCompleted).trim(),
       status: b.status || 'published',
       accessLevel: b.accessLevel && ACCESS_LEVELS[b.accessLevel] ? b.accessLevel : 'downloadable',
@@ -322,7 +332,7 @@ router.patch('/:id', async (req, res) => {
   if (!r) return res.status(404).json({ error: 'Record not found.' });
 
   const changes = {};
-  const editable = ['adviser', 'department', 'abstract', 'keywords', 'category', 'yearCompleted', 'status', 'accessLevel', 'citation'];
+  const editable = ['adviser', 'facilitator', 'department', 'abstract', 'keywords', 'category', 'researchCategory', 'yearCompleted', 'status', 'accessLevel', 'citation'];
   for (const f of editable) {
     if (b[f] !== undefined) {
       if (f === 'citation') {
@@ -413,6 +423,35 @@ router.delete('/:id', adminGuard, async (req, res) => {
 });
 
   return router;
+}
+
+// ---------- Schema (additive, safe on existing databases) ----------
+// `facilitator` and `researchCategory` (the researcher's own free-text
+// category, e.g. "Life Sciences" — `category` holds the research TYPE key) were
+// added later, so a database created before them gets them on boot. Nullable,
+// so every existing row stays valid.
+export async function ensureRepositorySchema(dependencies = {}) {
+  const queries = { all: dependencies.all || all, run: dependencies.run || run };
+  const columns = await queries.all('SHOW COLUMNS FROM repository');
+  const existing = new Set(columns.map(c => String(c.Field || c.field || '').toLowerCase()));
+  const columnsToAdd = [
+    { name: 'facilitator', sql: 'ALTER TABLE repository ADD COLUMN facilitator VARCHAR(160) DEFAULT NULL' },
+    { name: 'researchCategory', sql: 'ALTER TABLE repository ADD COLUMN researchCategory VARCHAR(160) DEFAULT NULL' }
+  ];
+  const added = [];
+  for (const col of columnsToAdd) {
+    if (existing.has(col.name.toLowerCase())) continue;
+    try {
+      await queries.run(col.sql);
+      added.push(col.name);
+    } catch (err) {
+      if (!String(err && err.message).includes('Duplicate column name')) throw err;
+    }
+  }
+  console.log(added.length
+    ? `[schema] added missing repository columns: ${added.join(', ')}`
+    : '[schema] repository columns: ok');
+  return added;
 }
 
 const router = createRepositoryRouter();

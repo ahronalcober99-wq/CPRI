@@ -1916,3 +1916,125 @@ test('the list offers each caller exactly the status moves the server accepts', 
     await module.cleanup();
   }
 });
+
+// ===========================================================================
+//  Ethics reviewer: lists and opens Initial papers, and decides them
+// ===========================================================================
+test('an ethics reviewer lists and opens Initial papers, never drafts or Final papers', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const reviewer = account('ethics_reviewer');
+    const initial = finalSubmissionRow(student, { stage: 'initial', status: 'under_ethics_review' });
+    const draft = finalSubmissionRow(student, { stage: 'initial', status: 'draft' });
+    const final = finalSubmissionRow(student, { stage: 'final', status: 'submitted' });
+    for (const row of [initial, draft, final]) await module.store.insert('research_submissions', row);
+
+    const list = await module.json(await module.call(reviewer, '/'));
+    assert.equal(list.status, 200, 'the list is no longer a 403 for this role');
+    assert.deepEqual(list.body.submissions.map(s => s.id), [initial.id]);
+    assert.equal(list.body.submissions[0].canDecideEthics, true);
+
+    const opened = await module.json(await module.call(reviewer, `/${initial.id}`));
+    assert.equal(opened.status, 200);
+    assert.equal(opened.body.submission.canDecideEthics, true);
+    assert.deepEqual(opened.body.submission.nextStatuses.map(n => n.value), ['rejected'],
+      'approval is the decision button, never a bare status move');
+
+    assert.equal((await module.call(reviewer, `/${draft.id}`)).status, 403, 'a draft is not theirs to read');
+    assert.equal((await module.call(reviewer, `/${final.id}`)).status, 403, 'Final papers skip ethics review');
+
+    // Comments ("reviewer can suggest revisions") now reach the paper too.
+    const comment = await module.call(reviewer, `/${initial.id}/comments`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ body: 'Clarify the consent form.' })
+    });
+    assert.equal(comment.status, 201);
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('the ethics decision attaches a clearance the owner and staff can download', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const stranger = account('student_researcher');
+    const staff = account('cpri_staff');
+    const reviewer = account('ethics_reviewer');
+    const row = finalSubmissionRow(student, { stage: 'initial', status: 'under_ethics_review' });
+    await module.store.insert('research_submissions', row);
+
+    const form = new FormData();
+    form.append('decision', 'approved');
+    form.append('ethics_clearance', new Blob(['%PDF-1.4 clearance'], { type: PDF }), 'clearance.pdf');
+    const decided = await module.call(reviewer, `/${row.id}/ethics`, { method: 'POST', body: form });
+    assert.equal(decided.status, 200, JSON.stringify(await decided.clone().json()));
+
+    const detail = await module.json(await module.call(student, `/${row.id}`));
+    assert.equal(detail.body.submission.status, 'approved', 'the Initial paper moved past Under Ethics Review');
+    const [clearance] = detail.body.submission.ethicsClearances;
+    assert.equal(clearance.decision, 'approved');
+    assert.equal(clearance.hasFile, true);
+    assert.equal(clearance.file_path, undefined, 'the storage path is never sent to the browser');
+    assert.equal(detail.body.submission.canDecideEthics, false);
+
+    const download = await module.call(student, `/${row.id}/ethics-clearance/${clearance.id}`);
+    assert.equal(download.status, 200);
+    assert.equal(await download.text(), '%PDF-1.4 clearance');
+    assert.equal((await module.call(staff, `/${row.id}/ethics-clearance/${clearance.id}`)).status, 200);
+    assert.equal((await module.call(stranger, `/${row.id}/ethics-clearance/${clearance.id}`)).status, 403);
+    assert.equal((await module.call(student, `/${row.id}/ethics-clearance/nope`)).status, 404);
+
+    // A rejection is recorded the same way, without a file.
+    const other = finalSubmissionRow(student, { stage: 'initial', status: 'under_ethics_review' });
+    await module.store.insert('research_submissions', other);
+    const reject = new FormData();
+    reject.append('decision', 'rejected');
+    assert.equal((await module.call(reviewer, `/${other.id}/ethics`, { method: 'POST', body: reject })).status, 200);
+    const rejected = await module.json(await module.call(student, `/${other.id}`));
+    assert.equal(rejected.body.submission.status, 'rejected');
+    assert.equal(rejected.body.submission.ethicsClearances[0].hasFile, false);
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+// ===========================================================================
+//  Faculty / non-teaching Initial papers can be returned For Revision
+// ===========================================================================
+test('a faculty Initial paper can go back For Revision, be revised, and go on to ethics review', async () => {
+  const module = await startModule();
+  try {
+    for (const role of ['faculty_researcher', 'non_teaching_researcher']) {
+      const researcher = account(role);
+      const staff = account('cpri_staff');
+      const row = finalSubmissionRow(researcher, {
+        stage: 'initial', status: 'submitted', research_type: 'faculty_research'
+      });
+      await module.store.insert('research_submissions', row);
+      const move = (status) => module.call(staff, `/${row.id}/status`, {
+        method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status })
+      });
+
+      const offered = await module.json(await module.call(staff, `/${row.id}`));
+      assert.ok(offered.body.submission.nextStatuses.some(n => n.value === 'for_revision'), `${role}: offered`);
+
+      assert.equal((await move('for_revision')).status, 200, `${role}: Submitted -> For Revision`);
+
+      // While it is For Revision the researcher may upload a new version.
+      const cfg = await module.json(await module.call(researcher, `/${row.id}/form-config`));
+      assert.equal(cfg.body.canUpload, true, `${role}: may resubmit while For Revision`);
+      const upload = await module.call(researcher, `/${row.id}/files`, {
+        method: 'POST', body: uploadForm({ manuscript_docx: docx('revised.docx') })
+      });
+      assert.equal(upload.status, 201, `${role}: revised file accepted`);
+
+      assert.equal((await move('under_ethics_review')).status, 200, `${role}: For Revision -> Under Ethics Review`);
+    }
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});

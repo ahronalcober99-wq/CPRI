@@ -31,8 +31,10 @@
               <h3>Details</h3>
               <div class="contact-row"><span class="label">Author(s)</span><span id="d-authors"></span></div>
               <div class="contact-row"><span class="label">Adviser</span><span id="d-adviser"></span></div>
+              <div class="contact-row"><span class="label">Facilitator</span><span id="d-facilitator"></span></div>
               <div class="contact-row"><span class="label">Department/Program</span><span id="d-dept"></span></div>
-              <div class="contact-row"><span class="label">Category</span><span id="d-cat"></span></div>
+              <div class="contact-row"><span class="label">Research type</span><span id="d-cat"></span></div>
+              <div class="contact-row"><span class="label">Research category</span><span id="d-research-cat"></span></div>
               <div class="contact-row"><span class="label">Year Completed</span><span id="d-year"></span></div>
               <div class="contact-row"><span class="label">Status</span><span id="d-status"></span></div>
               <div class="contact-row"><span class="label">Access Level</span><span id="d-access"></span></div>
@@ -145,6 +147,8 @@
       document.getElementById('rec-title').textContent = r.title;
       document.getElementById('d-authors').textContent = r.authors;
       document.getElementById('d-adviser').textContent = r.adviser || '—';
+      document.getElementById('d-facilitator').textContent = r.facilitator || '—';
+      document.getElementById('d-research-cat').textContent = r.researchCategory || '—';
       document.getElementById('d-dept').textContent = r.department;
       document.getElementById('d-cat').textContent = categoryLabel || r.category;
       document.getElementById('d-year').textContent = r.yearCompleted;

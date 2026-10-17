@@ -28,7 +28,7 @@ const ETHICS_STATUS = {
 };
 
 const REVIEWER_ROLES = ['admin', 'cpri_staff', 'ethics_reviewer'];
-const SUBMIT_ROLES = ['admin', 'faculty_researcher', 'student_researcher', 'adviser', 'cpri_staff', 'ethics_reviewer'];
+const SUBMIT_ROLES = ['admin', 'faculty_researcher', 'non_teaching_researcher', 'student_researcher', 'adviser', 'cpri_staff', 'ethics_reviewer'];
 
 const FILE_FIELDS = [
   { key: 'ethics_application', label: 'Ethics Application Form', required: true },
@@ -43,8 +43,10 @@ async function caller(req) {
   const users = await readUsers();
   return users.find(u => u.id === req.session.userId) || null;
 }
+// A session whose account no longer exists resolves to no caller, and must be
+// refused (this used to read `!me || …`, which let exactly that through).
 function canAccess(me, app) {
-  return !me || app.submitterId === me.id || REVIEWER_ROLES.includes(me.role);
+  return Boolean(me) && (app.submitterId === me.id || REVIEWER_ROLES.includes(me.role));
 }
 function canReview(me) {
   return !!me && REVIEWER_ROLES.includes(me.role);
@@ -130,6 +132,7 @@ const uploadCertificate = upload.single('certificate_pdf');
 router.get('/', requireAuth, async (req, res) => {
   const q = req.query;
   const me = await caller(req);
+  if (!me) return res.status(401).json({ error: 'Not authenticated.' });
   let sql = 'SELECT * FROM ethics WHERE 1=1';
   const params = [];
 
@@ -176,21 +179,28 @@ router.post('/', requireAuth, async (req, res, next) => {
   req._ethId = randomUUID();
   next();
 }, uploadFields, async (req, res) => {
+  // multer has already written this request's files by now. A refused
+  // application must not leave them behind with no record pointing at them.
+  const refuse = async (status, error) => {
+    await fs.rm(join(ETHICS_UPLOAD_DIR, req._ethId), { recursive: true, force: true }).catch(() => {});
+    return res.status(status).json({ error });
+  };
+
   const me = await caller(req);
   if (!me || !SUBMIT_ROLES.includes(me.role)) {
-    return res.status(403).json({ error: 'Your role is not allowed to submit ethics applications.' });
+    return refuse(403, 'Your role is not allowed to submit ethics applications.');
   }
 
   const b = req.body || {};
   const requiredText = ['title', 'researchers', 'adviser', 'department', 'participantType', 'riskLevel'];
   for (const f of requiredText) {
     if (!b[f] || !String(b[f]).trim()) {
-      return res.status(400).json({ error: `Field "${f}" is required.` });
+      return refuse(400, `Field "${f}" is required.`);
     }
   }
   for (const key of REQUIRED_KEYS) {
     if (!req.files || !req.files[key]) {
-      return res.status(400).json({ error: `Required file missing: ${key}.` });
+      return refuse(400, `Required file missing: ${key}.`);
     }
   }
 
@@ -422,7 +432,7 @@ router.post('/:id/revisions', requireAuth, async (req, res, next) => {
   const me = await caller(req);
   const a = await get('SELECT * FROM ethics WHERE id = ?', [req.params.id]);
   if (!a) return res.status(404).json({ error: 'Application not found.' });
-  if (a.submitterId !== me.id) return res.status(403).json({ error: 'Only the researcher can upload revisions.' });
+  if (!me || a.submitterId !== me.id) return res.status(403).json({ error: 'Only the researcher can upload revisions.' });
   req._ethId = a.id;
   next();
 }, upload.single('revised_manuscript'), async (req, res) => {

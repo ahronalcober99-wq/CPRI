@@ -16,7 +16,7 @@ import { profilePhotoRouter, ensureProfilePhotoColumn } from './profile-photo.js
 import { smsProviderInfo } from './lib/sms.js';
 import { usernameRouter } from './username.js';
 import { submissionsRouter } from './submissions.js';
-import { repositoryRouter } from './repository.js';
+import { repositoryRouter, ensureRepositorySchema } from './repository.js';
 import { featuredPublicationsRouter } from './featured-publications.js';
 import { publicationsRouter, ensurePublicationSchema } from './publications.js';
 import { ethicsRouter } from './ethics.js';
@@ -738,6 +738,12 @@ try {
   await ensureResearchSubmissionsSchema();
 } catch (err) {
   console.error('[research-submissions] schema ensure failed:', err.message);
+}
+
+try {
+  await ensureRepositorySchema();
+} catch (err) {
+  console.error('[repository] schema ensure failed:', err.message);
 }
 
 try {

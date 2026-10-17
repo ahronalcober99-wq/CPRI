@@ -35,10 +35,12 @@ import { isPublicStatus } from './submission-index.js';
  * @property {string} title
  * @property {string} authors
  * @property {string} adviser
+ * @property {string} facilitator
  * @property {string} department
  * @property {string} abstract
  * @property {string} keywords
  * @property {string} category      a repository category key where there is one
+ * @property {string} researchCategory  the researcher's own free-text category
  * @property {string} schoolYear
  * @property {string|Date|null} createdAt
  * @property {string} submitterId
@@ -54,10 +56,13 @@ export function fromClassicSubmission(sub) {
     title: clean(sub.title),
     authors: clean(sub.authors),
     adviser: clean(sub.adviser),
+    // The classic form never asked for a facilitator.
+    facilitator: '',
     department: clean(sub.program),
     abstract: clean(sub.abstract),
     keywords: clean(sub.keywords),
     category: clean(sub.researchType || sub.category),
+    researchCategory: clean(sub.category),
     schoolYear: clean(sub.schoolYear),
     createdAt: sub.createdAt || null,
     submitterId: clean(sub.submitterId),
@@ -73,12 +78,16 @@ export function fromModuleSubmission(row) {
     title: clean(row.title),
     authors: clean(row.authors),
     adviser: clean(row.adviser_id),
+    facilitator: clean(row.facilitator_id),
     department: clean(row.program),
     abstract: clean(row.abstract),
     keywords: clean(row.keywords),
     // research_type uses the same keys as the repository's categories
     // (student_thesis, capstone, …); the free-text category is the fallback.
     category: clean(row.research_type || row.category),
+    // The researcher's own free-text category ("Life Sciences"), searchable
+    // in the repository on its own.
+    researchCategory: clean(row.category),
     schoolYear: clean(row.school_year),
     createdAt: row.created_at || null,
     submitterId: clean(row.owner_id),
@@ -134,10 +143,12 @@ export async function publishSubmission(db, source, { status = 'approved', role 
     title: source.title,
     authors: source.authors,
     adviser: source.adviser,
+    facilitator: source.facilitator || null,
     department: source.department,
     abstract: source.abstract,
     keywords: source.keywords,
     category: source.category,
+    researchCategory: source.researchCategory || null,
     yearCompleted: year,
     status: repoStatus,
     fileAvailable: source.hasManuscript ? 1 : 0

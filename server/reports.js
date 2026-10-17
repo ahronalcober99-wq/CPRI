@@ -18,6 +18,25 @@
 import { Router } from 'express';
 import { requireAdmin } from './auth.js';
 import { all } from './server/db/queries.js';
+import { listAllSubmissions } from './lib/submission-index.js';
+import { FACULTY_ROLES } from './lib/research-config.js';
+
+// Submissions from BOTH forms — the classic `submissions` table and the
+// Research Submission module — once each, drafts excluded. Every report that
+// is about submissions reads this, so work sent through either form counts.
+const submissionsForReports = () => listAllSubmissions({ all });
+
+const APPROVED = new Set(['approved', 'published']);
+
+// Published publications per submitter id, for the productivity figures.
+async function publicationCountBySubmitter() {
+  const pubs = await all("SELECT submitterId FROM publications WHERE status = 'published'");
+  const counts = new Map();
+  for (const p of pubs) {
+    if (p.submitterId) counts.set(p.submitterId, (counts.get(p.submitterId) || 0) + 1);
+  }
+  return counts;
+}
 
 const router = Router();
 
@@ -48,10 +67,30 @@ const REPORT_BUILDERS = {
 
   // ---- Workflow ----
   'submissions-by-status': async () => {
-    const subs = await all("SELECT COALESCE(status, 'Unknown') AS status FROM submissions");
+    const subs = await submissionsForReports();
     const statusMap = {};
-    subs.forEach(s => { statusMap[s.status] = (statusMap[s.status] || 0) + 1; });
+    subs.forEach(s => { const key = s.status || 'Unknown'; statusMap[key] = (statusMap[key] || 0) + 1; });
     return Object.entries(statusMap).map(([status, count]) => ({ status, count }));
+  },
+
+  // Every submission, one row each, from both forms: the list behind the
+  // status counts above.
+  'research-submissions': async () => {
+    const subs = await submissionsForReports();
+    return subs.map(s => ({
+      title: s.title,
+      authors: s.authors,
+      submittedBy: s.studentName,
+      program: s.program,
+      researchCategory: s.category || '',
+      researchType: s.research_type || '',
+      form: s.source === 'module' ? 'Research Submission' : 'Classic form',
+      stage: s.source === 'module' ? s.stage : '',
+      schoolYear: s.school_year || '',
+      status: s.statusLabel || s.status,
+      submitted: s.created_at ? new Date(s.created_at).toISOString().slice(0, 10) : '',
+      inRepository: s.inRepository ? 'Yes' : 'No'
+    }));
   },
 
   'ethics-by-status': async () => {
@@ -62,29 +101,88 @@ const REPORT_BUILDERS = {
   },
 
   // ---- People ----
+  // One row per faculty / non-teaching researcher who has submitted work
+  // (either form), then any hand-entered faculty profiles from the legacy
+  // `researchers` directory. Presentations, innovation projects and citations
+  // are only recorded in that directory, so they are blank for the rest.
   'faculty-productivity': async () => {
-    const researchers = await all("SELECT fullName, department, completedResearches, publishedWorks, presentedPapers, innovationProjects, citations FROM researchers WHERE type = 'faculty'");
-    return researchers.map(r => ({
+    const [subs, pubCounts, directory] = await Promise.all([
+      submissionsForReports(),
+      publicationCountBySubmitter(),
+      all("SELECT fullName, department, completedResearches, publishedWorks, presentedPapers, innovationProjects, citations FROM researchers WHERE type = 'faculty'").catch(() => [])
+    ]);
+    const byPerson = new Map();
+    for (const s of subs) {
+      if (!FACULTY_ROLES.has(s.ownerRole)) continue;
+      const key = s.studentId || s.studentName;
+      if (!byPerson.has(key)) {
+        byPerson.set(key, {
+          name: s.studentName,
+          department: s.program,
+          role: s.ownerRole === 'non_teaching_researcher' ? 'Non-Teaching' : 'Faculty',
+          submittedResearches: 0,
+          completedResearches: 0,
+          inRepository: 0,
+          publications: pubCounts.get(s.studentId) || 0,
+          presentations: '',
+          innovationProjects: '',
+          citations: '',
+          source: 'Submissions'
+        });
+      }
+      const row = byPerson.get(key);
+      row.submittedResearches += 1;
+      if (APPROVED.has(s.status)) row.completedResearches += 1;
+      if (s.inRepository) row.inRepository += 1;
+    }
+    const fromDirectory = directory.map(r => ({
       name: r.fullName,
       department: r.department,
+      role: 'Faculty',
+      submittedResearches: '',
       completedResearches: (r.completedResearches || []).length,
+      inRepository: '',
       publications: (r.publishedWorks || []).length,
       presentations: (r.presentedPapers || []).length,
       innovationProjects: (r.innovationProjects || []).length,
-      citations: r.citations || 0
+      citations: r.citations || 0,
+      source: 'Researcher directory'
     }));
+    return [...byPerson.values()].concat(fromDirectory);
   },
 
+  // One row per student research output (either form), then any hand-entered
+  // student profiles from the legacy `researchers` directory.
   'student-output': async () => {
-    const researchers = await all("SELECT fullName, program, researchTitle, adviser, yearCompleted, researchOutputStatus FROM researchers WHERE type = 'student'");
-    return researchers.map(r => ({
+    const [subs, directory] = await Promise.all([
+      submissionsForReports(),
+      all("SELECT fullName, program, researchTitle, adviser, yearCompleted, researchOutputStatus FROM researchers WHERE type = 'student'").catch(() => [])
+    ]);
+    const fromSubmissions = subs
+      .filter(s => s.ownerRole === 'student_researcher')
+      .map(s => ({
+        name: s.studentName,
+        program: s.program,
+        researchTitle: s.title,
+        adviser: s.adviser || '',
+        stage: s.source === 'module' ? s.stage : '',
+        schoolYear: s.school_year || '',
+        status: s.statusLabel || s.status,
+        inRepository: s.inRepository ? 'Yes' : 'No',
+        source: 'Submissions'
+      }));
+    const fromDirectory = directory.map(r => ({
       name: r.fullName,
       program: r.program,
       researchTitle: r.researchTitle || '',
       adviser: r.adviser || '',
-      yearCompleted: r.yearCompleted || '',
-      status: r.researchOutputStatus || ''
+      stage: '',
+      schoolYear: r.yearCompleted || '',
+      status: r.researchOutputStatus || '',
+      inRepository: '',
+      source: 'Researcher directory'
     }));
+    return fromSubmissions.concat(fromDirectory);
   },
 
   // ---- Projects and events ----
@@ -147,12 +245,15 @@ const REPORT_BUILDERS = {
 
   // ---- Report 10 — Repository inventory ----
   'repository-inventory': async () => {
-    const repo = await all('SELECT title, authors, department, category, yearCompleted, status, accessLevel, fileAvailable FROM repository');
+    const repo = await all('SELECT * FROM repository');
     return repo.map(r => ({
       title: r.title,
       authors: r.authors,
+      adviser: r.adviser || '',
+      facilitator: r.facilitator || '',
       department: r.department,
       category: r.category,
+      researchCategory: r.researchCategory || '',
       yearCompleted: r.yearCompleted,
       status: r.status,
       accessLevel: r.accessLevel,

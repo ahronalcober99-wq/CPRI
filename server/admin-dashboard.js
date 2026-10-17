@@ -530,25 +530,30 @@ router.get('/impact-dashboard', requireAdmin, async (req, res) => {
   try {
     const { year, department, category, adviser, from, to } = req.query;
 
-    // The page's filters map onto columns of `submissions`.
-    const where = [];
-    const params = [];
-    if (year) { where.push('schoolYear = ?'); params.push(String(year)); }
-    if (department) { where.push('program = ?'); params.push(String(department)); }
-    if (category) { where.push('category = ?'); params.push(String(category)); }
-    if (adviser) { where.push('adviser = ?'); params.push(String(adviser)); }
-    if (from) { where.push('createdAt >= ?'); params.push(String(from)); }
-    if (to) { where.push('createdAt <= ?'); params.push(String(to) + ' 23:59:59'); }
-    const whereSql = where.length ? ' WHERE ' + where.join(' AND ') : '';
-
-    const [subs, allSubs, researchers, adviserAccounts, logs] = await Promise.all([
-      all(`SELECT id, title, status, program, category, adviser, schoolYear, createdAt FROM submissions${whereSql}`, params),
-      all('SELECT schoolYear, program, category, adviser FROM submissions'),
+    const [merged, researchers, adviserAccounts, logs] = await Promise.all([
+      // Both submission forms, once each, drafts excluded.
+      submissionsForDashboard(),
       all('SELECT department FROM researchers'),
       // "Registered" researchers/advisers are user accounts, not directory entries.
-      all("SELECT id, role FROM users WHERE role IN ('faculty_researcher', 'student_researcher', 'adviser')"),
+      all("SELECT id, role FROM users WHERE role IN ('faculty_researcher', 'non_teaching_researcher', 'student_researcher', 'adviser')"),
       all('SELECT action, details, timestamp FROM system_logs ORDER BY timestamp DESC LIMIT 10')
     ]);
+
+    // The page's filters, applied to the merged list (they used to be SQL
+    // against the classic table only).
+    const allSubs = merged.map(s => ({ ...s, schoolYear: s.school_year || '' }));
+    const fromTime = from ? toDate(String(from)) : null;
+    const toTime = to ? toDate(String(to) + 'T23:59:59') : null;
+    const subs = allSubs.filter(s => {
+      if (year && s.schoolYear !== String(year)) return false;
+      if (department && s.program !== String(department)) return false;
+      if (category && s.category !== String(category)) return false;
+      if (adviser && s.adviser !== String(adviser)) return false;
+      const created = toDate(s.createdAt);
+      if (fromTime && (!created || created < fromTime)) return false;
+      if (toTime && (!created || created > toTime)) return false;
+      return true;
+    });
 
     const countBy = (rows, keyOf) => rows.reduce((m, r) => {
       const k = keyOf(r);

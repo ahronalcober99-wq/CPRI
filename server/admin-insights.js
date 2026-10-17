@@ -8,6 +8,7 @@ import { promises as fs } from 'fs';
 import { requireAdmin, readUsers } from './auth.js';
 import { all, get, update } from './server/db/queries.js';
 import { addLog } from './audit.js';
+import { listAllSubmissions } from './lib/submission-index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -36,6 +37,26 @@ function monthKey(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+// Submissions from BOTH forms (classic + Research Submission), once each,
+// drafts excluded — mapped onto the classic column names the figures below
+// were written for.
+async function submissionsForInsights() {
+  const records = await listAllSubmissions({ all });
+  return records.map(r => ({
+    id: r.id,
+    title: r.title,
+    researchType: r.research_type,
+    category: r.category,
+    program: r.program,
+    submitterId: r.studentId,
+    submitterName: r.studentName,
+    status: r.status,
+    statusLabel: r.statusLabel,
+    createdAt: r.created_at,
+    detailUrl: r.detailUrl
+  }));
+}
+
 // ============================================================
 // ANALYTICS & REPORTS — reuses the same DB tables as the
 // Operations Overview / Research Impact Dashboard so numbers
@@ -51,7 +72,7 @@ router.get('/analytics', requireAdmin, async (req, res) => {
       researchers,
       innovation
     ] = await Promise.all([
-      all('SELECT id, researchType, category, program, submitterId, submitterName, status, statusHistory, createdAt FROM submissions'),
+      submissionsForInsights(),
       all('SELECT id, department, yearCompleted FROM repository'),
       all('SELECT id, department, schoolYear, publicationDate FROM publications'),
       all('SELECT id, department, status FROM ethics'),
@@ -170,7 +191,7 @@ router.get('/analytics', requireAdmin, async (req, res) => {
 // Top researchers (dedicated endpoint)
 router.get('/reports/top-researchers', requireAdmin, async (req, res) => {
   try {
-    const submissions = await all('SELECT submitterName, submitterId FROM submissions');
+    const submissions = await submissionsForInsights();
     const researchers = await all('SELECT fullName, citations, department FROM researchers');
     const map = {};
     submissions.forEach(s => {
@@ -191,7 +212,7 @@ router.get('/reports/top-researchers', requireAdmin, async (req, res) => {
 // Top programs (dedicated endpoint)
 router.get('/reports/top-programs', requireAdmin, async (req, res) => {
   try {
-    const submissions = await all('SELECT program FROM submissions');
+    const submissions = await submissionsForInsights();
     const map = {};
     submissions.forEach(s => {
       const p = s.program || 'Unknown';
@@ -206,7 +227,7 @@ router.get('/reports/top-programs', requireAdmin, async (req, res) => {
 // Category breakdown (dedicated endpoint)
 router.get('/reports/category', requireAdmin, async (req, res) => {
   try {
-    const submissions = await all('SELECT researchType, category FROM submissions');
+    const submissions = await submissionsForInsights();
     const map = {};
     submissions.forEach(s => {
       const c = s.researchType || s.category || 'Uncategorized';
@@ -224,7 +245,7 @@ router.get('/reports/category', requireAdmin, async (req, res) => {
 router.get('/calendar', requireAdmin, async (req, res) => {
   try {
     const [submissions, ethics, publications, events, innovation] = await Promise.all([
-      all('SELECT id, title, status, createdAt FROM submissions'),
+      submissionsForInsights(),
       all('SELECT id, title, status, createdAt FROM ethics'),
       all('SELECT id, title, status, publicationDate FROM publications'),
       all('SELECT id, title, theme, dateTime FROM events_module'),
@@ -235,7 +256,7 @@ router.get('/calendar', requireAdmin, async (req, res) => {
 
     submissions.forEach(s => {
       const d = parseDate(s.createdAt);
-      if (d) items.push({ date: d.toISOString().slice(0, 10), title: s.title, type: 'Submission', status: STATUS_LABELS[s.status] || s.status, id: s.id, link: `submission.html?id=${s.id}` });
+      if (d) items.push({ date: d.toISOString().slice(0, 10), title: s.title, type: 'Submission', status: s.statusLabel || STATUS_LABELS[s.status] || s.status, id: s.id, link: (s.detailUrl || `/submission.html?id=${s.id}`).replace(/^\//, '') });
     });
     ethics.forEach(e => {
       const d = parseDate(e.createdAt);

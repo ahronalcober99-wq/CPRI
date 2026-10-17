@@ -103,7 +103,8 @@
           detailUrl: r.detailUrl || ('submission.html?id=' + encodeURIComponent(r.id)),
           kind: inModule ? 'module' : 'classic',
           stage: inModule ? r.stage : null,
-          nextStatuses: r.nextStatuses || []
+          nextStatuses: r.nextStatuses || [],
+          canDecideEthics: Boolean(r.canDecideEthics)
         });
       }
       for (const s of classic) {
@@ -171,6 +172,12 @@
     // follows its stage's workflow, so it offers only the moves the server
     // will accept from where it is now (sent with the record).
     function statusControl(s) {
+      if (s.kind === 'module' && s.canDecideEthics) {
+        // The ethics reviewer approves or rejects on the paper's own page,
+        // where the Ethics Clearance can be attached.
+        return `<div style="min-width:220px;"><label class="form-note">Ethics review</label>
+          <p style="margin:6px 0 0;"><a class="btn btn-primary btn-sm" href="${esc(s.detailUrl)}">Review &amp; decide</a></p></div>`;
+      }
       if (s.kind === 'module') {
         if (!s.nextStatuses.length) {
           const why = s.stage === 'initial' && s.status === 'under_ethics_review'

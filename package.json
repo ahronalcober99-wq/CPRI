@@ -39,7 +39,8 @@
     "test:classic-access": "node --test --test-force-exit server/dev/test-classic-access.mjs",
     "test:recommendations": "node --test server/dev/test-recommendations.mjs",
     "test:repository-publishing": "node --test server/dev/test-repository-publishing.mjs",
-    "test:dashboard-publishing:db": "node --test --test-force-exit server/dev/test-dashboard-publishing-db.mjs"
+    "test:dashboard-publishing:db": "node --test --test-force-exit server/dev/test-dashboard-publishing-db.mjs",
+    "test:workflows:db": "node --test --test-force-exit server/dev/test-workflows-db.mjs"
   },
   "engines": {
     "node": ">=20.9.0"

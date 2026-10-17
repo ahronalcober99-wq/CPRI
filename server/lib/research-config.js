@@ -455,7 +455,7 @@ export const FINAL_STATUSES = [
 //   Submitted -> Under Initial Checking -> For Revision -> Under Ethics Review -> Approved | Rejected
 //
 // Faculty initial:
-//   Submitted -> Under Ethics Review -> Approved | Rejected
+//   Submitted -> (For Revision ->) Under Ethics Review -> Approved | Rejected
 //
 // Final workflow (all researcher roles):
 //   Submitted -> Under Initial Checking -> For Revision -> Approved -> Published -> Archived
@@ -479,9 +479,13 @@ export const INITIAL_TRANSITIONS = {
 
 // Faculty initial is more direct (no under_initial_checking step in the spec,
 // but keep the same shape so the router can still validate transitions).
+// A faculty / non-teaching Initial paper can also be returned For Revision;
+// the researcher then uploads revised files (canWriteSubmission allows that
+// while it is For revision) and staff send it on to ethics review.
 export const FACULTY_INITIAL_TRANSITIONS = {
   draft:                  ['submitted', 'rejected'],
-  submitted:              ['under_ethics_review', 'rejected'],
+  submitted:              ['under_ethics_review', 'for_revision', 'rejected'],
+  for_revision:           ['under_ethics_review', 'rejected'],
   under_ethics_review:    ['approved', 'rejected'],
   approved:               ['rejected']
 };

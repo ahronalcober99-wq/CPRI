@@ -32,7 +32,7 @@
         </div>
 
         <div id="detail" style="display:none;">
-          <p><a href="submit.html">&larr; Back to the submission form</a></p>
+          <p><a href="submissions.html">&larr; Back to submissions</a></p>
 
           <div class="grid grid-2" style="gap:18px;">
             <div class="card">
@@ -66,6 +66,25 @@
                   <select id="new-status" style="max-width:260px;"></select>
                   <button class="btn btn-primary" id="update-btn">Update</button>
                 </div>
+              </div>
+
+              <!-- Ethics reviewer, while the paper is Under Ethics Review. -->
+              <div id="ethics-decision" style="display:none;border-top:1px solid var(--cpri-border);margin-top:14px;padding-top:14px;">
+                <label>Ethics decision</label>
+                <p class="form-note" style="margin:4px 0 10px;">Approving records the Ethics Clearance and moves this paper to Approved. Rejecting closes it. Ask for changes in the comments below.</p>
+                <div class="form-group">
+                  <label for="ethics-file">Ethics Clearance (PDF, optional)</label>
+                  <input type="file" id="ethics-file" accept=".pdf,application/pdf">
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button type="button" class="btn btn-primary" id="ethics-approve">Approve</button>
+                  <button type="button" class="btn btn-outline-dark" id="ethics-reject">Reject</button>
+                </div>
+              </div>
+
+              <div id="ethics-clearances" style="display:none;border-top:1px solid var(--cpri-border);margin-top:14px;padding-top:14px;">
+                <label>Ethics review</label>
+                <div id="ethics-clearance-list"></div>
               </div>
             </div>
           </div>
@@ -172,7 +191,6 @@
         archived: 'Archived',
         rejected: 'Rejected'
       };
-      const STATUS_ORDER = ['submitted','under_initial_checking','for_revision','under_ethics_review','approved','published','archived','rejected'];
       const STAGE_LABELS = { initial: 'Initial', final: 'Final' };
       const TYPE_LABELS = {
         student_thesis: 'Student Thesis',
@@ -343,31 +361,78 @@
           compareLink.click();
         });
 
-        // Status update — reviewers, staff and admins only. A Research Adviser /
-        // Facilitator never gets this control: the role monitors and comments,
-        // and the server refuses a status PATCH from them with a 403 anyway.
+        // Status update — reviewers, staff and admins only, and only the moves
+        // the server accepts from the current status (it sends them as
+        // nextStatuses). A Research Adviser / Facilitator never gets this
+        // control: the role monitors and comments. While a paper is with the
+        // ethics reviewer, the decision buttons below replace it.
         const su = document.getElementById('status-update');
-        const isStatusAllowed = isReviewer;
-        if (isStatusAllowed) {
+        const nextStatuses = Array.isArray(s.nextStatuses) ? s.nextStatuses : [];
+        if (isReviewer && nextStatuses.length && !s.canDecideEthics) {
           su.style.display = '';
           const sel = document.getElementById('new-status');
-          sel.innerHTML = STATUS_ORDER.map(st => `<option value="${st}" ${st === s.status ? 'selected' : ''}>${STATUS_LABELS[st]}</option>`).join('');
+          sel.innerHTML = `<option value="" selected>${esc(STATUS_LABELS[s.status] || s.status)} (current)</option>` +
+            nextStatuses.map(n => `<option value="${esc(n.value)}">${esc(n.label)}</option>`).join('');
           document.getElementById('update-btn').addEventListener('click', async () => {
             const target = sel.value;
+            if (!target) return;
             try {
               const r = await fetchJson('/api/research-submissions/' + encodeURIComponent(id) + '/status', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ status: target, note: '' })
               });
+              const newStatus = (r && r.data && r.data.submission && r.data.submission.status) || target;
               message.className = 'form-message success';
-              message.textContent = 'Status updated to "' + (STATUS_LABELS[r.data.status] || r.data.status) + '".';
+              message.textContent = 'Status updated to "' + (STATUS_LABELS[newStatus] || newStatus) + '".';
               location.reload();
             } catch (err) {
               message.className = 'form-message error';
               message.textContent = err.message || 'Update failed.';
             }
           });
+        }
+
+        // Ethics decisions already recorded, with the clearance when attached.
+        const clearances = Array.isArray(s.ethicsClearances) ? s.ethicsClearances : [];
+        if (clearances.length) {
+          document.getElementById('ethics-clearances').style.display = '';
+          document.getElementById('ethics-clearance-list').innerHTML = clearances.map(c => {
+            const link = c.hasFile
+              ? ` <a class="btn btn-navy" style="padding:4px 10px;font-size:.82rem;" href="/api/research-submissions/${encodeURIComponent(id)}/ethics-clearance/${encodeURIComponent(c.id)}">Download clearance</a>`
+              : '';
+            return `<p style="margin:6px 0;"><strong>${c.decision === 'approved' ? 'Approved' : 'Rejected'}</strong> by ${esc(c.reviewer_name || 'ethics reviewer')} · ${esc(c.decided_at ? new Date(c.decided_at).toLocaleString() : '')}${link}</p>`;
+          }).join('');
+        }
+
+        // The ethics reviewer's decision (POST /:id/ethics), with an optional
+        // Ethics Clearance PDF. Approve is the only way an Initial paper moves
+        // past Under Ethics Review to Approved.
+        if (s.canDecideEthics) {
+          document.getElementById('ethics-decision').style.display = '';
+          const ask = window.confirmDialog || ((text) => Promise.resolve(window.confirm(text)));
+          const buttons = [document.getElementById('ethics-approve'), document.getElementById('ethics-reject')];
+          const decide = async (decision) => {
+            const verb = decision === 'approved' ? 'Approve' : 'Reject';
+            if (!await ask(verb + ' this paper\'s ethics review?', verb)) return;
+            const fd = new FormData();
+            fd.append('decision', decision);
+            const file = document.getElementById('ethics-file').files[0];
+            if (file) fd.append('ethics_clearance', file);
+            buttons.forEach(b => { b.disabled = true; });
+            try {
+              const r = await fetchJson('/api/research-submissions/' + encodeURIComponent(id) + '/ethics', { method: 'POST', body: fd });
+              message.className = 'form-message success';
+              message.textContent = (r && r.data && r.data.message) || 'Decision recorded.';
+              location.reload();
+            } catch (err) {
+              message.className = 'form-message error';
+              message.textContent = err.message || 'The decision could not be recorded.';
+              buttons.forEach(b => { b.disabled = false; });
+            }
+          };
+          buttons[0].addEventListener('click', () => decide('approved'));
+          buttons[1].addEventListener('click', () => decide('rejected'));
         }
 
         // A draft has not been handed in yet: offer to hand it in. The server

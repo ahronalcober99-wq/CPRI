@@ -164,11 +164,16 @@
                 </div>
                 <div class="card">
                   <h3 style="margin-top:0;">6. Research Submission Status Report</h3>
-                  <p class="form-note">Count of submissions grouped by current status.</p>
+                  <p class="form-note">Submissions from both forms (classic and Research Submission), drafts excluded: a count per status, or the full list with each record's status and whether it is in the repository.</p>
                   <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <a class="btn btn-primary" href="/api/reports/export/submissions-by-status?format=csv" target="_blank">Export CSV</a>
-                    <a class="btn btn-navy" href="/api/reports/export/submissions-by-status?format=excel" target="_blank">Export Excel</a>
-                    <a class="btn btn-outline" href="/api/reports/export/submissions-by-status?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Export PDF</a>
+                    <a class="btn btn-primary" href="/api/reports/export/submissions-by-status?format=csv" target="_blank">Counts CSV</a>
+                    <a class="btn btn-navy" href="/api/reports/export/submissions-by-status?format=excel" target="_blank">Counts Excel</a>
+                    <a class="btn btn-outline" href="/api/reports/export/submissions-by-status?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Counts PDF</a>
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                    <a class="btn btn-primary" href="/api/reports/export/research-submissions?format=csv" target="_blank">Full list CSV</a>
+                    <a class="btn btn-navy" href="/api/reports/export/research-submissions?format=excel" target="_blank">Full list Excel</a>
+                    <a class="btn btn-outline" href="/api/reports/export/research-submissions?format=pdf" target="_blank" style="border-color:#b23b32;color:#b23b32;">Full list PDF</a>
                   </div>
                 </div>
                 <div class="card">
