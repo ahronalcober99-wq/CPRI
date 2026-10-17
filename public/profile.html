@@ -234,31 +234,12 @@
               <label class="switch"><input type="checkbox" id="pref-inapp" aria-label="In-app notifications"><span></span></label>
             </div>
 
-            <div class="a11y-row">
+            <div class="a11y-row" style="border-bottom:none;">
               <div>
                 <div class="lbl">Email me a copy</div>
                 <div class="sub">Sent to <span id="pref-email-address">your email address</span></div>
               </div>
               <label class="switch"><input type="checkbox" id="pref-email" aria-label="Email me a copy"><span></span></label>
-            </div>
-
-            <div class="a11y-row" style="border-bottom:none;">
-              <div>
-                <div class="lbl">Quiet hours</div>
-                <div class="sub">Hold email copies inside this window</div>
-              </div>
-              <label class="switch"><input type="checkbox" id="pref-quiet" aria-label="Quiet hours"><span></span></label>
-            </div>
-
-            <div class="field-row" id="pref-quiet-times" style="display:none;">
-              <div>
-                <label class="field-label" for="pref-quiet-start">Quiet from</label>
-                <input type="time" id="pref-quiet-start" value="22:00">
-              </div>
-              <div>
-                <label class="field-label" for="pref-quiet-end">Quiet until</label>
-                <input type="time" id="pref-quiet-end" value="07:00">
-              </div>
             </div>
 
             <div class="form-message success" id="prefs-save-success" style="display:none;">Notification settings saved.</div>
@@ -866,14 +847,10 @@
       // and write /api/auth/profile/prefs — the same user_prefs column that
       // notify() and the notification emails obey — so the switches are the whole
       // opt-in: with "Email me a copy" off (the default) notifications stay
-      // in-app only, and quiet hours silence the email copy inside the window.
+      // in-app only.
       const prefInApp = document.getElementById('pref-inapp');
       const prefEmail = document.getElementById('pref-email');
       const prefEmailAddress = document.getElementById('pref-email-address');
-      const prefQuiet = document.getElementById('pref-quiet');
-      const prefQuietTimes = document.getElementById('pref-quiet-times');
-      const prefQuietStart = document.getElementById('pref-quiet-start');
-      const prefQuietEnd = document.getElementById('pref-quiet-end');
       const prefsSaveBtn = document.getElementById('prefs-save');
       const prefsSuccessEl = document.getElementById('prefs-save-success');
       const prefsErrorEl = document.getElementById('prefs-save-error');
@@ -892,13 +869,8 @@
 
       function renderPrefs(prefs) {
         const p = prefs || {};
-        const quiet = p.quietHours || {};
         prefInApp.checked = p.inApp !== false;      // on unless explicitly switched off
         prefEmail.checked = p.email === true;
-        prefQuiet.checked = quiet.enabled === true;
-        prefQuietStart.value = quiet.start || '22:00';
-        prefQuietEnd.value = quiet.end || '07:00';
-        prefQuietTimes.style.display = prefQuiet.checked ? '' : 'none';
         prefEmailAddress.textContent = (currentProfile && currentProfile.email) || 'your email address';
       }
 
@@ -918,8 +890,6 @@
       async function savePrefs() {
         hidePrefsMessages();
         prefsSaveBtn.disabled = true;
-        prefQuietStart.disabled = true;
-        prefQuietEnd.disabled = true;
         prefsSaveBtn.textContent = 'Saving…';
         try {
           const res = await fetchJson('/api/auth/profile/prefs', {
@@ -927,12 +897,7 @@
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               inApp: prefInApp.checked,
-              email: prefEmail.checked,
-              quietHours: {
-                enabled: prefQuiet.checked,
-                start: prefQuietStart.value,
-                end: prefQuietEnd.value
-              }
+              email: prefEmail.checked
             })
           });
           if (!res) return; // 401 -> redirected
@@ -947,15 +912,10 @@
           showPrefsError((err && err.message) ? String(err.message) : 'Couldn\'t save your notification settings. Please try again.');
         } finally {
           prefsSaveBtn.disabled = false;
-          prefQuietStart.disabled = false;
-          prefQuietEnd.disabled = false;
           prefsSaveBtn.textContent = 'Save notification settings';
         }
       }
 
-      prefQuiet.addEventListener('change', () => {
-        prefQuietTimes.style.display = prefQuiet.checked ? '' : 'none';
-      });
       prefsSaveBtn.addEventListener('click', savePrefs);
 
       // Deep link from the bell (profile.html#prefs). #profile-area is hidden

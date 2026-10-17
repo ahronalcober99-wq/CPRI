@@ -38,8 +38,7 @@ import {
 } from './server/db/queries.js';
 import {
   requireAuth as defaultRequireAuth,
-  normalizePrefs,
-  isValidClock
+  normalizePrefs
 } from './auth.js';
 import { notify as defaultNotify } from './notifications.js';
 import { sendNotificationEmail as defaultSendEmail } from './lib/mail.js';
@@ -141,27 +140,11 @@ export function createResearchSubmissionsRouter(dependencies = {}) {
   const notifyInApp = dependencies.notify || defaultNotify;
   const sendEmail = dependencies.sendEmail || defaultSendEmail;
 
-  // Is "now" inside the user's quiet hours? The window may cross midnight
-  // (22:00 → 07:00), which is the default.
-  function insideQuietHours(quietHours) {
-    if (!quietHours || !quietHours.enabled) return false;
-    if (!isValidClock(quietHours.start) || !isValidClock(quietHours.end)) return false;
-    const minutes = (clock) => {
-      const [h, m] = clock.split(':').map(Number);
-      return h * 60 + m;
-    };
-    const now = new Date();
-    const at = now.getHours() * 60 + now.getMinutes();
-    const start = minutes(quietHours.start);
-    const end = minutes(quietHours.end);
-    return start <= end ? (at >= start && at < end) : (at >= start || at < end);
-  }
-
   /**
    * In-app notification + optional email copy for one person.
    *
-   * Email follows the account's own preferences (`user_prefs.email`, default
-   * off, and quiet hours suppress the copy) — the same contract the Email
+   * Email follows the account's own preference (`user_prefs.email`, default
+   * off) — the same contract the Email
    * Notifications page writes. Nothing here may break the request it belongs
    * to, so every failure is logged and swallowed.
    */
@@ -177,10 +160,6 @@ export function createResearchSubmissionsRouter(dependencies = {}) {
       if (!account || !account.email) return;
       const prefs = normalizePrefs(account.user_prefs);
       if (!prefs.email) return;
-      if (insideQuietHours(prefs.quietHours)) {
-        console.log(`[research-submissions] quiet hours — email to ${userId} held back`);
-        return;
-      }
       await sendEmail(account.email, {
         title,
         message,

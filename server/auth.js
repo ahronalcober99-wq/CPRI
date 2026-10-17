@@ -23,11 +23,11 @@ const RESET_TTL_MS = 60 * 60 * 1000; // 1 hour
 // ---------- Notification preferences (user_prefs JSON column) ----------
 // inApp:    show bell notifications
 // email:    also send an email copy of each notification
-// quietHours: { enabled, start, end } — suppress email copies inside the window
+// (Quiet hours were removed for every account: a quietHours value saved
+// earlier is ignored here and dropped the next time the prefs are saved.)
 const DEFAULT_PREFS = {
   inApp: true,
-  email: false,
-  quietHours: { enabled: false, start: '22:00', end: '07:00' }
+  email: false
 };
 
 // Accepts only well-formed HH:MM clock times (hour < 24, minute < 60).
@@ -44,12 +44,7 @@ function normalizePrefs(input) {
   const inApp = raw.inApp === undefined ? true : raw.inApp === true || raw.inApp === false ? raw.inApp : true;
   return {
     inApp,
-    email: raw.email === true,
-    quietHours: {
-      enabled: Boolean(raw.quietHours && raw.quietHours.enabled),
-      start: (raw.quietHours && isValidClock(raw.quietHours.start)) ? raw.quietHours.start : '22:00',
-      end: (raw.quietHours && isValidClock(raw.quietHours.end)) ? raw.quietHours.end : '07:00'
-    }
+    email: raw.email === true
   };
 }
 
@@ -1634,8 +1629,8 @@ export {
   RBAC_PERMISSIONS,
   ROLE_PROFILE_FIELDS,
   // Notification preferences — exported so modules that notify users (e.g. the
-  // research submission module) apply exactly the same inApp / email /
-  // quietHours semantics as the account page, instead of their own copy.
+  // research submission module) apply exactly the same inApp / email
+  // semantics as the account page, instead of their own copy.
   DEFAULT_PREFS,
   normalizePrefs,
   isValidClock

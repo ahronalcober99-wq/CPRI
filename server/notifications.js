@@ -40,8 +40,7 @@ const ROLE_LABELS = {
 // auth module (avoids a circular dependency).
 const DEFAULT_PREFS = {
   inApp: true,
-  email: false,
-  quietHours: { enabled: false, start: '22:00', end: '07:00' }
+  email: false
 };
 
 // The table is created by the Netlify Database migrations in

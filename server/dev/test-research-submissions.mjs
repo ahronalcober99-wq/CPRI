@@ -1285,11 +1285,12 @@ test('the owner is notified about a status change, and staff about a new submiss
   }
 });
 
-test('an account with email off, or inside quiet hours, gets in-app only', async () => {
+test('quiet hours are gone: an old saved quiet window no longer holds the email copy back', async () => {
   const module = await startModule();
   try {
     const quiet = account('student_researcher');
-    // Email on, but a quiet window that covers every hour of the day.
+    // Email on, with a quiet window saved before quiet hours were removed
+    // that covers every hour of the day. It must be ignored now.
     module.store.insert('users', {
       id: quiet.id, email: 'quiet@rsub-test.local', fullName: quiet.fullName,
       role: quiet.role, status: 'active',
@@ -1310,9 +1311,10 @@ test('an account with email off, or inside quiet hours, gets in-app only', async
       body: JSON.stringify({ status: 'under_initial_checking' })
     });
 
-    // In-app still arrives; the email copy is held back by quiet hours.
+    // In-app arrives, and so does the email copy.
     assert.equal(module.inApp.filter(a => a[1] === 'research_submission_status').length, 1);
-    assert.equal(module.emails.length, 0, 'quiet hours suppress the email copy');
+    assert.equal(module.emails.length, 1, 'no account can hold email copies back any more');
+    assert.equal(module.emails[0][0], 'quiet@rsub-test.local');
   } finally {
     await module.close();
     await module.cleanup();
