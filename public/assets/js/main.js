@@ -1904,26 +1904,57 @@ const CPRI = (() => {
     }
   }
 
-  function buildResearchers(researchers) {
+  // Homepage "Featured Researchers": the first four profiles from the
+  // Researchers directory (GET /api/researchers answers { researchers: [...] }).
+  // Each card opens the researcher's profile; only the ORCID / Google Scholar /
+  // ResearchGate links a profile actually has are shown. With no profiles yet,
+  // the whole section is hidden rather than left as an empty block.
+  const RESEARCHER_TYPE_LABELS = { faculty: 'Faculty Researcher', student: 'Student Researcher' };
+
+  // Only a full http(s) address is a link; anything else (blank, relative,
+  // javascript:) is dropped.
+  function safeLink(url) {
+    const text = String(url || '').trim();
+    if (!text) return '';
+    try {
+      const u = new URL(text);
+      return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : '';
+    } catch { return ''; }
+  }
+
+  function buildResearchers(payload) {
     const el = document.getElementById('researchers'); if (!el) return;
-    const list = (researchers && researchers.length ? researchers : []).slice(0,4);
-    el.innerHTML = list.map(r => `
+    const all = Array.isArray(payload) ? payload : (payload && Array.isArray(payload.researchers) ? payload.researchers : []);
+    const list = all.slice(0, 4);
+    const section = el.closest('section');
+    if (!list.length) {
+      el.innerHTML = '';
+      if (section) section.style.display = 'none';
+      return;
+    }
+    if (section) section.style.display = '';
+    el.innerHTML = list.map(r => {
+      const name = r.fullName || r.name || 'Researcher';
+      const initials = name.replace(/,/g, ' ').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase() || '??';
+      const interests = String(r.researchInterests || '').split(/[,;]+/).map(s => s.trim()).filter(Boolean).slice(0, 3);
+      const links = [
+        [r.orcid && (/^https?:/i.test(r.orcid) ? r.orcid : 'https://orcid.org/' + r.orcid), 'ORCID', 'bi-person-badge'],
+        [r.googleScholar, 'Google Scholar', 'bi-google'],
+        [r.researchGate, 'ResearchGate', 'bi-link-45deg']
+      ].map(([url, label, icon]) => [safeLink(url), label, icon]).filter(([url]) => url);
+      return `
       <div class="col-lg-3 col-md-6 reveal-up">
         <article class="person-card">
-          <div class="avatar">${r.initials || (r.name||'??').split(' ').map(w=>w[0]).join('').slice(0,2)}</div>
-          <h3>${r.name}</h3>
-          <div class="role">${r.role || 'Researcher'}</div>
-          <div class="dept">${r.dept || ''}</div>
-          <div class="interests">${(r.interests||[]).map(i=>`<span>${i}</span>`).join('')}</div>
-          <div class="socials">
-            <a href="#" aria-label="Email" data-toast="Email copied"><i class="bi bi-envelope"></i></a>
-            <a href="#" aria-label="ORCID"><i class="bi bi-link-45deg"></i></a>
-            <a href="#" aria-label="Google Scholar"><i class="bi bi-google"></i></a>
-            <a href="#" aria-label="LinkedIn"><i class="bi bi-linkedin"></i></a>
-          </div>
+          <div class="avatar">${escapeHtml(initials)}</div>
+          <h3><a href="researcher-detail.html?id=${encodeURIComponent(r.id)}" style="color:inherit;text-decoration:none;">${escapeHtml(name)}</a></h3>
+          <div class="role">${escapeHtml(RESEARCHER_TYPE_LABELS[r.type] || r.type || 'Researcher')}</div>
+          <div class="dept">${escapeHtml(r.department || r.program || '')}</div>
+          <div class="interests">${interests.map(i => `<span>${escapeHtml(i)}</span>`).join('')}</div>
+          ${links.length ? `<div class="socials">${links.map(([url, label, icon]) =>
+            `<a href="${escapeHtml(url)}" target="_blank" rel="noopener" aria-label="${label}" title="${label}"><i class="bi ${icon}"></i></a>`).join('')}</div>` : ''}
         </article>
-      </div>`).join('');
-    el.querySelectorAll('[data-toast]').forEach(a => a.addEventListener('click', (e) => { e.preventDefault(); toast('Researcher', a.dataset.toast, 'person-check'); }));
+      </div>`;
+    }).join('');
   }
 
   function buildStats() {
