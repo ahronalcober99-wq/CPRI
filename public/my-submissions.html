@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>My Account | CPRI</title>
+  <title>Dashboard | CPRI</title>
   <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
   <link rel="stylesheet" href="assets/css/styles.css">
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
@@ -82,8 +82,8 @@
   <main id="main">
     <section class="page-header">
       <div class="container-xl">
-        <h1>My Account</h1>
-        <p>Your CPRI account and session.</p>
+        <h1 id="dash-title">Dashboard</h1>
+        <p>Your profile, your research submissions and their status.</p>
       </div>
     </section>
 
@@ -217,6 +217,20 @@
         return body;
       }
 
+      // The same page serves every researcher role, so the heading names the
+      // one that is signed in.
+      const DASHBOARD_TITLES = {
+        student_researcher: 'Student Dashboard',
+        faculty_researcher: 'Faculty Dashboard',
+        non_teaching_researcher: 'Non-Teaching Researcher Dashboard'
+      };
+
+      function renderTitle(role) {
+        const title = DASHBOARD_TITLES[role] || 'Researcher Dashboard';
+        el('dash-title').textContent = title;
+        document.title = title + ' | CPRI';
+      }
+
       // ---- Profile card ----
       function renderProfile(p, me) {
         el('p-name').textContent = p.fullName || me.fullName || p.username || '—';
@@ -318,6 +332,7 @@
             return;
           }
           const me = (await meRes.json()).user || {};
+          renderTitle(me.role);
 
           const [profilePayload, listPayload] = await Promise.all([
             getJson('/api/auth/profile').catch(() => ({ profile: {} })),
