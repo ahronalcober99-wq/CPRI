@@ -53,6 +53,7 @@ const { repositoryRouter, ensureRepositorySchema } = await import('../repository
 const { reportsRouter } = await import('../reports.js');
 const { adminDashboardRouter } = await import('../admin-dashboard.js');
 const { adminInsightsRouter } = await import('../admin-insights.js');
+const { messagesRouter, ensureMessagesTable } = await import('../messages.js');
 
 const PREFIX = `wf-${Date.now().toString(36)}-`;
 const ids = (name) => `${PREFIX}${name}`;
@@ -162,6 +163,7 @@ test.before(async () => {
   if (skip) return;
   await ensureResearchSubmissionsSchema();
   await ensureRepositorySchema();
+  await ensureMessagesTable();
 
   const app = express();
   app.use(express.json());
@@ -176,6 +178,7 @@ test.before(async () => {
   app.use('/api/reports', reportsRouter);
   app.use('/api/admin', adminDashboardRouter);
   app.use('/api/admin', adminInsightsRouter);
+  app.use('/api/messages', messagesRouter);
 
   await new Promise(resolve => { server = app.listen(0, '127.0.0.1', resolve); });
   server.unref();
@@ -212,6 +215,11 @@ test.after(async () => {
     await rm(join(here, '..', '..', 'public', 'assets', 'uploads', 'ethics', id), { recursive: true, force: true }).catch(() => {});
   }
   await clean('DELETE FROM ethics WHERE submitterId LIKE ?', [`${PREFIX}%`]);
+  const sentMessages = await all('SELECT id FROM direct_messages WHERE senderId LIKE ?', [`${PREFIX}%`]).catch(() => []);
+  for (const { id } of sentMessages) {
+    await rm(join(process.cwd(), 'server', 'data', 'messages', id), { recursive: true, force: true }).catch(() => {});
+  }
+  await clean('DELETE FROM direct_messages WHERE senderId LIKE ? OR recipientId LIKE ?', [`${PREFIX}%`, `${PREFIX}%`]);
   await clean('DELETE FROM notifications WHERE userId LIKE ?', [`${PREFIX}%`]);
   await clean('DELETE FROM system_logs WHERE userId LIKE ?', [`${PREFIX}%`]);
   await clean('DELETE FROM users WHERE id LIKE ?', [`${PREFIX}%`]);
@@ -403,4 +411,75 @@ test('every submission report counts both forms', opts, async () => {
   assert.equal(entry.link, `research-submission-detail.html?id=${moduleStudent.id}`);
 
   assert.ok(faculty.length >= 1 && moduleFaculty.id);
+});
+
+// ===========================================================================
+//  6. Messages: related research and a private attachment
+// ===========================================================================
+test('a message can link research and carry a PDF that only the two people can open', opts, async () => {
+  const paper = await addModule('message-paper', { title: `${PREFIX}Paper to discuss` });
+  const pdf = new Blob(['%PDF-1.4 message attachment'], { type: 'application/pdf' });
+
+  // Plain text still works as JSON, exactly as before.
+  const plain = await call(users.student, '/api/messages', {
+    method: 'POST', body: JSON.stringify({ recipientId: users.staff.id, body: 'Hello' })
+  });
+  assert.equal(plain.status, 201, JSON.stringify(plain.body));
+  assert.equal(plain.body.dm.attachment, null);
+
+  const form = new FormData();
+  form.append('recipientId', users.staff.id);
+  form.append('body', 'Please check my manuscript.');
+  form.append('relatedSubmissionId', paper.id);
+  form.append('attachment', pdf, 'manuscript.pdf');
+  const sent = await call(users.student, '/api/messages', { method: 'POST', body: form });
+  assert.equal(sent.status, 201, JSON.stringify(sent.body));
+  assert.equal(sent.body.dm.related.title, paper.title);
+  assert.equal(sent.body.dm.related.url, `/research-submission-detail.html?id=${paper.id}`);
+  assert.equal(sent.body.dm.attachment.name, 'manuscript.pdf');
+
+  // A file alone is a message too. (Sent to someone else, so it is the only
+  // message in that conversation: createdAt has one-second precision, so
+  // messages sent within the same second have no defined order.)
+  const fileOnly = new FormData();
+  fileOnly.append('recipientId', users.admin.id);
+  fileOnly.append('attachment', pdf, 'only-a-file.pdf');
+  assert.equal((await call(users.student, '/api/messages', { method: 'POST', body: fileOnly })).status, 201);
+
+  const thread = await call(users.staff, `/api/messages/${users.student.id}`);
+  const withFile = thread.body.messages.find(m => m.attachment && m.attachment.name === 'manuscript.pdf');
+  assert.ok(withFile, 'the recipient sees the attachment');
+  assert.equal(withFile.related.id, paper.id);
+  const inbox = await call(users.admin, '/api/messages');
+  assert.equal(inbox.body.conversations.find(c => c.otherId === users.student.id).lastMessage, 'Attachment: only-a-file.pdf');
+
+  const asRecipient = await call(users.staff, withFile.attachment.url);
+  assert.equal(asRecipient.status, 200);
+  assert.equal(asRecipient.text, '%PDF-1.4 message attachment');
+  assert.equal((await call(users.student, withFile.attachment.url)).status, 200, 'the sender can open it too');
+  assert.equal((await call(users.other, withFile.attachment.url)).status, 403, 'nobody else can');
+
+  const contacts = await call(users.student, '/api/messages/contacts');
+  assert.ok(contacts.body.contacts.every(c => 'program' in c && 'department' in c));
+});
+
+test('messages refuse research the sender cannot open and files that are not PDF or Word', opts, async () => {
+  const someoneElses = await addModule('not-mine', {
+    owner_id: users.other.id, owner_name: 'other', title: `${PREFIX}Someone else's paper`
+  });
+  const notMine = await call(users.student, '/api/messages', {
+    method: 'POST', body: JSON.stringify({ recipientId: users.staff.id, body: 'x', relatedSubmissionId: someoneElses.id })
+  });
+  assert.equal(notMine.status, 400);
+  assert.match(notMine.body.error, /only link research you can open/);
+
+  const exe = new FormData();
+  exe.append('recipientId', users.staff.id);
+  exe.append('body', 'see attached');
+  exe.append('attachment', new Blob(['MZ not a pdf'], { type: 'application/pdf' }), 'virus.pdf');
+  const refused = await call(users.student, '/api/messages', { method: 'POST', body: exe });
+  assert.equal(refused.status, 400, 'the file signature is checked, not just the name');
+
+  const empty = await call(users.student, '/api/messages', { method: 'POST', body: JSON.stringify({ recipientId: users.staff.id, body: '' }) });
+  assert.equal(empty.status, 400);
 });

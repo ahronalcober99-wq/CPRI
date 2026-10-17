@@ -8,6 +8,70 @@
   <meta name="description" content="Private direct messages between CPRI staff, faculty, advisers, and ethics reviewers.">
   <link rel="stylesheet" href="assets/css/styles.css">
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+  <style>
+    /* ---- New message dialog ---- */
+    .nm-overlay { position: fixed; inset: 0; background: rgba(10,4,4,.55); display: grid; place-items: center; z-index: 2000; padding: 16px; }
+    .nm-overlay[hidden] { display: none; }
+    .nm-box { width: 100%; max-width: 560px; max-height: calc(100vh - 32px); overflow-y: auto; background: var(--cpri-card);
+      color: var(--cpri-text); border: 1px solid var(--cpri-border); border-radius: 20px; padding: 26px; box-shadow: var(--shadow-lg); }
+    .nm-head { display: flex; gap: 16px; align-items: center; margin-bottom: 20px; }
+    .nm-icon { width: 48px; height: 48px; border-radius: 12px; display: grid; place-items: center; flex: 0 0 48px;
+      background: var(--cpri-secondary, #800000); color: #fff; font-size: 1.3rem; }
+    .nm-head h3 { margin: 0; font-size: 1.25rem; }
+    .nm-head p { margin: 2px 0 0; color: var(--cpri-muted); font-size: .9rem; }
+    .nm-close { margin-left: auto; align-self: flex-start; background: none; border: 0; color: var(--cpri-muted); font-size: 1.3rem; cursor: pointer; padding: 4px; line-height: 1; }
+    .nm-close:hover { color: var(--cpri-text); }
+    .nm-label { display: block; font-weight: 700; margin: 0 0 8px; font-size: .92rem; }
+    .nm-label small { font-weight: 400; color: var(--cpri-muted); font-size: .9rem; }
+    .nm-field { position: relative; margin-bottom: 18px; }
+    .nm-input-wrap { position: relative; }
+    .nm-input-wrap > i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--cpri-muted); pointer-events: none; }
+    .nm-input-wrap > i.nm-chevron { left: auto; right: 14px; }
+    /* Specific enough to beat the site-wide input[type=…] padding, which
+       otherwise puts the text under the icon. */
+    .nm-box .nm-input-wrap input[type="text"], .nm-box .nm-input-wrap select { padding-left: 42px; }
+    .nm-box .nm-input-wrap select { appearance: none; -webkit-appearance: none; padding-right: 40px; }
+    #nm-to.picked { border-color: var(--cpri-secondary, #800000); }
+    .nm-list { list-style: none; margin: 6px 0 0; padding: 0; border: 1px solid var(--cpri-border); border-radius: 12px; overflow: hidden;
+      max-height: 260px; overflow-y: auto; background: var(--cpri-card); }
+    .nm-list[hidden] { display: none; }
+    .nm-opt { display: flex; gap: 12px; align-items: center; padding: 10px 14px; cursor: pointer; }
+    .nm-opt + .nm-opt { border-top: 1px solid var(--cpri-border); }
+    .nm-opt.active, .nm-opt:hover { background: rgba(37,99,235,.12); }
+    [data-theme="dark"] .nm-opt.active, [data-theme="dark"] .nm-opt:hover { background: #0b2148; }
+    .nm-av { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; flex: 0 0 38px; font-weight: 700; font-size: .85rem;
+      background: rgba(0,0,0,.08); color: var(--cpri-text); }
+    .nm-opt.active .nm-av { background: var(--cpri-secondary, #800000); color: #fff; }
+    .nm-who { flex: 1; min-width: 0; }
+    .nm-who b { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nm-who small { display: block; color: var(--cpri-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .nm-role { font-size: .75rem; font-weight: 600; padding: 3px 12px; border-radius: 999px; white-space: nowrap; border: 1px solid transparent; }
+    .nm-role.student { color: #2563eb; border-color: rgba(37,99,235,.45); }
+    .nm-role.faculty { color: #15803d; background: rgba(22,163,74,.12); }
+    .nm-role.staff { color: var(--cpri-secondary, #800000); background: var(--maroon-tint, rgba(128,0,0,.1)); }
+    .nm-role.adviser { color: #6d28d9; background: rgba(139,92,246,.14); }
+    .nm-role.reviewer { color: #b45309; background: rgba(245,158,11,.16); }
+    .nm-role.other { color: var(--cpri-muted); background: rgba(0,0,0,.06); }
+    [data-theme="dark"] .nm-role.student { color: #93c5fd; }
+    [data-theme="dark"] .nm-role.faculty { color: #4ade80; }
+    .nm-empty { padding: 12px 14px; color: var(--cpri-muted); font-size: .9rem; }
+    #nm-body { min-height: 120px; resize: vertical; }
+    .nm-meta { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-top: 8px; font-size: .88rem; }
+    .nm-attach { background: none; border: 0; padding: 0; color: var(--cpri-text); cursor: pointer; display: inline-flex; gap: 8px; align-items: center; font: inherit; }
+    .nm-attach:hover { color: var(--cpri-secondary, #800000); }
+    .nm-file { display: inline-flex; gap: 8px; align-items: center; }
+    .nm-file button { background: none; border: 0; color: var(--cpri-muted); cursor: pointer; padding: 0 2px; }
+    .nm-count { color: var(--cpri-muted); white-space: nowrap; }
+    .nm-foot { display: flex; align-items: center; gap: 10px; margin-top: 22px; flex-wrap: wrap; }
+    .nm-hint { color: var(--cpri-muted); font-size: .85rem; margin-right: auto; }
+    .nm-error { color: #dc2626; font-size: .88rem; margin: 10px 0 0; }
+
+    /* ---- Thread extras ---- */
+    .dm-extra { display: flex; gap: 6px; align-items: center; margin-top: 6px; font-size: .8rem; text-decoration: none; color: inherit;
+      padding: 6px 10px; border-radius: 10px; background: rgba(255,255,255,.14); }
+    .dm-bubble.theirs .dm-extra { background: rgba(0,0,0,.06); }
+    .dm-extra:hover { text-decoration: underline; }
+  </style>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -25,7 +89,7 @@
       <div class="container-xl">
         <div class="form-message" id="msg"></div>
 
-        <!-- Access-denied state: students / public visitors -->
+        <!-- Access-denied state: not signed in -->
         <div id="access-denied" class="empty-state" style="display:none;">
           <i class="bi bi-chat-square-text" style="font-size:2rem;display:block;margin-bottom:10px;color:var(--cpri-muted);"></i>
           Direct messaging is available to registered users only. Please <a href="login.html">log in</a> to use it.
@@ -61,30 +125,63 @@
               </form>
             </div>
           </div>
-
-          <!-- New message modal (contact picker) -->
-          <div class="confirm-overlay" id="newModal" hidden>
-            <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="newModalTitle" style="max-width:520px;">
-              <div class="confirm-icon" style="background:var(--grad-brand);"><i class="bi bi-pencil-square"></i></div>
-              <h3 id="newModalTitle">New Message</h3>
-              <div class="form-group" style="margin-top:14px;">
-                <label for="dm-to">To</label>
-                <select id="dm-to" style="margin-bottom:10px;"></select>
-              </div>
-              <div class="form-group">
-                <label for="dm-new-body">Message</label>
-                <textarea id="dm-new-body" rows="4" maxlength="2000" placeholder="Write your message…"></textarea>
-              </div>
-              <div class="confirm-actions" style="margin-top:16px;">
-                <button type="button" class="btn btn-navy" id="newCancel">Cancel</button>
-                <button type="button" class="btn btn-primary" id="newSend">Send</button>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </section>
   </main>
+
+  <!-- New message -->
+  <div class="nm-overlay" id="newModal" hidden>
+    <form class="nm-box" id="nm-form" role="dialog" aria-modal="true" aria-labelledby="nm-title" novalidate>
+      <div class="nm-head">
+        <span class="nm-icon"><i class="bi bi-pencil-square"></i></span>
+        <div>
+          <h3 id="nm-title">New message</h3>
+          <p>Messages are visible only to you and the recipient</p>
+        </div>
+        <button type="button" class="nm-close" id="nm-close" aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      </div>
+
+      <div class="nm-field">
+        <label class="nm-label" for="nm-to">To</label>
+        <div class="nm-input-wrap">
+          <i class="bi bi-search"></i>
+          <input type="text" id="nm-to" autocomplete="off" placeholder="Search by name, role, or department"
+                 role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="nm-list">
+        </div>
+        <ul class="nm-list" id="nm-list" role="listbox" hidden></ul>
+      </div>
+
+      <div class="nm-field" id="nm-related-field">
+        <label class="nm-label" for="nm-related">Related research <small>(optional)</small></label>
+        <div class="nm-input-wrap">
+          <i class="bi bi-file-earmark-text"></i>
+          <select id="nm-related"><option value="">None</option></select>
+          <i class="bi bi-chevron-down nm-chevron"></i>
+        </div>
+      </div>
+
+      <div class="nm-field" style="margin-bottom:0;">
+        <label class="nm-label" for="nm-body">Message</label>
+        <textarea id="nm-body" maxlength="1000" placeholder="Write your message…"></textarea>
+        <div class="nm-meta">
+          <span id="nm-attach-area">
+            <button type="button" class="nm-attach" id="nm-attach"><i class="bi bi-paperclip"></i> Attach PDF or Word file</button>
+          </span>
+          <span class="nm-count"><span id="nm-count">0</span> / 1000</span>
+        </div>
+        <input type="file" id="nm-file" accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" hidden>
+      </div>
+
+      <p class="nm-error" id="nm-error" hidden></p>
+
+      <div class="nm-foot">
+        <span class="nm-hint">Ctrl + Enter to send</span>
+        <button type="button" class="btn btn-outline-dark" id="nm-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="nm-send"><i class="bi bi-send"></i> Send</button>
+      </div>
+    </form>
+  </div>
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
@@ -93,6 +190,7 @@
     // registered role may message, including non-teaching researchers and
     // presenters.
     const MESSAGE_ROLES = ['admin', 'cpri_staff', 'faculty_researcher', 'non_teaching_researcher', 'adviser', 'ethics_reviewer', 'student_researcher', 'presenter', 'public_visitor'];
+    const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
     const el = (id) => document.getElementById(id);
 
@@ -117,7 +215,19 @@
         : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
 
-    const state = { contacts: [], currentId: null, inboxTimer: null };
+    function fmtSize(bytes) {
+      const n = Number(bytes) || 0;
+      if (n < 1024) return n + ' B';
+      if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
+      return (n / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function initials(name) {
+      const parts = String(name || '?').replace(/,/g, ' ').trim().split(/\s+/).filter(Boolean);
+      return ((parts[0] || '?')[0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+    }
+
+    const state = { contacts: [], currentId: null, inboxTimer: null, me: null };
 
     // ---- Inbox ----
     async function loadInbox(selectId) {
@@ -131,8 +241,8 @@
           return;
         }
         box.innerHTML = data.conversations.map(c => `
-          <button type="button" class="dm-convo${c.otherId === state.currentId ? ' active' : ''}" data-id="${c.otherId}" style="width:100%;text-align:left;padding:14px 16px;border:none;border-bottom:1px solid var(--cpri-border);cursor:pointer;display:flex;gap:12px;align-items:center;">
-            <span class="cpri-avatar" style="width:38px;height:38px;font-size:.85rem;flex-shrink:0;">${escapeHtml((c.otherName || '?').slice(0, 2).toUpperCase())}</span>
+          <button type="button" class="dm-convo${c.otherId === state.currentId ? ' active' : ''}" data-id="${escapeHtml(c.otherId)}" style="width:100%;text-align:left;padding:14px 16px;border:none;border-bottom:1px solid var(--cpri-border);cursor:pointer;display:flex;gap:12px;align-items:center;">
+            <span class="cpri-avatar" style="width:38px;height:38px;font-size:.85rem;flex-shrink:0;">${escapeHtml(initials(c.otherName))}</span>
             <span style="flex:1;min-width:0;">
               <b style="font-size:.92rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.otherName)}</b>
               <small style="color:var(--cpri-muted);font-size:.8rem;">${escapeHtml(c.otherRoleLabel)}${c.lastSenderIsMe ? ' · You: ' : ' · '}${escapeHtml((c.lastMessage || '').slice(0, 48))}</small>
@@ -145,12 +255,23 @@
     }
 
     // ---- Thread ----
+    function bubbleExtras(m) {
+      let html = '';
+      if (m.related) {
+        html += `<a class="dm-extra" href="${escapeHtml(m.related.url)}"><i class="bi bi-file-earmark-text"></i> ${escapeHtml(m.related.title)}</a>`;
+      }
+      if (m.attachment) {
+        html += `<a class="dm-extra" href="${escapeHtml(m.attachment.url)}"><i class="bi bi-paperclip"></i> ${escapeHtml(m.attachment.name)} <span style="opacity:.75;">(${fmtSize(m.attachment.size)})</span></a>`;
+      }
+      return html;
+    }
+
     async function openThread(userId) {
       state.currentId = userId;
       // Re-render keeps the active highlight in sync (loadInbox reads state.currentId).
       loadInbox();
       el('thread-actions').style.display = '';
-      const res = await fetch('/api/messages/' + userId, { credentials: 'include' });
+      const res = await fetch('/api/messages/' + encodeURIComponent(userId), { credentials: 'include' });
       if (!res.ok) { el('thread-name').textContent = 'Unavailable'; el('thread-sub').textContent = ''; return; }
       const data = await res.json();
       el('thread-name').textContent = data.other.fullName || data.other.username;
@@ -159,7 +280,8 @@
       thread.innerHTML = data.messages.length
         ? data.messages.map(m => `
             <div class="dm-bubble ${m.mine ? 'mine' : 'theirs'}" style="max-width:75%;align-self:${m.mine ? 'flex-end' : 'flex-start'};background:${m.mine ? 'var(--grad-brand)' : 'var(--cpri-bg-2)'};color:${m.mine ? '#fff' : 'var(--cpri-text)'};padding:10px 14px;border-radius:16px;font-size:.92rem;line-height:1.45;">
-              ${escapeHtml(m.body)}
+              ${m.body ? `<div style="white-space:pre-wrap;">${escapeHtml(m.body)}</div>` : ''}
+              ${bubbleExtras(m)}
               <small style="display:block;margin-top:4px;opacity:.75;font-size:.7rem;">${fmtTime(m.createdAt)}</small>
             </div>`).join('')
         : '<p class="form-note" style="text-align:center;margin:auto;">No messages yet — say hello!</p>';
@@ -169,18 +291,6 @@
       // Mark thread as read (open thread = read).
       try { await fetch('/api/messages/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId }), credentials: 'include' }); } catch { /* best effort */ }
       loadInbox();
-    }
-
-    // ---- Contacts for the New Message modal ----
-    async function loadContacts() {
-      const res = await fetch('/api/messages/contacts', { credentials: 'include' });
-      if (!res.ok) return;
-      const data = await res.json();
-      state.contacts = data.contacts || [];
-      const sel = el('dm-to');
-      sel.innerHTML = state.contacts.length
-        ? state.contacts.map(c => `<option value="${c.id}">${escapeHtml(c.fullName)} — ${escapeHtml(c.roleLabel)}${c.department ? ' (' + escapeHtml(c.department) + ')' : ''}</option>`).join('')
-        : '<option value="">No other staff members available</option>';
     }
 
     // ---- Composer (thread) ----
@@ -201,29 +311,201 @@
       openThread(userId);
     });
 
-    // ---- New message modal ----
-    el('new-msg-btn').addEventListener('click', () => { loadContacts(); el('newModal').hidden = false; });
-    el('newCancel').addEventListener('click', () => { el('newModal').hidden = true; });
-    el('newModal').addEventListener('click', (e) => { if (e.target === e.currentTarget) el('newModal').hidden = true; });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !el('newModal').hidden) el('newModal').hidden = true; });
+    // ================= New message dialog =================
+    const nm = {
+      recipient: null,      // the chosen contact
+      matches: [],          // contacts shown in the list
+      active: -1,           // highlighted row for the keyboard
+      file: null
+    };
 
-    el('newSend').addEventListener('click', async () => {
-      const recipientId = el('dm-to').value;
-      const body = el('dm-new-body').value.trim();
-      if (!recipientId) return showMsg('error', 'Please choose a recipient.');
-      if (!body) return showMsg('error', 'Please write a message.');
-      const res = await fetch('/api/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipientId, body }),
-        credentials: 'include'
-      });
-      const out = await res.json();
-      if (!res.ok) return showMsg('error', out.error);
-      el('newModal').hidden = true;
-      el('dm-new-body').value = '';
-      openThread(recipientId);
+    function roleClass(role) {
+      return {
+        student_researcher: 'student', faculty_researcher: 'faculty', non_teaching_researcher: 'faculty',
+        cpri_staff: 'staff', admin: 'staff', adviser: 'adviser', facilitator: 'adviser', ethics_reviewer: 'reviewer'
+      }[role] || 'other';
+    }
+
+    function shortRole(c) {
+      return {
+        student_researcher: 'Student', faculty_researcher: 'Faculty', non_teaching_researcher: 'Non-Teaching',
+        cpri_staff: 'CPRI Staff', admin: 'Admin', adviser: 'Adviser', ethics_reviewer: 'Ethics Reviewer',
+        presenter: 'Presenter', public_visitor: 'Visitor'
+      }[c.role] || c.roleLabel || c.role;
+    }
+
+    function setError(text) {
+      el('nm-error').hidden = !text;
+      el('nm-error').textContent = text || '';
+    }
+
+    function renderMatches() {
+      const list = el('nm-list');
+      if (!nm.matches.length) {
+        list.innerHTML = '<li class="nm-empty">No one matches that search.</li>';
+      } else {
+        list.innerHTML = nm.matches.map((c, i) => `
+          <li class="nm-opt${i === nm.active ? ' active' : ''}" role="option" id="nm-opt-${i}" data-i="${i}" aria-selected="${i === nm.active}">
+            <span class="nm-av">${escapeHtml(initials(c.fullName))}</span>
+            <span class="nm-who"><b>${escapeHtml(c.fullName)}</b><small>${escapeHtml(c.program || c.department || c.roleLabel || '')}</small></span>
+            <span class="nm-role ${roleClass(c.role)}">${escapeHtml(shortRole(c))}</span>
+          </li>`).join('');
+      }
+      list.hidden = false;
+      el('nm-to').setAttribute('aria-expanded', 'true');
+      el('nm-to').setAttribute('aria-activedescendant', nm.active >= 0 ? 'nm-opt-' + nm.active : '');
+    }
+
+    function closeList() {
+      el('nm-list').hidden = true;
+      el('nm-to').setAttribute('aria-expanded', 'false');
+    }
+
+    function search() {
+      const q = el('nm-to').value.trim().toLowerCase();
+      nm.matches = state.contacts
+        .filter(c => !q || [c.fullName, c.username, c.roleLabel, shortRole(c), c.department, c.program]
+          .some(v => String(v || '').toLowerCase().includes(q)))
+        .slice(0, 8);
+      nm.active = nm.matches.length ? 0 : -1;
+      renderMatches();
+    }
+
+    function pick(contact) {
+      nm.recipient = contact;
+      el('nm-to').value = contact.fullName;
+      el('nm-to').classList.add('picked');
+      closeList();
+      setError('');
+      el('nm-body').focus();
+    }
+
+    el('nm-to').addEventListener('input', () => {
+      // Typing again un-picks the recipient until a name is chosen.
+      nm.recipient = null;
+      el('nm-to').classList.remove('picked');
+      search();
     });
+    el('nm-to').addEventListener('focus', () => { if (!nm.recipient) search(); });
+    el('nm-to').addEventListener('keydown', (e) => {
+      if (el('nm-list').hidden && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { search(); return; }
+      if (e.key === 'ArrowDown' && nm.matches.length) { e.preventDefault(); nm.active = (nm.active + 1) % nm.matches.length; renderMatches(); }
+      else if (e.key === 'ArrowUp' && nm.matches.length) { e.preventDefault(); nm.active = (nm.active - 1 + nm.matches.length) % nm.matches.length; renderMatches(); }
+      else if (e.key === 'Enter' && !el('nm-list').hidden && nm.active >= 0) { e.preventDefault(); pick(nm.matches[nm.active]); }
+      else if (e.key === 'Escape' && !el('nm-list').hidden) { e.preventDefault(); e.stopPropagation(); closeList(); }
+    });
+    // mousedown, not click: it fires before the input loses focus.
+    el('nm-list').addEventListener('mousedown', (e) => {
+      const opt = e.target.closest('.nm-opt');
+      if (!opt) return;
+      e.preventDefault();
+      pick(nm.matches[Number(opt.dataset.i)]);
+    });
+    el('nm-to').addEventListener('blur', () => setTimeout(closeList, 120));
+
+    // ---- Message, counter, attachment ----
+    el('nm-body').addEventListener('input', () => { el('nm-count').textContent = el('nm-body').value.length; });
+
+    function renderAttachment() {
+      const area = el('nm-attach-area');
+      if (!nm.file) {
+        area.innerHTML = '<button type="button" class="nm-attach" id="nm-attach"><i class="bi bi-paperclip"></i> Attach PDF or Word file</button>';
+        el('nm-attach').addEventListener('click', () => el('nm-file').click());
+        return;
+      }
+      area.innerHTML = `<span class="nm-file"><i class="bi bi-paperclip"></i> ${escapeHtml(nm.file.name)} <span class="form-note" style="margin:0;">(${fmtSize(nm.file.size)})</span>
+        <button type="button" id="nm-file-remove" aria-label="Remove attachment"><i class="bi bi-x-lg"></i></button></span>`;
+      el('nm-file-remove').addEventListener('click', () => { nm.file = null; el('nm-file').value = ''; renderAttachment(); });
+    }
+
+    el('nm-file').addEventListener('change', () => {
+      const file = el('nm-file').files[0];
+      if (!file) return;
+      if (!/\.(pdf|docx?)$/i.test(file.name)) { setError('Only PDF or Word (.doc, .docx) files can be attached.'); el('nm-file').value = ''; return; }
+      if (file.size > MAX_ATTACHMENT_BYTES) { setError('The attachment is larger than 10 MB.'); el('nm-file').value = ''; return; }
+      setError('');
+      nm.file = file;
+      renderAttachment();
+    });
+
+    // ---- Related research: the submissions this account can open ----
+    async function loadRelatedOptions() {
+      const select = el('nm-related');
+      select.innerHTML = '<option value="">None</option>';
+      const [moduleRes, classicRes] = await Promise.all([
+        fetch('/api/research-submissions', { credentials: 'include' }).catch(() => null),
+        fetch('/api/submissions', { credentials: 'include' }).catch(() => null)
+      ]);
+      const moduleList = moduleRes && moduleRes.ok ? ((await moduleRes.json()).submissions || []) : [];
+      const classicList = classicRes && classicRes.ok ? ((await classicRes.json()).submissions || []) : [];
+      const seen = new Set();
+      const options = [];
+      for (const s of moduleList.concat(classicList)) {
+        if (!s.id || seen.has(s.id) || (s.status === 'draft' && !s.isOwner)) continue;
+        seen.add(s.id);
+        options.push(s);
+      }
+      select.innerHTML = '<option value="">None</option>' +
+        options.map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.title || 'Untitled submission')}</option>`).join('');
+      el('nm-related-field').style.display = options.length ? '' : 'none';
+    }
+
+    // ---- Open / close / send ----
+    async function openNew() {
+      nm.recipient = null; nm.file = null; nm.matches = []; nm.active = -1;
+      el('nm-form').reset();
+      el('nm-to').classList.remove('picked');
+      el('nm-count').textContent = '0';
+      renderAttachment();
+      setError('');
+      closeList();
+      el('newModal').hidden = false;
+      el('nm-to').focus();
+      const [contactsRes] = await Promise.all([
+        fetch('/api/messages/contacts', { credentials: 'include' }).catch(() => null),
+        loadRelatedOptions()
+      ]);
+      if (contactsRes && contactsRes.ok) state.contacts = (await contactsRes.json()).contacts || [];
+    }
+
+    function closeNew() { el('newModal').hidden = true; }
+
+    async function sendNew() {
+      if (!nm.recipient) return setError('Choose who to send the message to.');
+      const body = el('nm-body').value.trim();
+      if (!body && !nm.file) return setError('Write a message or attach a file.');
+      setError('');
+      const fd = new FormData();
+      fd.append('recipientId', nm.recipient.id);
+      fd.append('body', body);
+      if (el('nm-related').value) fd.append('relatedSubmissionId', el('nm-related').value);
+      if (nm.file) fd.append('attachment', nm.file, nm.file.name);
+      const sendBtn = el('nm-send');
+      sendBtn.disabled = true;
+      try {
+        const res = await fetch('/api/messages', { method: 'POST', body: fd, credentials: 'include' });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) return setError(out.error || 'The message could not be sent.');
+        const to = nm.recipient.id;
+        closeNew();
+        showMsg('success', 'Message sent.');
+        openThread(to);
+      } catch {
+        setError('The message could not be sent. Check your connection and try again.');
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+
+    el('new-msg-btn').addEventListener('click', openNew);
+    el('nm-close').addEventListener('click', closeNew);
+    el('nm-cancel').addEventListener('click', closeNew);
+    el('newModal').addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) closeNew(); });
+    el('nm-form').addEventListener('submit', (e) => { e.preventDefault(); sendNew(); });
+    el('nm-form').addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); sendNew(); }
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !el('newModal').hidden) closeNew(); });
 
     el('mark-read-btn').addEventListener('click', async () => {
       if (!state.currentId) return;
@@ -233,12 +515,11 @@
 
     (async () => {
       // Who is logged in?
-      let me = null;
       try {
         const res = await fetch('/api/auth/me', { credentials: 'include' });
-        if (res.ok) me = (await res.json()).user;
+        if (res.ok) state.me = (await res.json()).user;
       } catch { /* guest */ }
-      if (!me || !MESSAGE_ROLES.includes(me.role)) {
+      if (!state.me || !MESSAGE_ROLES.includes(state.me.role)) {
         el('access-denied').style.display = 'block';
         return;
       }
