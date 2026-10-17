@@ -2038,3 +2038,25 @@ test('a faculty Initial paper can go back For Revision, be revised, and go on to
     await module.cleanup();
   }
 });
+
+test('the status history names who submitted, never the raw account id', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher', { fullName: 'Songco, Mary Joy A.' });
+    const created = await createStudentInitial(module, student);
+    const detail = await module.json(await module.call(student, `/${created.id}`));
+    const [first] = detail.body.submission.statusHistory;
+    assert.equal(first.to_status, 'submitted');
+    assert.equal(first.changed_by_name, 'Songco, Mary Joy A.');
+
+    // An entry saved before the name was recorded gets it from the account.
+    await module.store.insert('users', { id: student.id, fullName: student.fullName, username: student.username });
+    const old = module.store.rowsOf('research_status_history').find(h => h.submission_id === created.id);
+    old.changed_by_name = '';
+    const again = await module.json(await module.call(student, `/${created.id}`));
+    assert.equal(again.body.submission.statusHistory[0].changed_by_name, 'Songco, Mary Joy A.');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});

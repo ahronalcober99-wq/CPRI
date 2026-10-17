@@ -637,6 +637,7 @@ router.post(
         from_status: null,
         to_status: sub.status,
         changed_by: user.id,
+        changed_by_name: user.fullName || user.username || '',
         changed_at: now
       });
     } catch (err) {
@@ -920,6 +921,19 @@ router.get('/:id', requireAuth, async (req, res) => {
     'SELECT * FROM research_status_history WHERE submission_id = ? ORDER BY changed_at ASC',
     [sub.id]
   );
+  // The first history entry of older submissions was saved without a name,
+  // so the page showed the raw account id. Fill those in from the account.
+  const unnamed = [...new Set(statusHistory.filter(h => !h.changed_by_name && h.changed_by).map(h => h.changed_by))];
+  if (unnamed.length) {
+    const names = new Map();
+    for (const userId of unnamed) {
+      const account = await get('SELECT fullName, username FROM users WHERE id = ?', [userId]).catch(() => null);
+      if (account) names.set(userId, account.fullName || account.username || '');
+    }
+    for (const h of statusHistory) {
+      if (!h.changed_by_name && names.get(h.changed_by)) h.changed_by_name = names.get(h.changed_by);
+    }
+  }
 
   // Ethics decisions, without the storage path (the file is fetched through
   // the authorized clearance route).
