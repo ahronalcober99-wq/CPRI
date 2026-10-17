@@ -759,6 +759,8 @@ function moduleRecord(row, { user, files = [], comments = [] }) {
     program: row.program || '',
     category: row.category || '',
     research_type: row.research_type || '',
+    // Shown under the title on the researcher's dashboard.
+    abstract: row.abstract || '',
     school_year: row.school_year || '',
     semester: row.semester || '',
     adviser: row.adviser_id || '',
