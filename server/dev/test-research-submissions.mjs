@@ -1561,28 +1561,29 @@ test('the boot DDL adds a column only where it is missing', async () => {
 });
 
 // ===========================================================================
-//  The adviser-evaluation link field (a Google Form, not a document)
+//  The adviser-evaluation field (display-only: "To be announced by adviser")
 // ===========================================================================
-test('the adviser-evaluation link is a student-only url field, required at end of semester', async () => {
+test('the adviser-evaluation field is a student-only, display-only notice', async () => {
   const module = await startModule();
   try {
     const student = account('student_researcher');
     const faculty = account('non_teaching_researcher');
 
     const studentCfg = await module.json(await module.call(student, '/form-config'));
-    const link = studentCfg.body.stages
+    const field = studentCfg.body.stages
       .flatMap(s => s.fields)
       .find(f => f.key === 'adviser_eval_link');
-    assert.ok(link, 'a student is offered the link field');
-    assert.equal(link.type, 'url', 'it is a link, not a file slot');
-    assert.equal(link.required, true);
-    assert.equal(link.conditional, true, 'published as a boolean: functions cannot cross JSON');
-    assert.equal(link.condition_key, 'end_of_semester');
+    assert.ok(field, 'a student is shown the field');
+    assert.equal(field.type, 'display');
+    assert.equal(field.label, "Researchers' Evaluation of Adviser");
+    assert.equal(field.value, 'To be announced by adviser');
+    assert.equal(field.required, false);
+    assert.equal(field.conditional, false);
 
     const facultyCfg = await module.json(await module.call(faculty, '/form-config'));
     for (const stage of facultyCfg.body.stages) {
       assert.ok(!stage.fields.some(f => f.key === 'adviser_eval_link'),
-        'faculty has no adviser-evaluation link (it is a student form)');
+        'faculty has no adviser-evaluation field (it is a student form)');
     }
   } finally {
     await module.close();
@@ -1590,48 +1591,26 @@ test('the adviser-evaluation link is a student-only url field, required at end o
   }
 });
 
-test('the link is enforced only when the end-of-semester flag is set', async () => {
+test('the adviser-evaluation field is never required, validated or stored', async () => {
   const module = await startModule();
   try {
     const student = account('student_researcher');
 
-    // Flag off: not required, so the ordinary submission still goes through.
-    const withoutFlag = await createStudentInitial(module, student);
-    assert.ok(withoutFlag.id);
-    assert.equal(withoutFlag.adviser_eval_link, '');
+    const plain = await createStudentInitial(module, student);
+    assert.ok(plain.id);
+    assert.equal(plain.adviser_eval_link, '');
 
-    const withFiles = (extra) => uploadForm(STUDENT_INITIAL_FILES, {
-      ...STUDENT_INITIAL_FORM, end_of_semester: 'true', ...extra
-    });
-
-    // Flag on, no link → 400 naming the field.
-    let res = await module.call(student, '/', { method: 'POST', body: withFiles({}) });
-    let body = await res.json();
-    assert.equal(res.status, 400, JSON.stringify(body));
-    assert.equal(body.field, 'adviser_eval_link');
-
-    // A value that is not a link is refused.
-    for (const bad of ['forms.gle/abc123', 'javascript:alert(1)', 'not a url']) {
-      res = await module.call(student, '/', {
-        method: 'POST',
-        body: withFiles({ adviser_eval_link: bad })
-      });
-      body = await res.json();
-      assert.equal(res.status, 400, `${bad} must be refused: ${JSON.stringify(body)}`);
-      assert.match(body.error, /http:\/\/ or https:\/\//);
-    }
-
-    // A real link satisfies the end-of-semester requirement on its own: no
-    // adviser_eval PDF is needed, because the evaluation lives in the form.
-    res = await module.call(student, '/', {
+    // Even with the old end-of-semester flag and a non-link value, the
+    // submission goes through and nothing posted for the field is kept.
+    const res = await module.call(student, '/', {
       method: 'POST',
-      body: withFiles({ adviser_eval_link: 'https://forms.gle/abc123' })
+      body: uploadForm(STUDENT_INITIAL_FILES, {
+        ...STUDENT_INITIAL_FORM, end_of_semester: 'true', adviser_eval_link: 'javascript:alert(1)'
+      })
     });
-    body = await res.json();
+    const body = await res.json();
     assert.equal(res.status, 201, JSON.stringify(body));
-    assert.equal(body.submission.adviser_eval_link, 'https://forms.gle/abc123');
-    assert.ok(!Object.keys(body.files || {}).includes('adviser_eval'),
-      'no adviser_eval document was required once the link is given');
+    assert.equal(body.submission.adviser_eval_link, '');
   } finally {
     await module.close();
     await module.cleanup();

@@ -266,24 +266,23 @@ export const SEMESTERS = [
 ];
 
 // ---------------------------------------------------------------------------
-//  Link fields
+//  Display-only fields
 //
-//  The adviser evaluation is a Google Form the researchers fill in themselves,
-//  so the form collects the LINK to it rather than a file. It is a real field
-//  (its own column) because a URL is not a document: nothing is uploaded, so no
-//  slot or storage backend is involved. It is required at the end of the
-//  semester, which is the flag that used to make the adviser_eval file slot
-//  mandatory: the link IS the evidence, so a student no longer has to print an
-//  online form to PDF as well. The file slot stays available as an optional
-//  attachment for a scanned copy.
+//  The researchers' evaluation of their adviser is announced by the adviser,
+//  so the form only shows a fixed notice here: nothing is typed, validated or
+//  required. The field keeps its key (and the adviser_eval_link column) so
+//  existing rows and the detail pages are unaffected; the server ignores any
+//  value posted for it. The adviser_eval file slot stays available as an
+//  optional attachment for a scanned copy.
 // ---------------------------------------------------------------------------
+const ADVISER_EVAL_NOTICE = 'To be announced by adviser';
+
 const adviserEvalLinkField = {
   key: 'adviser_eval_link',
-  label: "Researchers' Evaluation of Adviser (Google Form link)",
-  type: 'url',
-  required: true,
-  conditional: (ctx) => ctx.data?.end_of_semester,
-  condition_key: 'end_of_semester'
+  label: "Researchers' Evaluation of Adviser",
+  type: 'display',
+  required: false,
+  value: ADVISER_EVAL_NOTICE
 };
 
 // A link is only accepted when it really is one: javascript: and data: URLs are
@@ -315,7 +314,7 @@ export const FORM_CONFIG = {
         // Student-only fields
         { key: 'adviser',         label: 'Adviser',                               type: 'text',  required: true },
         { key: 'facilitator',     label: 'Facilitator',                           type: 'text',  required: true },
-        // Required only at the end of the semester (see adviserEvalLinkField).
+        // Display-only notice (see adviserEvalLinkField).
         { ...adviserEvalLinkField }
       ],
       slots: STUDENT_INITIAL_SLOTS
@@ -335,7 +334,7 @@ export const FORM_CONFIG = {
         // Final-only fields
         { key: 'abstract',        label: 'Abstract',                              type: 'textarea', required: true },
         { key: 'keywords',        label: 'Keywords',                              type: 'text',  required: true },
-        // Required only at the end of the semester (see adviserEvalLinkField).
+        // Display-only notice (see adviserEvalLinkField).
         { ...adviserEvalLinkField }
       ],
       slots: STUDENT_FINAL_SLOTS
@@ -603,7 +602,7 @@ export function missingRequirements({ role, stage, data = {}, haveFiles = new Se
 // Serialisable description of a field for the front ends. Mirrors describeSlot:
 // functions cannot cross JSON, so `conditional` becomes a boolean and the
 // deciding flag is published as `condition_key`. `options` only travels for the
-// fields that have them (the selects).
+// fields that have them (the selects), and `value` for display-only fields.
 export function describeField(field) {
   const described = {
     key: field.key,
@@ -614,6 +613,7 @@ export function describeField(field) {
     condition_key: field.condition_key || null
   };
   if (field.options) described.options = field.options.map(o => ({ ...o }));
+  if (field.type === 'display') described.value = field.value || '';
   return described;
 }
 

@@ -587,11 +587,9 @@ router.post(
       facilitator_id:   body.facilitator ? String(body.facilitator).trim() : null,
       abstract:         requestedStage === 'final' ? String(body.abstract || '').trim() : '',
       keywords:         requestedStage === 'final' ? String(body.keywords || '').trim() : '',
-      // Stored only when this role+stage actually declares the field, so a
-      // faculty or presenter request cannot smuggle in a student-only value.
-      adviser_eval_link: fieldKeysFor(role, requestedStage).has('adviser_eval_link')
-        ? String(body.adviser_eval_link || '').trim()
-        : '',
+      // Display-only on the form ("To be announced by adviser"), so nothing a
+      // client posts for it is stored.
+      adviser_eval_link: '',
       status:           stageDefaults[requestedStage].status,
       created_at:       now,
       updated_at:       now
@@ -1472,14 +1470,6 @@ router.post(
 // ---------------------------------------------------------------------------
 // statusLabelFor() now lives in lib/submission-records.js, next to the classic
 // records that need the same labels (imported above).
-
-// The field keys the config declares for a role+stage. Used to decide which
-// client-supplied values may be stored, so a field belonging to another role
-// (the student-only adviser-evaluation link, for instance) cannot be smuggled in
-// through a request body.
-function fieldKeysFor(role, stage) {
-  return new Set((FORM_CONFIG[role]?.[stage]?.fields || []).map(f => f.key));
-}
 
 function toColumn(fieldKey) {
   const map = {

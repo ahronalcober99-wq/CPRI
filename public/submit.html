@@ -261,7 +261,15 @@
           group.appendChild(label);
 
           let input;
-          if (f.type === 'textarea') {
+          if (f.type === 'display') {
+            // A fixed notice styled like the other inputs, but not editable and
+            // never validated or sent.
+            input = document.createElement('input');
+            input.type = 'text';
+            input.readOnly = true;
+            input.value = f.value || '';
+            input.style.cursor = 'default';
+          } else if (f.type === 'textarea') {
             input = document.createElement('textarea');
             input.rows = 4;
           } else if (f.type === 'select') {
@@ -284,27 +292,6 @@
           input.id = 'field-' + f.key;
           input.name = f.key;
           group.appendChild(input);
-
-          // The adviser evaluation lives in a Google Form: offer the button when
-          // this deployment has configured one, and always keep the field itself
-          // so the link they were given can be pasted in.
-          if (f.type === 'url' && f.key === 'adviser_eval_link') {
-            const help = document.createElement('p');
-            help.className = 'form-note';
-            help.style.margin = '8px 0 0';
-            help.textContent = 'Paste the link to the adviser evaluation you submitted.';
-            if (config.links && config.links.adviserEvalForm) {
-              const open = document.createElement('a');
-              open.className = 'btn btn-outline-dark btn-sm';
-              open.style.marginLeft = '10px';
-              open.href = config.links.adviserEvalForm;
-              open.target = '_blank';
-              open.rel = 'noopener';
-              open.textContent = 'Open the Google Form';
-              help.appendChild(open);
-            }
-            group.appendChild(help);
-          }
 
           fieldsContainer.appendChild(group);
         }
@@ -552,6 +539,7 @@
         const stageConfig = activeStage();
         if (!stageConfig) return body;
         for (const f of stageConfig.fields) {
+          if (f.type === 'display') continue;
           const input = fieldInput(f.key);
           body[f.key] = input && input.value != null ? String(input.value).trim() : '';
         }
@@ -577,6 +565,7 @@
         if (!stageConfig) return null;
         const problems = [];
         for (const f of stageConfig.fields) {
+          if (f.type === 'display') continue;
           const value = body[f.key] || '';
           if (isFieldRequiredNow(f) && !value) {
             problems.push(f.label + ' is required.');
@@ -647,6 +636,7 @@
         try {
           const fd = new FormData();
           for (const f of stageConfig.fields) {
+            if (f.type === 'display') continue;
             const input = fieldInput(f.key);
             fd.append(f.key, input && input.value != null ? String(input.value).trim() : '');
           }
