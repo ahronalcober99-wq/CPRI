@@ -6,6 +6,7 @@ import { all, get, run, insert, update, withTransaction } from './server/db/quer
 import { addLog } from './audit.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
 import { profileOf, recommendationsFor } from './lib/recommendations.js';
+import { appendKeywordSearch } from './lib/keyword-search.js';
 
 // ---------- Access levels ----------
 const ACCESS_LEVELS = {
@@ -167,6 +168,9 @@ router.get('/', async (req, res) => {
       sql += ` AND LOWER(COALESCE(r.status, '')) IN ('approved', 'published')`;
     }
   }
+  // Quick search; added after the visibility clauses so it can only narrow.
+  sql = appendKeywordSearch(sql, params, q.q,
+    ['r.title', 'r.authors', 'r.keywords', 'r.department', 'r.researchCategory', 'r.adviser']);
   if (q.title) { sql += ' AND r.title LIKE ?'; params.push(`%${q.title}%`); }
   if (q.author) { sql += ' AND r.authors LIKE ?'; params.push(`%${q.author}%`); }
   if (q.department) { sql += ' AND r.department LIKE ?'; params.push(`%${q.department}%`); }

@@ -27,6 +27,13 @@
         <!-- Search & filter -->
         <div class="card" style="margin-bottom:22px;">
           <form id="filter-form">
+            <div class="quick-search">
+              <i class="bi bi-search" aria-hidden="true"></i>
+              <input type="search" id="f-q" name="q" placeholder="Search title, author, keywords, department…" aria-label="Search the repository">
+              <button type="submit" class="btn btn-primary">Search</button>
+            </div>
+            <details id="adv-filters" class="adv-filters">
+            <summary>Advanced filters</summary>
             <div class="grid grid-3" style="gap:14px;">
               <div class="form-group" style="margin:0;">
                 <label for="f-title">Search by title</label>
@@ -68,9 +75,10 @@
               </div>
             </div>
             <div style="margin-top:14px;display:flex;gap:10px;">
-              <button type="submit" class="btn btn-primary">Search</button>
+              <button type="submit" class="btn btn-primary">Apply filters</button>
               <button type="button" class="btn btn-navy" id="clear-btn">Clear</button>
             </div>
+            </details>
           </form>
         </div>
 
@@ -225,6 +233,8 @@
     });
 
     document.getElementById('filter-form').addEventListener('submit', (e) => { e.preventDefault(); load(); });
+    // The native ✕ in the search box clears it; refresh results to match.
+    document.getElementById('f-q').addEventListener('search', (e) => { if (!e.target.value) load(); });
     document.getElementById('clear-btn').addEventListener('click', () => {
       document.getElementById('filter-form').reset();
       load();

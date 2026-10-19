@@ -3270,3 +3270,11 @@ body.file-preview-open { overflow: hidden; }
   }
   .file-preview-actions .btn { justify-content: center; width: 100%; }
 }
+
+/* ---- Quick search + collapsible advanced filters (publications, repository) ---- */
+.quick-search { position: relative; display: flex; gap: 10px; align-items: center; }
+.quick-search > .bi-search { position: absolute; left: 14px; color: var(--cpri-secondary); pointer-events: none; }
+.quick-search input[type="search"] { flex: 1; min-width: 0; padding-left: 40px; }
+.adv-filters { margin-top: 14px; }
+.adv-filters > summary { cursor: pointer; font-weight: 700; color: var(--cpri-secondary); font-size: .9rem; margin-bottom: 4px; }
+.adv-filters[open] > summary { margin-bottom: 14px; }

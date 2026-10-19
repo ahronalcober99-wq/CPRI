@@ -9,6 +9,7 @@ import { requireAuth, requireRole, readUsers } from './auth.js';
 import { all, get, update, remove, withTransaction } from './server/db/queries.js';
 import { createPublicationFeatureService } from './publication-feature-service.js';
 import { invalidateFeaturedPublicationsCache } from './featured-publications.js';
+import { appendKeywordSearch } from './lib/keyword-search.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -139,6 +140,7 @@ export function createPublicationsRouter(dependencies = {}) {
     let sql = 'SELECT * FROM publications WHERE 1=1';
     const params = [];
 
+    sql = appendKeywordSearch(sql, params, q.q, ['title', 'authors', 'journalOrConference', 'department', 'doi']);
     if (q.title) { sql += ' AND title LIKE ?'; params.push(`%${q.title}%`); }
     if (q.authors) { sql += ' AND authors LIKE ?'; params.push(`%${q.authors}%`); }
     if (q.journalOrConference) { sql += ' AND journalOrConference LIKE ?'; params.push(`%${q.journalOrConference}%`); }

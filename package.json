@@ -41,7 +41,8 @@
     "test:repository-publishing": "node --test server/dev/test-repository-publishing.mjs",
     "test:dashboard-publishing:db": "node --test --test-force-exit server/dev/test-dashboard-publishing-db.mjs",
     "test:workflows:db": "node --test --test-force-exit server/dev/test-workflows-db.mjs",
-    "test:file-folders": "node --test server/dev/test-file-folders.mjs"
+    "test:file-folders": "node --test server/dev/test-file-folders.mjs",
+    "test:keyword-search": "node --test server/dev/test-keyword-search.mjs"
   },
   "engines": {
     "node": ">=20.9.0"
