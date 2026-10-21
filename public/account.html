@@ -29,6 +29,7 @@
             <div class="contact-row"><span class="label">Username</span><span id="acc-username"></span></div>
             <div class="contact-row"><span class="label">Email</span><span id="acc-email"></span></div>
             <div class="contact-row"><span class="label">Role</span><span id="acc-role"></span></div>
+            <div class="contact-row" id="acc-course-row" hidden><span class="label">Course</span><span id="acc-course"></span></div>
             <div class="contact-row"><span class="label">Status</span><span id="acc-status"></span></div>
             <p id="acc-note" class="form-note" style="display:none;"></p>
             <div id="acc-links" style="display:none;margin-top:6px;">
@@ -70,6 +71,13 @@
       // label map lookup.
       document.getElementById('acc-role').textContent = user.roleLabel || user.role;
       document.getElementById('acc-status').textContent = user.status;
+      // Students only. Set at registration; an administrator changes it.
+      if (user.role === 'student_researcher') {
+        document.getElementById('acc-course-row').hidden = false;
+        document.getElementById('acc-course').textContent = user.course
+          ? user.course + (user.courseNeedsReview ? ' (awaiting admin review)' : '')
+          : 'No course yet. Please contact the CPRI administrator.';
+      }
       const links = document.getElementById('acc-links');
       if (links) links.style.display = 'block';
       if (user.role === 'ethics_reviewer' && user.status === 'pending') {

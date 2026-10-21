@@ -773,7 +773,8 @@
               const profRes = await fetch('/api/auth/profile').catch(() => null);
               if (profRes && profRes.ok) {
                 const prof = (await profRes.json()).profile;
-                programPrefill = (prof && (prof.department || prof.program)) || '';
+                // A student's course (set at registration) comes first.
+                programPrefill = (prof && (prof.course || prof.department || prof.program)) || '';
               }
             }
           } catch { /* prefill is a convenience, never a blocker */ }

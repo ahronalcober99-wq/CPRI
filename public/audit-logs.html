@@ -78,8 +78,16 @@
                       <option value="content_delete">Content Delete</option>
                     </optgroup>
                     <optgroup label="Users">
+                      <option value="user_create">User Create</option>
                       <option value="user_update">User Update</option>
+                      <option value="user_course_update">User Course Change</option>
                       <option value="user_delete">User Delete</option>
+                    </optgroup>
+                    <optgroup label="Courses">
+                      <option value="course_create">Course Added</option>
+                      <option value="course_update">Course Edited / Deactivated</option>
+                      <option value="course_reorder">Course Reordered</option>
+                      <option value="course_other_submitted">"Other" Course Submitted</option>
                     </optgroup>
                     <optgroup label="Submissions">
                       <option value="submission_submitted">Submitted</option>
@@ -201,8 +209,14 @@
             content_create: 'status-pill active',
             content_update: 'status-pill pending',
             content_delete: 'status-pill disabled',
+            user_create: 'status-pill active',
             user_update: 'status-pill pending',
+            user_course_update: 'status-pill pending',
             user_delete: 'status-pill disabled',
+            course_create: 'status-pill active',
+            course_update: 'status-pill pending',
+            course_reorder: 'status-pill pending',
+            course_other_submitted: 'status-pill pending',
             password_reset: 'status-pill pending',
             submission_submitted: 'status-pill active',
             submission_under_initial_checking: 'status-pill pending',

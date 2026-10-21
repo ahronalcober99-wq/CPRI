@@ -24,6 +24,8 @@ import { galaRouter, ensureGalaSchema } from './gala.js';
 import { backupsRouter } from './backups.js';
 import { ensureBackupSchema, startBackupScheduler } from './lib/backup-service.js';
 import { researchersRouter } from './researchers.js';
+import { coursesRouter } from './courses.js';
+import { ensureCoursesSchema } from './lib/courses.js';
 import { eventsModuleRouter, ensureEventsSchema } from './events-module.js';
 import { innovationExtensionRouter } from './innovation-extension.js';
 import { researchSubmissionsRouter, ensureResearchSubmissionsSchema } from './research-submissions.js';
@@ -244,6 +246,7 @@ app.use('/api/ethics', ethicsRouter);
 app.use('/api/gala', galaRouter);
 app.use('/api/admin/backups', backupsRouter);
 app.use('/api/researchers', researchersRouter);
+app.use('/api/courses', coursesRouter);
 app.use('/api/events-module', eventsModuleRouter);
 // CPRI research submission module.
 app.use('/api/research-submissions', researchSubmissionsRouter);
@@ -722,6 +725,14 @@ try {
   await ensureUsersSchema();
 } catch (err) {
   console.error('[users] schema ensure failed:', err.message);
+}
+
+// After ensureUsersSchema: adds the users.course_* columns and the shared
+// `courses` table (seeded once from server/data/courses-seed.json).
+try {
+  await ensureCoursesSchema();
+} catch (err) {
+  console.error('[courses] schema ensure failed:', err.message);
 }
 
 try {

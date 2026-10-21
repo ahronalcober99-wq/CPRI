@@ -5,7 +5,9 @@ import { dirname, extname, join } from 'path';
 import { promises as fs } from 'fs';
 import multer from 'multer';
 import bcrypt from 'bcryptjs';
-import { requireAuth, requireAdmin, requireRole, readUsers } from './auth.js';
+import { requireAuth, requireAdmin, requireRole, readUsers, ROLES, ROLE_META, DEFAULT_PREFS } from './auth.js';
+import { normalizeUsername, validateUsername } from './utils/username.js';
+import { courseFields, describeCourse, planAdminCourseChange, resolveCourseInput } from './lib/courses.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { addLog } from './audit.js';
 import { notify } from './notifications.js';
@@ -1289,7 +1291,9 @@ router.get('/users', requireAdmin, async (req, res) => {
     const countRows = await all(`SELECT COUNT(*) as c FROM users WHERE ${where}`, params);
     const total = countRows[0] ? Number(countRows[0].c) : 0;
 
-    let sql = 'SELECT id, username, email, fullName, role, status, createdAt FROM users WHERE ' + where + ' ORDER BY createdAt DESC';
+    // SELECT * so a database that has not gained the course columns yet still
+    // lists its users; only the safe fields below ever leave the server.
+    let sql = 'SELECT * FROM users WHERE ' + where + ' ORDER BY createdAt DESC';
     if (page && limit) {
       const pageNum = Math.max(1, parseInt(page, 10) || 1);
       const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
@@ -1297,7 +1301,7 @@ router.get('/users', requireAdmin, async (req, res) => {
       sql += ' LIMIT ? OFFSET ?';
       params.push(limitNum, offset);
     }
-    const users = await all(sql, params);
+    const users = (await all(sql, params)).map(adminUserView);
     // Attach a boolean flag the frontend can use to render the protected admin
     // row as locked, regardless of what the role column currently holds.
     const protectedId = await get('SELECT id FROM users WHERE LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?) LIMIT 1', [PROTECTED_ADMIN_USERNAME, PROTECTED_ADMIN_EMAIL]);
@@ -1315,6 +1319,99 @@ router.get('/users', requireAdmin, async (req, res) => {
   }
 });
 
+// The row shape User Management renders: never the password hash, reset token
+// or contact details, plus the student course fields from lib/courses.js.
+function adminUserView(u) {
+  return {
+    id: u.id,
+    username: u.username,
+    email: u.email,
+    fullName: u.fullName || '',
+    role: u.role,
+    roleLabel: ROLE_META[u.role]?.label || u.role,
+    status: u.status,
+    department: u.department || '',
+    createdAt: u.createdAt || null,
+    ...courseFields(u)
+  };
+}
+
+function roleLabelOf(role) {
+  return ROLE_META[role]?.label || role || '—';
+}
+
+async function actorLabel(req) {
+  const me = await get('SELECT username, fullName FROM users WHERE id = ?', [req.session?.userId]).catch(() => null);
+  return me ? (me.username || me.fullName) : 'an administrator';
+}
+
+const USER_STATUSES = ['active', 'pending', 'disabled'];
+
+// ---------- Add user (Admin Console > Users > Add user) ----------
+router.post('/users', requireAdmin, async (req, res) => {
+  const b = req.body || {};
+  const fullName = String(b.fullName || '').trim();
+  const email = String(b.email || '').trim();
+  const role = String(b.role || '').trim();
+  const status = b.status === undefined || b.status === '' ? 'active' : String(b.status).trim();
+  const password = String(b.password || '');
+
+  const usernameCheck = validateUsername(b.username);
+  if (!usernameCheck.valid) return res.status(400).json({ error: usernameCheck.message, field: 'username' });
+  const username = normalizeUsername(b.username);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'A valid email is required.', field: 'email' });
+  if (fullName.length > 160) return res.status(400).json({ error: 'Name must be 160 characters or fewer.', field: 'fullName' });
+  if (!ROLES.includes(role)) return res.status(400).json({ error: 'Choose a valid role.', field: 'role' });
+  if (!USER_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status.', field: 'status' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.', field: 'password' });
+
+  const course = await resolveCourseInput({
+    role,
+    body: b,
+    required: role === 'student_researcher',
+    allowOther: false
+  });
+  if (course.error) {
+    const error = course.error === 'Please select your course.' ? 'Please select a course for this student.' : course.error;
+    return res.status(course.status || 400).json({ error, field: 'course' });
+  }
+
+  if (await get('SELECT id FROM users WHERE LOWER(username) = ?', [username])) {
+    return res.status(409).json({ error: 'That username is already taken.', field: 'username' });
+  }
+  if (await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email])) {
+    return res.status(409).json({ error: 'That email is already registered.', field: 'email' });
+  }
+
+  const user = {
+    id: randomUUID(),
+    username,
+    email,
+    fullName,
+    role,
+    passwordHash: await bcrypt.hash(password, 10),
+    status,
+    department: '',
+    contactNumber: '',
+    researchInterests: '',
+    profilePhoto: null,
+    researches: JSON.stringify([]),
+    user_prefs: JSON.stringify(DEFAULT_PREFS),
+    resetToken: null,
+    resetTokenExpiry: null,
+    createdAt: new Date().toISOString(),
+    ...(course.changes || {})
+  };
+  await insert('users', user);
+
+  const actor = await actorLabel(req);
+  await addLog('user_create', `User "${username}" (${roleLabelOf(role)}) created by ${actor}.`, req);
+  if (course.changes) {
+    await addLog('user_course_update', `Course for "${username}" set from (none) to ${describeCourse(course.changes)} by ${actor}.`, req);
+  }
+  res.status(201).json({ message: `User "${username}" created.`, user: adminUserView(user) });
+});
+
 router.patch('/users/:id', requireAdmin, async (req, res) => {
   const user = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found.' });
@@ -1322,17 +1419,57 @@ router.patch('/users/:id', requireAdmin, async (req, res) => {
   const block = await forbidProtectedAdminChange(req, res, user);
   if (block) return block;
 
-  await addLog('user_update', 'Updated user ' + req.params.id, req);
   const b = req.body || {};
   const changes = {};
-  for (const f of ['role', 'status', 'department']) {
-    if (b[f] !== undefined) changes[f] = String(b[f]).trim();
+  if (b.role !== undefined) {
+    const role = String(b.role).trim();
+    if (!ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role.', field: 'role' });
+    if (role !== user.role) changes.role = role;
   }
+  if (b.status !== undefined) {
+    const status = String(b.status).trim();
+    if (!USER_STATUSES.includes(status)) return res.status(400).json({ error: 'Invalid status.', field: 'status' });
+    if (status !== user.status) changes.status = status;
+  }
+  if (b.department !== undefined) changes.department = String(b.department).trim();
+  if (b.fullName !== undefined) {
+    const fullName = String(b.fullName).trim();
+    if (fullName.length > 160) return res.status(400).json({ error: 'Name must be 160 characters or fewer.', field: 'fullName' });
+    if (fullName !== (user.fullName || '')) changes.fullName = fullName;
+  }
+
+  // Student-only course: required when the account is or becomes a Student,
+  // refused for every other role, and cleared when a Student changes role.
+  const plan = await planAdminCourseChange({ user, nextRole: changes.role || user.role, body: b });
+  if (plan.error) return res.status(plan.status || 400).json({ error: plan.error, field: 'course' });
+  if (plan.changes) Object.assign(changes, plan.changes);
+
   if (Object.keys(changes).length > 0) {
     await update('users', req.params.id, changes);
   }
-  const updated = await get('SELECT id, username, email, fullName, role, status FROM users WHERE id = ?', [req.params.id]);
-  res.json({ message: 'User updated.', user: updated });
+
+  const actor = await actorLabel(req);
+  const summary = [];
+  if (changes.role) summary.push(`role ${roleLabelOf(user.role)} → ${roleLabelOf(changes.role)}`);
+  if (changes.status) summary.push(`status ${user.status} → ${changes.status}`);
+  if (changes.fullName !== undefined) summary.push('name updated');
+  if (changes.department !== undefined) summary.push('department updated');
+  await addLog('user_update', `Updated user "${user.username}"${summary.length ? ': ' + summary.join('; ') : ''} by ${actor}.`, req);
+  if (plan.changes) {
+    const why = changes.role && changes.role !== 'student_researcher' ? ' (role is no longer Student)' : '';
+    await addLog(
+      'user_course_update',
+      `Course for "${user.username}" changed from ${describeCourse(plan.before)} to ${describeCourse(plan.after)}${why} by ${actor}.`,
+      req
+    );
+  }
+
+  const updated = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
+  const courseCleared = Boolean(plan.changes && plan.changes.course_id === null && !plan.changes.course_other);
+  res.json({
+    message: courseCleared ? 'User updated. Their course was cleared.' : plan.changes ? 'Course saved.' : 'User updated.',
+    user: adminUserView(updated)
+  });
 });
 
 router.post('/users/:id/reset-password', requireAdmin, async (req, res) => {

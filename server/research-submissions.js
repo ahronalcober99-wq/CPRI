@@ -45,6 +45,7 @@ import { sendNotificationEmail as defaultSendEmail } from './lib/mail.js';
 import { createResearchStorage } from './lib/research-storage.js';
 import { fromModuleSubmission, syncSubmissionVisibility } from './lib/repository-publishing.js';
 import { profileOf, recommendationsFor } from './lib/recommendations.js';
+import { courseFields } from './lib/courses.js';
 import { CATEGORY_TYPES } from './repository.js';
 // The record shape every reader of a submission shares, plus the status
 // labels. A monitoring dashboard reads BOTH stores, so a classic row and a
@@ -928,9 +929,18 @@ router.get('/:id', requireAuth, async (req, res) => {
     hasFile: Boolean(c.file_path)
   }));
 
+  // The owner's current course (Student accounts only) — shown with the
+  // submission details; read from the account so it is never stale or typed.
+  let ownerCourse = '';
+  if (sub.owner_role === 'student_researcher') {
+    const owner = await get('SELECT role, course_id, course_other FROM users WHERE id = ?', [sub.owner_id]).catch(() => null);
+    if (owner) ownerCourse = courseFields(owner).course || '';
+  }
+
   res.json({
     submission: {
       ...sub,
+      ownerCourse,
       // The moves this caller may make from here (PATCH /:id/status), and
       // whether the ethics decision buttons apply (POST /:id/ethics).
       nextStatuses: nextStatusesFor(user, sub),

@@ -39,6 +39,7 @@
               <h3>Research Information</h3>
               <div class="contact-row"><span class="label">Authors</span><span id="d-authors"></span></div>
               <div class="contact-row"><span class="label">Program / Department</span><span id="d-program"></span></div>
+              <div class="contact-row" id="d-course-row" hidden><span class="label">Student's Course</span><span id="d-course"></span></div>
               <div class="contact-row"><span class="label">Category</span><span id="d-category"></span></div>
               <div class="contact-row"><span class="label">Research Type</span><span id="d-type"></span></div>
               <div class="contact-row"><span class="label">Stage</span><span id="d-stage"></span></div>
@@ -306,6 +307,11 @@
         // Info fields
         document.getElementById('d-authors').textContent = s.authors || '—';
         document.getElementById('d-program').textContent = s.program || '—';
+        // The submitting student's course, from their account (server-side).
+        if (s.owner_role === 'student_researcher') {
+          document.getElementById('d-course-row').hidden = false;
+          document.getElementById('d-course').textContent = s.ownerCourse || 'No course yet';
+        }
         document.getElementById('d-category').textContent = s.category || '—';
         document.getElementById('d-type').textContent = TYPE_LABELS[s.research_type] || s.research_type || '—';
         document.getElementById('d-stage').textContent = STAGE_LABELS[s.stage] || s.stage || '—';

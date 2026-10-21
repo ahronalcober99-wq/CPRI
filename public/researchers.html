@@ -166,7 +166,9 @@
     }
 
     function researcherCard(r) {
-      const place = r.department || r.program || r.researchArea || '—';
+      // A student's course (from the shared course list) leads; otherwise the
+      // department/program the profile already showed.
+      const place = r.course || r.department || r.program || r.researchArea || '—';
       const typeLabel = TYPE_LABELS[r.type] || r.roleLabel || r.type || 'Researcher';
       return `<div class="card" style="margin:0;display:flex;flex-direction:column;justify-content:space-between;">
         <div>

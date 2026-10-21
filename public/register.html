@@ -143,6 +143,22 @@
             <p class="form-note" style="margin-top:6px;">Verify your email first to choose an account type.</p>
           </div>
 
+          <!-- Course: Student Researchers only. Hidden (and cleared) for every
+               other account type; the list comes from /api/courses. -->
+          <div class="course-field" id="course-field" aria-hidden="true">
+            <div class="course-field-inner">
+              <div class="form-group" style="margin:0;">
+                <div class="course-label-row">
+                  <label id="course-label">Course *</label>
+                  <span class="students-only-tag">Students only</span>
+                </div>
+                <div id="course-picker-slot"></div>
+                <p class="form-note" id="course-help" style="margin-top:6px;">Choose the course you are currently enrolled in.</p>
+                <span class="field-error" id="course-error" role="alert"></span>
+              </div>
+            </div>
+          </div>
+
           <!-- Role-specific fields. Only the block matching the chosen account
                type is shown and validated; the rest are left empty. -->
           <div class="form-group" id="role-fields-non-teaching" style="display:none;">
@@ -215,6 +231,7 @@
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/course-picker.js"></script>
   <script>
     const form = document.getElementById('register-form');
     const message = document.getElementById('message');
@@ -259,8 +276,52 @@
       return null;
     }
 
-    roleSelect.addEventListener('change', syncRoleFields);
+    // ---------- Course (Student Researchers only) ----------
+    const STUDENT_ROLE = 'student_researcher';
+    const courseField = document.getElementById('course-field');
+    const courseError = document.getElementById('course-error');
+    const coursePicker = CPRICourses.picker({
+      allowOther: true,
+      name: 'courseId',
+      otherName: 'courseOther',
+      ariaLabel: 'Course (students only)',
+      onChange: () => setCourseError('')
+    });
+    document.getElementById('course-picker-slot').appendChild(coursePicker.el);
+    coursePicker.el.querySelector('.cp-trigger').setAttribute('aria-labelledby', 'course-label');
+    coursePicker.describedBy('course-help course-error');
+
+    function setCourseError(text) {
+      courseError.textContent = text || '';
+      coursePicker.setInvalid(Boolean(text));
+    }
+
+    function syncCourseField() {
+      const isStudent = roleSelect.value === STUDENT_ROLE;
+      courseField.classList.toggle('is-visible', isStudent);
+      courseField.setAttribute('aria-hidden', String(!isStudent));
+      if ('inert' in courseField) courseField.inert = !isStudent;
+      coursePicker.setDisabled(!isStudent);
+      if (!isStudent) {
+        // Another account type: the course is hidden AND cleared, so nothing
+        // stale is ever sent for a non-student.
+        coursePicker.clear();
+        setCourseError('');
+      }
+    }
+
+    // The first problem with the course, or null. Only students have one.
+    function validateCourse(role) {
+      if (role !== STUDENT_ROLE) return null;
+      const value = coursePicker.getValue();
+      if (value.courseId === null) return 'Please select your course';
+      if (value.courseId === CPRICourses.OTHER && !value.courseOther) return 'Please type your course';
+      return null;
+    }
+
+    roleSelect.addEventListener('change', () => { syncRoleFields(); syncCourseField(); });
     syncRoleFields();
+    syncCourseField();
 
     const usernameInput = document.getElementById('username');
     const fullNameInput = document.getElementById('fullName');
@@ -762,6 +823,12 @@
         message.textContent = 'Passwords do not match.';
         return;
       }
+      const courseProblem = validateCourse(roleSelect.value);
+      if (courseProblem) {
+        setCourseError(courseProblem);
+        coursePicker.focus();
+        return;
+      }
 
       registrationInProgress = true;
       btn.disabled = true;
@@ -795,6 +862,15 @@
           return;
         }
         data.username = usernameValidation.username;
+        // The course is only ever sent for a Student.
+        if (data.role === STUDENT_ROLE) {
+          const course = coursePicker.getValue();
+          data.courseId = course.courseId === null ? '' : String(course.courseId);
+          data.courseOther = course.courseOther;
+        } else {
+          delete data.courseId;
+          delete data.courseOther;
+        }
         const roleFieldProblem = validateRoleFields(data);
         if (roleFieldProblem) {
           message.className = 'form-message error';
@@ -817,12 +893,22 @@
           usernameCheckPromise = checkUsername(requestId, data.username, true, true);
           await usernameCheckPromise;
         }
+        if (!res.ok && out && out.field === 'course') {
+          // The server has the final say on the course (e.g. it was deactivated
+          // while this page was open): show it on the field itself.
+          setCourseError(out.error);
+          coursePicker.focus();
+          CPRICourses.invalidate();
+          return;
+        }
         if (!res.ok) throw new Error((out && out.error) || 'Registration failed');
         message.className = 'form-message success';
         message.textContent = out.message + (res.status === 202 ? '' : ' Redirecting to login…');
         if (res.status !== 202) setTimeout(() => (window.location.href = 'login.html'), 1200);
         else {
           form.reset();
+          syncRoleFields();
+          syncCourseField();
           resetUsernameAvailability();
         }
       } catch (err) {

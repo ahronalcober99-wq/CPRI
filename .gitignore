@@ -10,6 +10,8 @@ backups/
 public/assets/uploads/
 *.log
 .env
+# Staging database credentials (node --env-file=.env.staging server/server.js)
+.env.staging
 
 # Local machine state / credentials — must never be committed.
 # `git add .` used to sweep these in accidentally (Chrome test profile with the

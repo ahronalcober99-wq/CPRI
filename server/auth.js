@@ -12,6 +12,7 @@ import { addLog } from './audit.js';
 import { normalizeUsername, validateUsername } from './utils/username.js';
 import { normalizePhone } from './lib/phone.js';
 import { createEmailCodeStore, randomSixDigitCode } from './lib/email-codes.js';
+import { courseFields, describeCourse, planAdminCourseChange, resolveCourseInput } from './lib/courses.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -178,7 +179,10 @@ function publicUser(u) {
     // from this list (a direct link for a single entry, a small dropdown when
     // there are several), so it never keeps its own role → page copy and can
     // never disagree with the post-login redirect above.
-    dashboards: dashboardsForRole(u.role)
+    dashboards: dashboardsForRole(u.role),
+    // Student-only course (courseId, courseName, courseOther, course,
+    // courseNeedsReview, courseMissing) — see server/lib/courses.js.
+    ...courseFields(u)
   };
 }
 
@@ -218,7 +222,10 @@ function fullProfile(u) {
     officeUnit: u.officeUnit || '',
     position: u.position || '',
     institution: u.institution || '',
-    nationality: u.nationality || ''
+    nationality: u.nationality || '',
+    // Read-only here: a student picks a course at registration and only an
+    // admin may change it afterwards (PATCH /api/admin/users/:id).
+    ...courseFields(u)
   };
 }
 
@@ -499,6 +506,18 @@ router.post('/register', async (req, res) => {
   if (roleFieldError) {
     return res.status(400).json({ error: roleFields[roleFieldError] });
   }
+  // Course: required for Student Researchers, refused for every other account
+  // type (a crafted request cannot attach a course to a Faculty account), and
+  // only a listed, active course or an "Other (please specify)" entry is kept.
+  const courseResult = await resolveCourseInput({
+    role,
+    body: req.body || {},
+    required: role === 'student_researcher',
+    allowOther: true
+  });
+  if (courseResult.error) {
+    return res.status(courseResult.status || 400).json({ error: courseResult.error, field: 'course' });
+  }
   if (String(password).length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' });
   }
@@ -576,7 +595,9 @@ router.post('/register', async (req, res) => {
     officeUnit: roleFields.officeUnit || '',
     position: roleFields.position || '',
     institution: roleFields.institution || '',
-    nationality: roleFields.nationality || ''
+    nationality: roleFields.nationality || '',
+    // Student course columns — only ever present for a Student Researcher.
+    ...(courseResult.changes || {})
   };
   try {
     await insert('users', user);
@@ -598,6 +619,12 @@ router.post('/register', async (req, res) => {
       }
     }
     throw error;
+  }
+
+  // A typed "Other" course waits for an admin: flag it in the audit trail so it
+  // can be found, and the User Management table highlights it for review.
+  if (user.course_review === 1) {
+    await addLog('course_other_submitted', `Student "${user.username}" registered with an unlisted course: "${user.course_other}" (needs admin review).`, req);
   }
 
   if (needsApproval) {
@@ -1460,11 +1487,20 @@ router.patch('/admin/users/:id', requireAdmin, async (req, res) => {
   }
   const user = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
   if (!user) return res.status(404).json({ error: 'User not found.' });
+  // Same course rule as PATCH /api/admin/users/:id (server/lib/courses.js), so
+  // this older route cannot be used to make a Student without a course or to
+  // leave a course on a non-student.
+  const plan = await planAdminCourseChange({ user, nextRole: role || user.role, body: req.body || {} });
+  if (plan.error) return res.status(plan.status || 400).json({ error: plan.error, field: 'course' });
   const changes = {};
   if (role) changes.role = role;
   if (status) changes.status = status;
   if (department !== undefined) changes.department = String(department).trim();
+  if (plan.changes) Object.assign(changes, plan.changes);
   await update('users', req.params.id, changes);
+  if (plan.changes) {
+    await addLog('user_course_update', `Course for "${user.username}" changed from ${describeCourse(plan.before)} to ${describeCourse(plan.after)}.`, req);
+  }
   const updated = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
   res.json({ message: 'User updated.', user: publicUser(updated) });
 });

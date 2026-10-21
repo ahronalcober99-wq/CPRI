@@ -17,6 +17,7 @@ engine allows it; the `ensure*` functions remain the source of truth.
 | 003 | `003_db_backups.sql` | `ensureBackupSchema()` — `server/lib/backup-service.js` |
 | 004 | `004_publication_monitoring_fields.sql` | `ensurePublicationSchema()` — `server/publications.js` |
 | 005 | `005_research_submissions.sql` | `ensureResearchSubmissionsSchema()` — `server/research-submissions.js` |
+| 006 | `006_courses.sql` | `ensureCoursesSchema()` — `server/lib/courses.js` (also seeds an empty `courses` table from `server/data/courses-seed.json`) |
 
 ## Order
 
@@ -47,6 +48,7 @@ Each file carries its own rollback statement in a trailing comment block. Summar
 | 002 | `DROP TABLE gala_submissions` | Deletes every Research Gala entry. Uploaded abstracts under `public/assets/uploads/gala/` are **not** removed by the rollback. |
 | 003 | `DROP TABLE db_backups` | Only forgets the backup index. The backup files themselves stay in Supabase Storage (`backups/<timestamp>.json`) or in `./backups/` and can still be restored by hand. |
 | 004 | `ALTER TABLE publications DROP COLUMN issn, DROP COLUMN isbn, DROP COLUMN indexing, DROP COLUMN impactFactor` | Report 9 stops showing those four fields. |
+| 006 | `ALTER TABLE users DROP INDEX idx_users_course, DROP COLUMN course_id, DROP COLUMN course_other, DROP COLUMN course_review; DROP TABLE courses` | Students lose their course. Every other account is unaffected. |
 
 **User roles need no migration.** `role` is a `VARCHAR(30)`, so adding
 `non_teaching_researcher`, `presenter` and self-registered `cpri_staff` is a code

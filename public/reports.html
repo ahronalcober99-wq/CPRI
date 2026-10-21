@@ -86,6 +86,14 @@
                 </div>
               </div>
 
+              <!-- Student research by course (shared course list). -->
+              <div class="admin-card">
+                <h3><i class="bi bi-mortarboard-fill"></i> Submissions per Course</h3>
+                <p class="form-note" style="margin-top:-8px;">Research submissions by Student Researchers (drafts excluded), grouped by each student's course.</p>
+                <div id="course-chart-wrap" style="position:relative;"><canvas id="chart-courses"></canvas></div>
+                <div id="course-chart-note"></div>
+              </div>
+
               <div class="admin-card">
                 <h3><i class="bi bi-trophy"></i> Top Researchers</h3>
                 <div id="table-top-researchers"><p class="form-note">Loading…</p></div>
@@ -246,6 +254,54 @@
         '</tbody></table></div>';
     }
 
+    // ---- Submissions per course (horizontal bar; one bar per course) ----
+    async function loadCourseChart(chartDefaults, gridColor) {
+      const note = document.getElementById('course-chart-note');
+      const wrap = document.getElementById('course-chart-wrap');
+      try {
+        const res = await fetch('/api/courses/report/submissions', { credentials: 'include' });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'Could not load submissions per course.');
+        const rows = out.report || [];
+        if (!rows.length) {
+          wrap.style.display = 'none';
+          note.innerHTML = '<p class="form-note">No student submissions yet.</p>';
+          return;
+        }
+        // Tall enough for every course name to sit on its own line.
+        wrap.style.height = Math.max(180, rows.length * 34 + 40) + 'px';
+        new Chart(document.getElementById('chart-courses'), {
+          type: 'bar',
+          data: {
+            labels: rows.map(r => r.course),
+            datasets: [{
+              label: 'Submissions',
+              data: rows.map(r => r.count),
+              backgroundColor: rows.map(r => r.course === 'No course yet' ? '#c9b8b5' : r.course.startsWith('Other') ? '#e9c46a' : '#800000'),
+              borderRadius: 6
+            }]
+          },
+          options: {
+            ...chartDefaults,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { title: (items) => rows[items[0].dataIndex].course, afterTitle: (items) => rows[items[0].dataIndex].department || '' } }
+            },
+            scales: {
+              x: { ticks: { color: '#75625f', precision: 0 }, grid: { color: gridColor }, beginAtZero: true },
+              y: { ticks: { color: '#75625f', autoSkip: false }, grid: { display: false } }
+            }
+          }
+        });
+        note.innerHTML = `<p class="form-note" style="margin:8px 0 0;">${out.total} submission${out.total === 1 ? '' : 's'} across ${rows.length} course group${rows.length === 1 ? '' : 's'}.</p>`;
+      } catch (err) {
+        wrap.style.display = 'none';
+        note.innerHTML = `<div class="form-message error" style="display:block;">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
     async function loadAnalytics() {
       const res = await fetch('/api/admin/analytics');
       if (!res.ok) return;
@@ -310,6 +366,8 @@
         data: { labels: depts.map(d => d.name), datasets: [{ label: 'Outputs', data: depts.map(d => d.count), backgroundColor: '#800000' }] },
         options: { ...chartDefaults, scales: { x: { ticks: { color: '#75625f' }, grid: { color: gridColor } }, y: { ticks: { color: '#75625f' }, grid: { color: gridColor }, beginAtZero: true } } }
       });
+
+      loadCourseChart(chartDefaults, gridColor);
 
       // ---- Tables ----
       document.getElementById('table-top-researchers').innerHTML = renderTable(

@@ -5,6 +5,7 @@ import { dirname, join } from 'path';
 import { requireAuth, requireRole, readUsers } from './auth.js';
 import { all, get, run, insert, update, remove } from './server/db/queries.js';
 import { FACULTY_ROLES } from './lib/research-config.js';
+import { cachedCourses, courseFields } from './lib/courses.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -121,6 +122,18 @@ async function allOrEmpty(sql, params = [], label = '') {
   }
 }
 
+// Student course names for a set of account ids, read separately so the
+// directory still loads on a database that has not gained the course columns.
+async function studentCourses(rows) {
+  const ids = rows.filter(r => r.role === 'student_researcher').map(r => r.id);
+  if (!ids.length) return new Map();
+  const found = await allOrEmpty(
+    `SELECT id, role, course_id, course_other FROM users WHERE id IN (${placeholders(ids)})`,
+    ids, 'student courses'
+  );
+  return new Map(found.map(u => [u.id, courseFields(u).course]));
+}
+
 // A registered researcher (users row) rather than a hand-entered profile row.
 async function getResearcherUser(id) {
   return get(
@@ -163,6 +176,7 @@ async function buildUserBackedResearcher(u) {
     .map(s => s.title || 'Untitled research');
 
   const outputStatus = outputStatusFor(submissions);
+  const course = u.role === 'student_researcher' ? ((await studentCourses([u])).get(u.id) || '') : '';
 
   return {
     id: u.id,
@@ -173,6 +187,7 @@ async function buildUserBackedResearcher(u) {
     fullName: u.fullName || '',
     department: u.department || '',
     program: u.program || '',
+    course,
     researchInterests: u.researchInterests || u.researchArea || '',
     researchTitle: u.researchTitle || (submissions[0] ? submissions[0].title : ''),
     adviser: u.adviser || '',
@@ -330,8 +345,14 @@ router.get('/directory', async (req, res) => {
   }
 
   if (q.department) {
-    where.push('(u.department LIKE ? OR u.program LIKE ? OR u.researchArea LIKE ?)');
-    params.push(`%${q.department}%`, `%${q.department}%`, `%${q.department}%`);
+    // The "Department / Program" search also finds students by course name.
+    const needle = String(q.department).toLowerCase();
+    const courseIds = cachedCourses({ includeInactive: true })
+      .filter(c => c.name.toLowerCase().includes(needle))
+      .map(c => c.id);
+    const byCourse = courseIds.length ? ` OR u.course_id IN (${placeholders(courseIds)})` : '';
+    where.push(`(u.department LIKE ? OR u.program LIKE ? OR u.researchArea LIKE ?${byCourse})`);
+    params.push(`%${q.department}%`, `%${q.department}%`, `%${q.department}%`, ...courseIds);
   }
 
   if (q.type === 'faculty') {
@@ -371,6 +392,7 @@ router.get('/directory', async (req, res) => {
       legacyParams(q), 'legacy researcher profiles'
     );
 
+    const courses = await studentCourses(rows);
     const accounts = rows.map(r => ({
       id: r.id,
       source: 'account',
@@ -380,6 +402,7 @@ router.get('/directory', async (req, res) => {
       fullName: r.fullName || '',
       department: r.department || '',
       program: r.program || '',
+      course: courses.get(r.id) || '',
       researchArea: r.researchArea || '',
       researchTitle: r.researchTitle || '',
       institution: r.institution || '',

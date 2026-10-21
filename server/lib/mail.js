@@ -45,6 +45,13 @@ export async function sendResetEmail(email, token, baseUrl) {
 }
 
 export async function sendVerificationEmail(to, code) {
+  // Local development without a Brevo key (e.g. testing against a staging
+  // database): print the code instead of failing, like the SMS dev mode in
+  // lib/sms.js. Never in production — Render sets NODE_ENV=production.
+  if (process.env.NODE_ENV !== 'production' && !process.env.BREVO_API_KEY) {
+    console.log(`[mail] DEV: verification code for ${to}: ${code}`);
+    return;
+  }
   await sendBrevoEmail(
     to,
     'Your CPRI verification code',

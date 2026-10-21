@@ -117,7 +117,19 @@
             <div class="admin-panel" data-panel="users">
               <div class="admin-card">
                 <h3><i class="bi bi-people"></i> User Management <span class="status-pill active">Role-based</span></h3>
-                <div id="user-management"></div>
+                <div class="um-toolbar" role="search">
+                  <div class="um-search">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input type="search" id="um-search" placeholder="Search name, username, or email" aria-label="Search name, username, email, or course" autocomplete="off">
+                  </div>
+                  <select id="um-role-filter" aria-label="Filter by role"><option value="">All roles</option></select>
+                  <select id="um-course-filter" aria-label="Filter by course"><option value="">All courses</option></select>
+                  <span class="um-spacer"></span>
+                  <button type="button" class="btn btn-primary btn-sm" id="um-add"><i class="bi bi-person-plus"></i> Add user</button>
+                </div>
+                <p class="um-count" id="um-count" aria-live="polite"></p>
+                <div id="user-management"><p class="form-note">Loading users…</p></div>
+                <div class="um-warnings" id="um-warnings"></div>
               </div>
             </div>
 
@@ -232,6 +244,26 @@
                 </div>
               </div>
               </div>
+
+              <!-- The ONE course list (courses table). Create Account and User
+                   Management both read it through /api/courses. -->
+              <div class="admin-card" id="courses-admin">
+                <h3><i class="bi bi-mortarboard"></i> Courses <span class="status-pill active">Students</span></h3>
+                <p class="form-note" style="margin-top:-6px;">The course list students choose from on Create Account and that admins assign in User Management. Deactivated courses stay on students who already have them but are no longer offered to new students. Order sets how courses and departments are listed.</p>
+                <form class="courses-add" id="course-add-form" novalidate>
+                  <div class="form-group">
+                    <label for="ca-name">Course name</label>
+                    <input type="text" id="ca-name" maxlength="180" placeholder="e.g. BS Information Technology" required>
+                  </div>
+                  <div class="form-group">
+                    <label for="ca-dept">Department</label>
+                    <input type="text" id="ca-dept" maxlength="120" list="ca-dept-list" placeholder="e.g. College of Computer Studies">
+                    <datalist id="ca-dept-list"></datalist>
+                  </div>
+                  <button type="submit" class="btn btn-primary" id="ca-submit"><i class="bi bi-plus-lg"></i> Add course</button>
+                </form>
+                <div id="courses-table"><p class="form-note">Loading courses…</p></div>
+              </div>
             </div>
 
             <!-- Pending self-registrations (CPRI Staff, Ethics Reviewer) waiting for an admin decision. -->
@@ -292,8 +324,14 @@
                     <option value="content_update">Content Update</option>
                     <option value="content_create">Content Create</option>
                     <option value="content_delete">Content Delete</option>
+                    <option value="user_create">User Create</option>
                     <option value="user_update">User Update</option>
+                    <option value="user_course_update">User Course Change</option>
                     <option value="user_delete">User Delete</option>
+                    <option value="course_create">Course Added</option>
+                    <option value="course_update">Course Edited / Deactivated</option>
+                    <option value="course_reorder">Course Reordered</option>
+                    <option value="course_other_submitted">"Other" Course Submitted</option>
                     <option value="password_reset">Password Reset</option>
                   </select>
                 </div>
@@ -320,6 +358,61 @@
   <script src="assets/js/event-image-upload.js"></script>
   <script src="assets/js/event-image-utils.js"></script>
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/course-picker.js"></script>
+
+  <!-- Add / Edit user. Sits before the confirm dialog so a confirmation
+       (e.g. "this clears the course") stacks on top of it. -->
+  <div class="confirm-overlay" id="userFormOverlay" hidden>
+    <form class="confirm-box user-form-box" id="userForm" role="dialog" aria-modal="true" aria-labelledby="userFormTitle" novalidate>
+      <h3 id="userFormTitle"><i class="bi bi-person-plus" id="userFormIcon"></i> <span id="userFormTitleText">Add user</span></h3>
+      <p id="userFormSub" class="form-note" style="margin:-4px 0 14px;" hidden></p>
+      <div class="form-message" id="userFormError" role="alert"></div>
+      <div class="form-group">
+        <label for="uf-fullName">Full name</label>
+        <input type="text" id="uf-fullName" maxlength="160" autocomplete="off">
+      </div>
+      <div class="form-group uf-add-only">
+        <label for="uf-username">Username *</label>
+        <input type="text" id="uf-username" autocomplete="off" aria-describedby="uf-username-error">
+        <span class="field-error" id="uf-username-error"></span>
+      </div>
+      <div class="form-group uf-add-only">
+        <label for="uf-email">Email *</label>
+        <input type="email" id="uf-email" autocomplete="off" aria-describedby="uf-email-error">
+        <span class="field-error" id="uf-email-error"></span>
+      </div>
+      <div class="form-group uf-add-only">
+        <label for="uf-password">Temporary password * (min 8 characters)</label>
+        <input type="password" id="uf-password" autocomplete="new-password" aria-describedby="uf-password-error">
+        <span class="field-error" id="uf-password-error"></span>
+      </div>
+      <div class="form-group">
+        <label for="uf-role">Role *</label>
+        <select id="uf-role"></select>
+        <span class="field-error" id="uf-role-error"></span>
+      </div>
+      <div class="form-group" id="uf-course-group" hidden>
+        <div class="course-label-row">
+          <label id="uf-course-label">Course *</label>
+          <span class="students-only-tag">Students only</span>
+        </div>
+        <div id="uf-course-slot"></div>
+        <span class="field-error" id="uf-course-error" role="alert"></span>
+      </div>
+      <div class="form-group">
+        <label for="uf-status">Status</label>
+        <select id="uf-status">
+          <option value="active">Active</option>
+          <option value="pending">Pending</option>
+          <option value="disabled">Disabled</option>
+        </select>
+      </div>
+      <div class="confirm-actions">
+        <button type="button" class="btn btn-navy" id="uf-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="uf-save">Save</button>
+      </div>
+    </form>
+  </div>
 
   <!-- In-page confirmation dialog (native confirm() is blocked in sandboxed iframes) -->
   <div class="confirm-overlay" id="confirmOverlay" hidden>
@@ -721,79 +814,568 @@
       }
     }
 
-    async function loadUserManagement() {
-      const res = await fetch('/api/admin/users');
-      if (!res.ok) return;
-      const { users, protectedAdminId } = await res.json();
-      const el = document.getElementById('user-management');
-      el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
-        users.map(u => {
-          const isProtectedAdmin = String(u.id) === String(protectedAdminId);
-          const roleLocked = isProtectedAdmin;
-          const statusLocked = isProtectedAdmin;
-          const deleteLocked = isProtectedAdmin;
-          return `
-          <tr>
-            <td>${escapeHtml(u.fullName || u.username)}</td>
-            <td>${escapeHtml(u.username)}</td>
-            <td>${escapeHtml(u.email)}</td>
-            <td>
-              ${roleLocked
-                ? `<span class="role-locked" title="The System Administrator role cannot be changed"><i class="bi bi-lock-fill" aria-hidden="true"></i> <span class="sr-only">Locked:</span> ${escapeHtml(u.role)}</span>`
-                : `<select data-userid="${u.id}" class="user-role-select" style="max-width:180px;"><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option><option value="cpri_staff" ${u.role === 'cpri_staff' ? 'selected' : ''}>CPRI Staff</option><option value="faculty_researcher" ${u.role === 'faculty_researcher' ? 'selected' : ''}>Faculty</option><option value="non_teaching_researcher" ${u.role === 'non_teaching_researcher' ? 'selected' : ''}>Non-Teaching Researcher</option><option value="student_researcher" ${u.role === 'student_researcher' ? 'selected' : ''}>Student</option><option value="presenter" ${u.role === 'presenter' ? 'selected' : ''}>Presenter</option><option value="adviser" ${u.role === 'adviser' ? 'selected' : ''}>Research Adviser / Facilitator</option><option value="ethics_reviewer" ${u.role === 'ethics_reviewer' ? 'selected' : ''}>Ethics Reviewer</option><option value="public_visitor" ${u.role === 'public_visitor' ? 'selected' : ''}>Public Visitor</option></select>`}
-            </td>
-            <td>
-              <select data-userid="${u.id}" class="user-status-select" style="max-width:140px;" ${statusLocked ? 'disabled' : ''}><option value="active" ${u.status === 'active' ? 'selected' : ''}>Active</option><option value="pending" ${u.status === 'pending' ? 'selected' : ''}>Pending</option><option value="disabled" ${u.status === 'disabled' ? 'selected' : ''}>Disabled</option></select>
-            </td>
-            <td>
-              <button class="btn btn-navy reset-pwd" data-userid="${u.id}" style="padding:6px 10px;font-size:.85rem;" title="Reset password for ${escapeHtml(u.fullName || u.username)}">Reset Password</button>
-              <button class="btn btn-outline del-user" data-userid="${u.id}" data-name="${escapeHtml(u.fullName || u.username)}" style="padding:6px 10px;font-size:.85rem;border-color:#b23b32;color:#b23b32;" ${deleteLocked ? 'hidden' : ''} title="Delete user ${escapeHtml(u.fullName || u.username)}">Delete</button>
-            </td>
-          </tr>
-        `}).join('') + '</tbody></table></div>';
+    // ---- User Management (roles, status and the student-only course) ----
+    // Role values are the server's (ROLES in server/auth.js); the labels are the
+    // short ones this table always used.
+    const ROLE_OPTIONS = [
+      ['admin', 'Admin'],
+      ['cpri_staff', 'CPRI Staff'],
+      ['faculty_researcher', 'Faculty'],
+      ['non_teaching_researcher', 'Non-Teaching Researcher'],
+      ['student_researcher', 'Student'],
+      ['presenter', 'Presenter'],
+      ['adviser', 'Research Adviser / Facilitator'],
+      ['ethics_reviewer', 'Ethics Reviewer'],
+      ['public_visitor', 'Public Visitor']
+    ];
+    const ROLE_LABEL = Object.fromEntries(ROLE_OPTIONS);
+    const STUDENT_ROLE = 'student_researcher';
+    const COURSE_NONE = '__none';
+    const COURSE_REVIEW = '__review';
 
-      el.querySelectorAll('.user-role-select').forEach(sel => {
-        sel.addEventListener('change', async (ev) => {
-          const userId = ev.target.dataset.userid;
-          const res = await fetch('/api/admin/users/' + userId, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: ev.target.value, status: document.querySelector('.user-status-select[data-userid="' + userId + '"]').value }) });
-          const out = await res.json();
-          if (!res.ok) return showMsg('error', out.error);
-          showMsg('success', 'User updated.');
-        });
+    let umUsers = [];
+    let umProtectedAdminId = null;
+    let umCourses = null;          // CPRICourses.load({ all: true }) result
+    let umPickers = [];            // table pickers (their panels live on <body>)
+
+    const umSearch = document.getElementById('um-search');
+    const umRoleFilter = document.getElementById('um-role-filter');
+    const umCourseFilter = document.getElementById('um-course-filter');
+
+    umRoleFilter.innerHTML = '<option value="">All roles</option>' +
+      ROLE_OPTIONS.map(([v, l]) => `<option value="${v}">${escapeHtml(l)}</option>`).join('');
+
+    function roleBadge(u) {
+      const label = ROLE_LABEL[u.role] || u.roleLabel || u.role;
+      return `<span class="role-badge role-${escapeHtml(u.role)}">${escapeHtml(label)}</span>`;
+    }
+
+    function displayName(u) {
+      return u.fullName || u.username || 'this user';
+    }
+
+    function notify(type, title, text) {
+      // CPRI.toast renders HTML, so everything going in is escaped here.
+      // main.js declares CPRI with a top-level const, so it is not on window.
+      if (typeof CPRI !== 'undefined' && CPRI.toast) {
+        CPRI.toast(escapeHtml(title), escapeHtml(text), type === 'error' ? 'exclamation-triangle-fill' : 'check-circle-fill');
+      }
+      if (type === 'error') showMsg('error', text);
+    }
+
+    async function apiJson(url, options) {
+      let res;
+      try {
+        res = await fetch(url, Object.assign({ credentials: 'include' }, options || {}));
+      } catch {
+        throw new Error('Network error: the server could not be reached. Your change was not saved.');
+      }
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(out.error || `The request failed (HTTP ${res.status}).`);
+        err.field = out.field;
+        throw err;
+      }
+      return out;
+    }
+
+    function fillCourseFilter() {
+      const keep = umCourseFilter.value;
+      const groups = new Map();
+      (umCourses ? umCourses.courses : []).forEach(c => {
+        const key = c.department || 'Other programs';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(c);
       });
-      el.querySelectorAll('.user-status-select').forEach(sel => {
-        sel.addEventListener('change', async (ev) => {
-          const userId = ev.target.dataset.userid;
-          const res = await fetch('/api/admin/users/' + userId, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: document.querySelector('.user-role-select[data-userid="' + userId + '"]').value, status: ev.target.value }) });
-          const out = await res.json();
-          if (!res.ok) return showMsg('error', out.error);
-          showMsg('success', 'User updated.');
-        });
-      });
-      el.querySelectorAll('.reset-pwd').forEach(btn => {
-        btn.addEventListener('click', async (ev) => {
-          const userId = ev.target.dataset.userid;
-          const newPwd = await passwordPrompt('Enter a new password for this user. The user will need to use it on their next login.');
-          if (!newPwd) return;
-          const res = await fetch('/api/admin/users/' + userId + '/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: newPwd }) });
-          const out = await res.json();
-          if (!res.ok) return showMsg('error', out.error);
-          showMsg('success', 'Password reset.');
-        });
-      });
-      el.querySelectorAll('.del-user').forEach(btn => {
-        btn.addEventListener('click', async (ev) => {
-          const userId = ev.target.dataset.userid;
-          const name = ev.target.dataset.name || 'this user';
-          if (!await adminConfirmDialog('Delete "' + name + '"? This action cannot be undone.')) return;
-          const res = await fetch('/api/admin/users/' + userId, { method: 'DELETE' });
-          const out = await res.json();
-          if (!res.ok) return showMsg('error', out.error);
-          showMsg('success', 'User "' + name + '" deleted.');
-          loadUserManagement();
-        });
+      umCourseFilter.innerHTML =
+        '<option value="">All courses</option>' +
+        `<option value="${COURSE_NONE}">Students with no course yet</option>` +
+        `<option value="${COURSE_REVIEW}">"Other" courses to review</option>` +
+        [...groups.entries()].map(([dept, list]) =>
+          `<optgroup label="${escapeHtml(dept)}">${list.map(c =>
+            `<option value="${c.id}">${escapeHtml(c.name)}${c.isActive === false ? ' (inactive)' : ''}</option>`).join('')}</optgroup>`
+        ).join('');
+      umCourseFilter.value = [...umCourseFilter.options].some(o => o.value === keep) ? keep : '';
+    }
+
+    function courseNameOf(u) {
+      if (u.courseName) return u.courseName;
+      const c = umCourses && u.courseId != null ? umCourses.byId.get(Number(u.courseId)) : null;
+      return c ? c.name : (u.courseOther || '');
+    }
+
+    function filteredUsers() {
+      const q = umSearch.value.trim().toLowerCase();
+      const role = umRoleFilter.value;
+      const course = umCourseFilter.value;
+      return umUsers.filter(u => {
+        if (role && u.role !== role) return false;
+        if (course === COURSE_NONE && !u.courseMissing) return false;
+        if (course === COURSE_REVIEW && !u.courseNeedsReview) return false;
+        if (course && course !== COURSE_NONE && course !== COURSE_REVIEW && String(u.courseId) !== course) return false;
+        if (!q) return true;
+        // Search also matches the course name (and an "Other" course).
+        const hay = [u.fullName, u.username, u.email, courseNameOf(u), u.courseOther].join(' ').toLowerCase();
+        return hay.includes(q);
       });
     }
+
+    function destroyPickers() {
+      umPickers.forEach(p => p.destroy());
+      umPickers = [];
+    }
+
+    function renderUserWarnings() {
+      const box = document.getElementById('um-warnings');
+      const missing = umUsers.filter(u => u.courseMissing);
+      const review = umUsers.filter(u => u.courseNeedsReview);
+      const lines = [];
+      if (missing.length === 1) {
+        lines.push(`<div class="um-warning"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span><b>${escapeHtml(displayName(missing[0]))}</b> is a Student with no course yet. Course is required for students.</span></div>`);
+      } else if (missing.length > 1) {
+        lines.push(`<div class="um-warning"><i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i><span><b>${missing.length} students</b> have no course yet. Course is required for students. <button type="button" class="link-btn" data-show-filter="${COURSE_NONE}">Show them</button></span></div>`);
+      }
+      if (review.length) {
+        lines.push(`<div class="um-warning"><i class="bi bi-pencil-square" aria-hidden="true"></i><span><b>${review.length === 1 ? escapeHtml(displayName(review[0])) : review.length + ' students'}</b> typed a course that is not on the list ("Other"). Assign a listed course, or add it under Content &gt; Courses. <button type="button" class="link-btn" data-show-filter="${COURSE_REVIEW}">Show ${review.length === 1 ? 'it' : 'them'}</button></span></div>`);
+      }
+      box.innerHTML = lines.join('');
+    }
+
+    function renderUserTable() {
+      destroyPickers();
+      const el = document.getElementById('user-management');
+      const rows = filteredUsers();
+      const count = document.getElementById('um-count');
+      count.textContent = rows.length === umUsers.length
+        ? `${umUsers.length} user${umUsers.length === 1 ? '' : 's'}`
+        : `Showing ${rows.length} of ${umUsers.length} users`;
+      if (!rows.length) {
+        el.innerHTML = '<div class="empty-state">No users match these filters.</div>';
+        renderUserWarnings();
+        return;
+      }
+      el.innerHTML = '<div class="table-scroll"><table><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Role</th><th class="col-course">Course</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
+        rows.map(u => {
+          const isProtectedAdmin = String(u.id) === String(umProtectedAdminId);
+          const name = escapeHtml(displayName(u));
+          const course = u.role === STUDENT_ROLE
+            ? `<div class="um-course" data-userid="${escapeHtml(u.id)}"></div>${u.courseNeedsReview ? '<span class="course-review-chip" title="Typed at registration — not on the course list"><i class="bi bi-flag-fill" aria-hidden="true"></i> Needs review</span>' : ''}`
+            : '<span class="course-locked" title="Course applies to Student accounts only"><i class="bi bi-lock-fill" aria-hidden="true"></i> Students only</span>';
+          return `
+          <tr data-userid="${escapeHtml(u.id)}">
+            <td class="col-name">${name}</td>
+            <td>${escapeHtml(u.username)}</td>
+            <td class="col-email">${escapeHtml(u.email)}</td>
+            <td>${isProtectedAdmin
+              ? `<span class="role-locked" title="The System Administrator role cannot be changed"><i class="bi bi-lock-fill" aria-hidden="true"></i> <span class="sr-only">Locked:</span> ${escapeHtml(ROLE_LABEL[u.role] || u.role)}</span>`
+              : roleBadge(u)}</td>
+            <td class="col-course">${course}</td>
+            <td>
+              <select data-userid="${escapeHtml(u.id)}" class="user-status-select" style="max-width:140px;" aria-label="Status for ${name}" ${isProtectedAdmin ? 'disabled' : ''}><option value="active" ${u.status === 'active' ? 'selected' : ''}>Active</option><option value="pending" ${u.status === 'pending' ? 'selected' : ''}>Pending</option><option value="disabled" ${u.status === 'disabled' ? 'selected' : ''}>Disabled</option></select>
+            </td>
+            <td>
+              <div class="um-actions">
+                ${isProtectedAdmin ? '' : `<button type="button" class="link-btn edit-user" data-userid="${escapeHtml(u.id)}" title="Edit ${name}">Edit</button>`}
+                <button type="button" class="btn btn-maroon btn-sm reset-pwd" data-userid="${escapeHtml(u.id)}" style="padding:6px 10px;font-size:.85rem;" title="Reset password for ${name}">Reset password</button>
+                ${isProtectedAdmin ? '' : `<button type="button" class="link-btn link-danger del-user" data-userid="${escapeHtml(u.id)}" data-name="${name}" title="Delete user ${name}">Delete</button>`}
+              </div>
+            </td>
+          </tr>`;
+        }).join('') + '</tbody></table></div>';
+
+      // One course picker per student row, on the shared list.
+      el.querySelectorAll('.um-course').forEach(slot => {
+        const u = umUsers.find(x => String(x.id) === slot.dataset.userid);
+        if (!u) return;
+        const picker = CPRICourses.picker({
+          value: u.courseId,
+          other: u.courseId == null ? u.courseOther : '',
+          data: umCourses,
+          compact: true,
+          highlightEmpty: true,
+          ariaLabel: 'Course for ' + displayName(u),
+          onChange: (value) => saveRowCourse(u, picker, value)
+        });
+        slot.appendChild(picker.el);
+        umPickers.push(picker);
+      });
+      renderUserWarnings();
+    }
+
+    async function saveRowCourse(u, picker, value) {
+      const cell = picker.el.closest('td');
+      const before = { courseId: u.courseId, courseOther: u.courseOther };
+      cell.classList.add('cell-saving');
+      try {
+        const out = await apiJson('/api/admin/users/' + encodeURIComponent(u.id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ courseId: value.courseId })
+        });
+        Object.assign(u, out.user || {});
+        notify('success', 'Course saved', `${displayName(u)}: ${u.courseName || courseNameOf(u)}`);
+        renderUserTable();
+      } catch (err) {
+        picker.setValue(before.courseId, before.courseId == null ? before.courseOther : '');
+        notify('error', 'Course not saved', err.message);
+      } finally {
+        cell.classList.remove('cell-saving');
+      }
+    }
+
+    async function loadUserManagement() {
+      const el = document.getElementById('user-management');
+      try {
+        const [usersOut, courses] = await Promise.all([
+          apiJson('/api/admin/users'),
+          CPRICourses.load({ all: true, force: true })
+        ]);
+        umUsers = usersOut.users || [];
+        umProtectedAdminId = usersOut.protectedAdminId;
+        umCourses = courses;
+        fillCourseFilter();
+        renderUserTable();
+      } catch (err) {
+        destroyPickers();
+        el.innerHTML = `<div class="form-message error" style="display:block;padding:16px;">Could not load users: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    umSearch.addEventListener('input', renderUserTable);
+    umRoleFilter.addEventListener('change', renderUserTable);
+    umCourseFilter.addEventListener('change', renderUserTable);
+    document.getElementById('um-warnings').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-show-filter]');
+      if (!btn) return;
+      umSearch.value = '';
+      umRoleFilter.value = STUDENT_ROLE;
+      umCourseFilter.value = btn.dataset.showFilter;
+      renderUserTable();
+      document.getElementById('user-management').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    // Delegated so the buttons keep working after every re-render.
+    document.getElementById('user-management').addEventListener('change', async (ev) => {
+      const sel = ev.target.closest('.user-status-select');
+      if (!sel) return;
+      const u = umUsers.find(x => String(x.id) === sel.dataset.userid);
+      if (!u) return;
+      const previous = u.status;
+      try {
+        const out = await apiJson('/api/admin/users/' + encodeURIComponent(u.id), {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: sel.value })
+        });
+        Object.assign(u, out.user || {});
+        notify('success', 'User updated', `${displayName(u)} is now ${u.status}.`);
+      } catch (err) {
+        sel.value = previous;
+        notify('error', 'Status not saved', err.message);
+      }
+    });
+    document.getElementById('user-management').addEventListener('click', async (ev) => {
+      const edit = ev.target.closest('.edit-user');
+      if (edit) {
+        const u = umUsers.find(x => String(x.id) === edit.dataset.userid);
+        if (u) openUserForm(u);
+        return;
+      }
+      const reset = ev.target.closest('.reset-pwd');
+      if (reset) {
+        const newPwd = await passwordPrompt('Enter a new password for this user. The user will need to use it on their next login.');
+        if (!newPwd) return;
+        try {
+          await apiJson('/api/admin/users/' + encodeURIComponent(reset.dataset.userid) + '/reset-password', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ newPassword: newPwd })
+          });
+          notify('success', 'Password reset', 'The new password is active.');
+        } catch (err) {
+          notify('error', 'Password not reset', err.message);
+        }
+        return;
+      }
+      const del = ev.target.closest('.del-user');
+      if (del) {
+        const name = del.dataset.name || 'this user';
+        if (!await adminConfirmDialog('Delete "' + name + '"? This action cannot be undone.')) return;
+        try {
+          await apiJson('/api/admin/users/' + encodeURIComponent(del.dataset.userid), { method: 'DELETE' });
+          notify('success', 'User deleted', `"${name}" was deleted.`);
+          loadUserManagement();
+        } catch (err) {
+          notify('error', 'User not deleted', err.message);
+        }
+      }
+    });
+
+    // ---- Add user / Edit user dialog ----
+    const userForm = document.getElementById('userForm');
+    const ufRole = document.getElementById('uf-role');
+    const ufCourseGroup = document.getElementById('uf-course-group');
+    const ufError = document.getElementById('userFormError');
+    let ufEditing = null;          // the user being edited, or null when adding
+    let ufInitialCourse = null;    // { courseId, courseOther } when the dialog opened
+    let ufPicker = null;
+
+    ufRole.innerHTML = ROLE_OPTIONS.map(([v, l]) => `<option value="${v}">${escapeHtml(l)}</option>`).join('');
+
+    function ufFieldError(field, text) {
+      const span = document.getElementById('uf-' + field + '-error');
+      if (span) span.textContent = text || '';
+      if (field === 'course' && ufPicker) ufPicker.setInvalid(Boolean(text));
+    }
+    function ufClearErrors() {
+      ['username', 'email', 'password', 'role', 'course'].forEach(f => ufFieldError(f, ''));
+      ufError.className = 'form-message';
+      ufError.textContent = '';
+    }
+
+    function syncUserFormCourse() {
+      const isStudent = ufRole.value === STUDENT_ROLE;
+      ufCourseGroup.hidden = !isStudent;
+      if (!isStudent) ufFieldError('course', '');
+    }
+
+    function openUserForm(u) {
+      ufEditing = u || null;
+      ufClearErrors();
+      userForm.reset();
+      const adding = !u;
+      document.getElementById('userFormTitleText').textContent = adding ? 'Add user' : 'Edit user';
+      document.getElementById('userFormIcon').className = 'bi ' + (adding ? 'bi-person-plus' : 'bi-pencil-square');
+      const sub = document.getElementById('userFormSub');
+      sub.hidden = adding;
+      sub.textContent = adding ? '' : `${u.username} · ${u.email}`;
+      userForm.querySelectorAll('.uf-add-only').forEach(g => { g.hidden = !adding; });
+      document.getElementById('uf-fullName').value = adding ? '' : (u.fullName || '');
+      ufRole.value = adding ? STUDENT_ROLE : u.role;
+      document.getElementById('uf-status').value = adding ? 'active' : (u.status || 'active');
+      document.getElementById('uf-save').textContent = adding ? 'Create user' : 'Save changes';
+
+      if (ufPicker) ufPicker.destroy();
+      ufInitialCourse = adding || u.role !== STUDENT_ROLE
+        ? { courseId: null, courseOther: '' }
+        : { courseId: u.courseId, courseOther: u.courseId == null ? (u.courseOther || '') : '' };
+      ufPicker = CPRICourses.picker({
+        value: ufInitialCourse.courseId,
+        other: ufInitialCourse.courseOther,
+        data: umCourses,
+        highlightEmpty: !adding && u.role === STUDENT_ROLE,
+        ariaLabel: 'Course',
+        onChange: () => ufFieldError('course', '')
+      });
+      document.getElementById('uf-course-slot').appendChild(ufPicker.el);
+      ufPicker.el.querySelector('.cp-trigger').setAttribute('aria-labelledby', 'uf-course-label');
+      ufPicker.describedBy('uf-course-error');
+      syncUserFormCourse();
+      document.getElementById('userFormOverlay').hidden = false;
+      setTimeout(() => document.getElementById('uf-fullName').focus(), 30);
+    }
+
+    function closeUserForm() {
+      document.getElementById('userFormOverlay').hidden = true;
+      if (ufPicker) { ufPicker.destroy(); ufPicker = null; }
+      ufEditing = null;
+    }
+
+    function courseChanged(value) {
+      return String(value.courseId ?? '') !== String(ufInitialCourse.courseId ?? '') ||
+        (value.courseOther || '') !== (ufInitialCourse.courseOther || '');
+    }
+
+    async function submitUserForm(e) {
+      e.preventDefault();
+      ufClearErrors();
+      const role = ufRole.value;
+      const isStudent = role === STUDENT_ROLE;
+      const course = ufPicker ? ufPicker.getValue() : { courseId: null, courseOther: '' };
+      const body = {
+        fullName: document.getElementById('uf-fullName').value.trim(),
+        role,
+        status: document.getElementById('uf-status').value
+      };
+
+      if (isStudent && course.courseId === null) {
+        ufFieldError('course', 'Please select a course for this student. Course is required for students.');
+        ufPicker.focus();
+        return;
+      }
+
+      if (!ufEditing) {
+        body.username = document.getElementById('uf-username').value.trim();
+        body.email = document.getElementById('uf-email').value.trim();
+        body.password = document.getElementById('uf-password').value;
+        let bad = false;
+        if (!body.username) { ufFieldError('username', 'Username is required.'); bad = true; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) { ufFieldError('email', 'Enter a valid email address.'); bad = true; }
+        if (body.password.length < 8) { ufFieldError('password', 'Password must be at least 8 characters.'); bad = true; }
+        if (bad) return;
+        if (isStudent) body.courseId = course.courseId;
+      } else {
+        const wasStudent = ufEditing.role === STUDENT_ROLE;
+        // Leaving Student clears the course: say so first.
+        if (wasStudent && !isStudent) {
+          const had = courseNameOf(ufEditing);
+          const ok = await adminConfirmDialog(
+            `Change ${displayName(ufEditing)} from Student to ${ROLE_LABEL[role] || role}? ` +
+            (had ? `Their course ("${had}") will be cleared.` : 'Course only applies to students.'),
+            'Change role'
+          );
+          if (!ok) return;
+        }
+        // Send the course when the account becomes a Student or the admin picked
+        // a different one (an untouched "Other" entry is left for review).
+        if (isStudent && (!wasStudent || courseChanged(course))) body.courseId = course.courseId;
+      }
+
+      const save = document.getElementById('uf-save');
+      save.disabled = true;
+      try {
+        const out = ufEditing
+          ? await apiJson('/api/admin/users/' + encodeURIComponent(ufEditing.id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+          : await apiJson('/api/admin/users', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        notify('success', ufEditing ? 'User updated' : 'User created', out.message || 'Saved.');
+        closeUserForm();
+        loadUserManagement();
+      } catch (err) {
+        if (err.field && document.getElementById('uf-' + err.field + '-error')) ufFieldError(err.field, err.message);
+        else { ufError.className = 'form-message error'; ufError.textContent = err.message; }
+      } finally {
+        save.disabled = false;
+      }
+    }
+
+    ufRole.addEventListener('change', syncUserFormCourse);
+    userForm.addEventListener('submit', submitUserForm);
+    document.getElementById('uf-cancel').addEventListener('click', closeUserForm);
+    document.getElementById('um-add').addEventListener('click', () => openUserForm(null));
+    document.getElementById('userFormOverlay').addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) closeUserForm(); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || document.getElementById('userFormOverlay').hidden) return;
+      // An open confirmation or course list closes first.
+      if (!document.getElementById('confirmOverlay').hidden) return;
+      if (ufPicker && ufPicker.el.classList.contains('is-open')) return;
+      closeUserForm();
+    });
+
+    // ---- Courses (Content tab): add, rename, reorder, deactivate ----
+    let caCourses = [];
+
+    async function loadCoursesAdmin() {
+      const box = document.getElementById('courses-table');
+      try {
+        const out = await apiJson('/api/courses?all=1');
+        caCourses = out.courses || [];
+        document.getElementById('ca-dept-list').innerHTML =
+          (out.departments || []).map(d => `<option value="${escapeHtml(d)}"></option>`).join('');
+        renderCoursesAdmin();
+      } catch (err) {
+        box.innerHTML = `<div class="form-message error" style="display:block;padding:16px;">Could not load courses: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderCoursesAdmin() {
+      const box = document.getElementById('courses-table');
+      if (!caCourses.length) {
+        box.innerHTML = '<div class="empty-state">No courses yet. Add the first one above.</div>';
+        return;
+      }
+      box.innerHTML = '<div class="table-scroll"><table class="courses-table"><thead><tr><th>Order</th><th>Course</th><th>Department</th><th>Students</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
+        caCourses.map((c, i) => `
+          <tr data-id="${c.id}" class="${c.isActive ? '' : 'is-inactive'}">
+            <td><span class="order-btns">
+              <button type="button" class="btn btn-soft ca-move" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Move ${escapeHtml(c.name)} up"><i class="bi bi-arrow-up"></i></button>
+              <button type="button" class="btn btn-soft ca-move" data-dir="1" ${i === caCourses.length - 1 ? 'disabled' : ''} aria-label="Move ${escapeHtml(c.name)} down"><i class="bi bi-arrow-down"></i></button>
+            </span></td>
+            <td><input type="text" class="ca-name" value="${escapeHtml(c.name)}" title="${escapeHtml(c.name)}" maxlength="180" aria-label="Course name"></td>
+            <td><input type="text" class="ca-dept" value="${escapeHtml(c.department || '')}" title="${escapeHtml(c.department || '')}" maxlength="120" list="ca-dept-list" aria-label="Department"></td>
+            <td>${c.students || 0}</td>
+            <td><span class="status-pill ${c.isActive ? 'active' : 'disabled'}">${c.isActive ? 'Active' : 'Inactive'}</span></td>
+            <td style="white-space:nowrap;">
+              <button type="button" class="btn btn-navy btn-sm ca-save" style="padding:5px 10px;font-size:.82rem;">Save</button>
+              <button type="button" class="link-btn ${c.isActive ? 'link-danger' : ''} ca-toggle" style="margin-left:8px;">${c.isActive ? 'Deactivate' : 'Reactivate'}</button>
+            </td>
+          </tr>`).join('') + '</tbody></table></div>';
+    }
+
+    async function afterCourseChange() {
+      CPRICourses.invalidate();
+      await loadCoursesAdmin();
+      loadUserManagement();
+    }
+
+    document.getElementById('course-add-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('ca-name').value.trim();
+      const department = document.getElementById('ca-dept').value.trim();
+      if (!name) { notify('error', 'Course not added', 'Enter the course name.'); document.getElementById('ca-name').focus(); return; }
+      try {
+        const out = await apiJson('/api/courses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, department }) });
+        notify('success', 'Course added', out.message);
+        e.target.reset();
+        await afterCourseChange();
+      } catch (err) {
+        notify('error', 'Course not added', err.message);
+      }
+    });
+
+    document.getElementById('courses-table').addEventListener('click', async (e) => {
+      const row = e.target.closest('tr[data-id]');
+      if (!row) return;
+      const id = Number(row.dataset.id);
+      const course = caCourses.find(c => c.id === id);
+      if (!course) return;
+
+      const move = e.target.closest('.ca-move');
+      if (move) {
+        const i = caCourses.indexOf(course);
+        const j = i + Number(move.dataset.dir);
+        if (j < 0 || j >= caCourses.length) return;
+        const next = caCourses.slice();
+        [next[i], next[j]] = [next[j], next[i]];
+        try {
+          await apiJson('/api/courses/reorder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: next.map(c => c.id) }) });
+          caCourses = next;
+          renderCoursesAdmin();
+          CPRICourses.invalidate();
+          // Keep focus on the arrow so a course can be moved several steps.
+          const again = document.querySelector(`#courses-table tr[data-id="${id}"] .ca-move[data-dir="${move.dataset.dir}"]`);
+          if (again && !again.disabled) again.focus();
+          notify('success', 'Order saved', `"${course.name}" moved ${move.dataset.dir === '-1' ? 'up' : 'down'}.`);
+        } catch (err) {
+          notify('error', 'Order not saved', err.message);
+        }
+        return;
+      }
+
+      if (e.target.closest('.ca-save')) {
+        const name = row.querySelector('.ca-name').value.trim();
+        const department = row.querySelector('.ca-dept').value.trim();
+        try {
+          const out = await apiJson('/api/courses/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, department }) });
+          notify('success', 'Course saved', out.message);
+          await afterCourseChange();
+        } catch (err) {
+          notify('error', 'Course not saved', err.message);
+        }
+        return;
+      }
+
+      if (e.target.closest('.ca-toggle')) {
+        const deactivate = course.isActive;
+        if (deactivate && !await adminConfirmDialog(
+          `Deactivate "${course.name}"? New students will no longer be able to choose it.` +
+            (course.students ? ` The ${course.students} student${course.students === 1 ? '' : 's'} who already have it keep it on their record.` : ''),
+          'Deactivate'
+        )) return;
+        try {
+          const out = await apiJson('/api/courses/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isActive: !deactivate }) });
+          notify('success', deactivate ? 'Course deactivated' : 'Course reactivated', out.message);
+          await afterCourseChange();
+        } catch (err) {
+          notify('error', 'Course not changed', err.message);
+        }
+      }
+    });
 
     async function loadCharts() {
       const [deptRes, yearRes, subRes, ethicsRes] = await Promise.all([
@@ -1422,6 +2004,7 @@
       chartInstances = (await loadCharts()) || [];
       loadRecentSubmissions();
       loadUserManagement();
+      loadCoursesAdmin();
       loadLogs();
       loadEventsList();
       loadResearchList();
