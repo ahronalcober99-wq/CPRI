@@ -1,6 +1,8 @@
 node_modules/
 .tools/
 server/data/*.json
+# Shipped on purpose: seeds an empty `courses` table at boot (server/lib/courses.js).
+!server/data/courses-seed.json
 server/data/demo-access.key
 server/data/sessions/
 # Uploaded research documents (Research Submission Module) — private, and never

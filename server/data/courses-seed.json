@@ -1,0 +1,54 @@
+{
+  "_note": "Starter list used ONLY to seed an empty `courses` table on first boot. After that the table is the single source of truth and is managed in Admin Console > Content > Courses. Replace these entries with the official list before the first deploy, or edit them in the admin screen afterwards.",
+  "departments": [
+    {
+      "department": "College of Computer Studies",
+      "courses": [
+        "BS Computer Science",
+        "BS Information Technology",
+        "BS Information Systems"
+      ]
+    },
+    {
+      "department": "College of Business and Accountancy",
+      "courses": [
+        "BS Accountancy",
+        "BS Business Administration major in Financial Management",
+        "BS Business Administration major in Marketing Management",
+        "BS Business Administration major in Human Resource Management"
+      ]
+    },
+    {
+      "department": "College of Education",
+      "courses": [
+        "Bachelor of Elementary Education",
+        "Bachelor of Secondary Education major in English",
+        "Bachelor of Secondary Education major in Mathematics",
+        "Bachelor of Secondary Education major in Filipino",
+        "Bachelor of Secondary Education major in Science",
+        "Bachelor of Secondary Education major in Social Studies"
+      ]
+    },
+    {
+      "department": "College of Arts and Sciences",
+      "courses": [
+        "AB Communication",
+        "AB Political Science",
+        "BS Psychology"
+      ]
+    },
+    {
+      "department": "College of Hospitality and Tourism Management",
+      "courses": [
+        "BS Hospitality Management",
+        "BS Tourism Management"
+      ]
+    },
+    {
+      "department": "College of Criminal Justice Education",
+      "courses": [
+        "BS Criminology"
+      ]
+    }
+  ]
+}
