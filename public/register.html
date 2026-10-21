@@ -85,17 +85,17 @@
   <div id="site-header"></div>
 
   <main id="main">
-    <section class="page-header">
-      <div class="container">
-        <h1>Create an Account</h1>
-        <p>Register as faculty, non-teaching researcher, student, presenter, adviser, staff, or reviewer.</p>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="container" style="max-width:520px;">
+    <!-- Same branded stage as login.html, with a wider card for the longer
+         form (styles: "LOGIN PAGE" / .login-stage--register). -->
+    <section class="login-stage login-stage--register">
+      <div class="login-card">
+        <div class="login-card-head">
+          <img class="login-seal" src="/images/cpri-logo.jpg" alt="CPRI seal">
+          <h1>Create your account</h1>
+          <p>Register as faculty, non-teaching researcher, student, presenter, adviser, staff, or reviewer.</p>
+        </div>
         <div class="form-message" id="message"></div>
-        <form id="register-form" class="card">
+        <form id="register-form">
           <div class="form-group">
             <label for="fullName">Full Name</label>
             <input type="text" id="fullName" name="fullName">
@@ -221,7 +221,7 @@
               <button type="button" class="gm-item" data-action="bridge" role="menuitem"><i class="bi bi-arrow-up-right-square"></i><span>Complete sign-in in your browser<small>One-time code in your default browser</small></span></button>
             </div>
           </div>
-          <p class="form-note" style="margin-top:14px;">
+          <p class="form-note login-links">
             Already have an account? <a href="login.html">Log in</a>
           </p>
         </form>

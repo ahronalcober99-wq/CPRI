@@ -3629,6 +3629,25 @@ body.file-preview-open { overflow: hidden; }
 .login-card-head p { margin: 0; color: var(--cpri-muted); font-size: .94rem; }
 .login-card #submit-btn { justify-content: center; }
 .login-card .login-links { margin: 16px 0 0; text-align: center; }
+/* Register: the same stage with a wider card for the longer form. The page is
+   much taller than the backdrop, so on desktop the backdrop stays fixed while
+   the form scrolls (fixed backgrounds are unreliable on touch devices, which
+   keep the plain cover). */
+.login-stage--register { align-items: start; }
+.login-stage--register .login-card { max-width: 560px; }
+.login-stage--register #submit-btn { justify-content: center; }
+/* The profile page's .field-row (padding + bottom rule) shares the name with
+   the form's inline row; inside the card it is only the inline row. */
+.login-card .field-row { padding: 0; border-bottom: 0; }
+/* Compact inline actions so the email/code input keeps most of the width. */
+.login-card .field-row:not(.field-row--split) .btn { padding: 11px 18px; font-size: .88rem; }
+/* Register stays locked until the email is verified; keep it maroon (dimmed)
+   instead of Bootstrap's blue disabled fill. */
+.login-card .btn-primary:disabled { background: var(--maroon); border-color: var(--maroon); color: #fff; opacity: .5; }
+[data-theme="dark"] .login-card .btn-primary:disabled { background: var(--gold); border-color: var(--gold); color: #241000; }
+@media (min-width: 992px) and (hover: hover) {
+  .login-stage--register { background-attachment: fixed; background-position: center calc(50% + var(--nav-h) / 2); }
+}
 /* Phones/tablets: clear the fixed bottom nav so the card's links stay reachable. */
 @media (max-width: 768px) { .login-stage { padding-bottom: 112px; } }
 @media (max-width: 575px) {
