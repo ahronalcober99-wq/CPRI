@@ -28,7 +28,12 @@
          on the right fading into it (styles: "HOMEPAGE: SPLIT HERO"). -->
     <section class="cpri-hero cpri-hero--split" id="homeHero">
       <div class="hero-bg"></div>
-      <div class="hero-photo" aria-hidden="true"><img src="/images/cdsga-building.jpg" alt=""></div>
+      <!-- The photo is the fallback; the looping video (desktop only, never with
+           reduced motion) fades in over it once it is actually playing. -->
+      <div class="hero-photo" aria-hidden="true">
+        <img src="/images/cdsga-building.jpg" alt="">
+        <video class="hero-video" muted loop playsinline preload="none" data-src="/videos/cdsga-loop.mp4"></video>
+      </div>
       <canvas id="particles"></canvas>
       <svg class="hero-book" viewBox="0 0 240 130" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true">
         <path d="M120 34C94 16 50 13 14 22v86c36-9 80-6 106 12"/>
@@ -217,6 +222,27 @@
   <script src="assets/js/event-image-utils.js"></script>
   <script src="assets/js/main.js"></script>
   <script>
+    // Hero building video: load it only where the photo column is shown
+    // (≥992px) and motion is welcome (OS setting + the site's Reduce motion
+    // toggle), and pause it while the hero is off screen.
+    (() => {
+      const video = document.querySelector('#homeHero .hero-video');
+      if (!video) return;
+      let siteReduced = false;
+      try { siteReduced = !!localStorage.getItem('cpri-motion'); } catch {}
+      const osReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (siteReduced || osReduced || !window.matchMedia('(min-width: 992px)').matches) return;
+      video.addEventListener('playing', () => video.classList.add('is-playing'), { once: true });
+      video.src = video.dataset.src;
+      const play = () => video.play().catch(() => { /* autoplay blocked: keep the photo */ });
+      if ('IntersectionObserver' in window) {
+        new IntersectionObserver(([entry]) => entry.isIntersecting ? play() : video.pause())
+          .observe(document.getElementById('homeHero'));
+      } else {
+        play();
+      }
+    })();
+
     (() => {
       const grid = document.getElementById('publication-grid');
       const status = document.getElementById('publication-status');

@@ -3482,6 +3482,14 @@ body.file-preview-open { overflow: hidden; }
   mask-image: linear-gradient(90deg, transparent 0%, rgba(0,0,0,.6) 14%, #000 34%);
 }
 .cpri-hero--split .hero-photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+/* Looping building video over the photo; it fades in only once it plays. */
+.cpri-hero--split .hero-video {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; object-position: 55% top;   /* crop the courtyard, never the sign */
+  opacity: 0; transition: opacity .9s ease;
+}
+.cpri-hero--split .hero-video.is-playing { opacity: 1; }
+@media (max-width: 991px) { .cpri-hero--split .hero-video { display: none; } }
 .cpri-hero--split .hero-photo::after {
   content: ""; position: absolute; inset: 0;
   background: linear-gradient(180deg, transparent 72%, rgba(36,0,0,.35));
