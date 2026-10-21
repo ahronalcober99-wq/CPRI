@@ -3650,6 +3650,57 @@ body.file-preview-open { overflow: hidden; }
 }
 /* Phones/tablets: clear the fixed bottom nav so the card's links stay reachable. */
 @media (max-width: 768px) { .login-stage { padding-bottom: 112px; } }
+
+/* ============================================================
+   INNER PAGES: branded backdrop + content sheet
+   Every page except the homepage (#homeHero) gets the CPRI template
+   (login-bg.jpg) as a fixed backdrop, with <main> as a rounded sheet over it.
+   Login/register keep their own .login-stage card instead of the sheet.
+   Pages without <main id="main"> (banner, mobile preview) are left alone.
+   ============================================================ */
+html:has(body > main#main):not(:has(#homeHero)) { background: #480b0a; }
+body:has(> main#main):not(:has(#homeHero)) { background: transparent; }
+/* A fixed pseudo-element instead of background-attachment: fixed, which
+   mobile browsers ignore (they would stretch the image down the whole page). */
+body:has(> main#main):not(:has(#homeHero))::before {
+  content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: #480b0a url("/images/login-bg.jpg") center / cover no-repeat;
+}
+body:has(> main#main):not(:has(#homeHero)):not(:has(.login-stage)) > main#main {
+  position: relative;
+  width: min(1440px, calc(100% - 2 * clamp(10px, 3vw, 40px)));
+  margin: clamp(14px, 3vw, 36px) auto clamp(24px, 4vw, 48px);
+  background: var(--cpri-bg); border-radius: 28px;
+  border: 1px solid rgba(217,168,43,.35);
+  box-shadow: 0 30px 70px rgba(20,0,0,.35);
+}
+/* Rounded ends without overflow clipping (dropdowns inside must not be cut). */
+body:has(> main#main):not(:has(#homeHero)):not(:has(.login-stage)) > main#main > :first-child { border-radius: 27px 27px 0 0; }
+body:has(> main#main):not(:has(#homeHero)):not(:has(.login-stage)) > main#main > :last-child { border-radius: 0 0 27px 27px; }
+@media (max-width: 575px) {
+  body:has(> main#main):not(:has(#homeHero)):not(:has(.login-stage)) > main#main { border-radius: 20px; }
+  body:has(> main#main):not(:has(#homeHero)):not(:has(.login-stage)) > main#main > :first-child { border-radius: 19px 19px 0 0; }
+  body:has(> main#main):not(:has(#homeHero)):not(:has(.login-stage)) > main#main > :last-child { border-radius: 0 0 19px 19px; }
+}
+
+/* ---- Page banners: template maroon, serif title, gold bar motif ---- */
+.page-header {
+  background-color: #4a0b0b;
+  background-image:
+    radial-gradient(520px circle at 8% 0%, rgba(217,168,43,.16), transparent 60%),
+    linear-gradient(120deg, #3a0607 0%, #4d0a0b 55%, #5e0f10 100%);
+}
+.page-header h1 { font-family: var(--font-serif); font-weight: 700; letter-spacing: 0; }
+/* Replaces the blurred orbs: the template's slanted gold bars + solid bar,
+   tucked into the top-right corner clear of the title. */
+.page-header::after {
+  inset: 18px 0 auto auto; width: min(44%, 420px); height: 14px;
+  filter: none; opacity: .95;
+  background:
+    linear-gradient(90deg, transparent 0 118px, #f2d33a 118px 100%),
+    repeating-linear-gradient(115deg, #f2d33a 0 9px, transparent 9px 17px) left / 104px 100% no-repeat;
+}
+@media (max-width: 575px) { .page-header::after { width: 46%; height: 10px; top: 14px; } }
 @media (max-width: 575px) {
   .login-stage { padding-top: 24px; padding-left: 12px; padding-right: 12px; background-position: 46% center; }
   .login-card { border-radius: 22px; }
