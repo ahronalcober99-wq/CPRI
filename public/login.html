@@ -13,17 +13,17 @@
   <div id="site-header"></div>
 
   <main id="main">
-    <section class="page-header">
-      <div class="container">
-        <h1>Account Login</h1>
-        <p>Sign in to access CPRI system features.</p>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="container" style="max-width:480px;">
+    <!-- Branded stage: maroon/cream CPRI backdrop with the form card centered
+         where the template's content panel sits (styles: "LOGIN PAGE"). -->
+    <section class="login-stage">
+      <div class="login-card">
+        <div class="login-card-head">
+          <img class="login-seal" src="/images/cpri-logo.jpg" alt="CPRI seal">
+          <h1>Welcome back</h1>
+          <p>Sign in to access CPRI system features.</p>
+        </div>
         <div class="form-message" id="message"></div>
-        <form id="login-form" class="card">
+        <form id="login-form">
           <div class="form-group">
             <label for="identifier">Username or Email</label>
             <input type="text" id="identifier" name="identifier" required>
@@ -53,7 +53,7 @@
               <button type="button" class="gm-item" data-action="bridge" role="menuitem"><i class="bi bi-arrow-up-right-square"></i><span>Complete sign-in in your browser<small>One-time code in your default browser</small></span></button>
             </div>
           </div>
-          <p class="form-note" style="margin-top:14px;">
+          <p class="form-note login-links">
             <a href="forgot.html">Forgot password?</a> ·
             <a href="register.html">Create an account</a>
           </p>

@@ -3592,3 +3592,46 @@ body.file-preview-open { overflow: hidden; }
 }
 .home-band span::after { transform: scaleX(-1); }
 @media (max-width: 600px) { .home-band span { letter-spacing: .16em; gap: 10px; font-size: .64rem; } }
+
+/* ============================================================
+   LOGIN PAGE: branded stage
+   login-bg.jpg is the maroon/cream CPRI template (gold swooshes, stripes,
+   seal watermark) with its content panel left empty; the form card sits
+   centered over that spot.
+   ============================================================ */
+.login-stage {
+  min-height: calc(100vh - var(--nav-h)); min-height: calc(100svh - var(--nav-h));
+  display: grid; place-items: center; padding: clamp(32px, 6vh, 72px) 16px;
+  background: #480b0a url("/images/login-bg.jpg") center / cover no-repeat;
+}
+.login-card {
+  position: relative; width: 100%; max-width: 460px; overflow: hidden;
+  padding: 40px clamp(22px, 4vw, 40px) 30px; border-radius: 28px;
+  background: var(--cpri-card); color: var(--cpri-text);
+  border: 1px solid rgba(217,168,43,.35);
+  box-shadow: 0 30px 70px rgba(36,0,0,.35), 0 0 0 6px rgba(255,255,255,.06);
+}
+/* Gold stripe across the top edge, echoing the template's yellow bars. */
+.login-card::before {
+  content: ""; position: absolute; top: 0; left: 0; right: 0; height: 6px;
+  background: linear-gradient(90deg, var(--maroon) 0 30%, var(--gold) 30% 100%);
+}
+.login-card-head { text-align: center; margin-bottom: 24px; }
+.login-seal {
+  width: 76px; height: 76px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 14px;
+  border: 3px solid var(--gold); box-shadow: 0 8px 22px rgba(217,168,43,.3);
+}
+.login-card-head h1 {
+  font-family: var(--font-serif); font-weight: 700; font-size: clamp(1.7rem, 3vw, 2.1rem);
+  color: var(--maroon); margin: 0 0 6px;
+}
+[data-theme="dark"] .login-card-head h1 { color: var(--gold-soft); }
+.login-card-head p { margin: 0; color: var(--cpri-muted); font-size: .94rem; }
+.login-card #submit-btn { justify-content: center; }
+.login-card .login-links { margin: 16px 0 0; text-align: center; }
+/* Phones/tablets: clear the fixed bottom nav so the card's links stay reachable. */
+@media (max-width: 768px) { .login-stage { padding-bottom: 112px; } }
+@media (max-width: 575px) {
+  .login-stage { padding-top: 24px; padding-left: 12px; padding-right: 12px; background-position: 46% center; }
+  .login-card { border-radius: 22px; }
+}
