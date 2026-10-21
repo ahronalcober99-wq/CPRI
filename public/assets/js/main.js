@@ -1101,11 +1101,11 @@ const CPRI = (() => {
     }
     function draw() {
       ctx.clearRect(0,0,w,h);
-      ctx.fillStyle = 'rgba(255,255,255,.55)';
+      ctx.fillStyle = 'rgba(232,190,90,.6)';
       pts.forEach(p => { p.x += p.vx; p.y += p.vy; if (p.x<0||p.x>w) p.vx*=-1; if (p.y<0||p.y>h) p.vy*=-1; ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,7); ctx.fill(); });
       for (let i=0;i<pts.length;i++) for (let j=i+1;j<pts.length;j++) {
         const dx = pts[i].x-pts[j].x, dy = pts[i].y-pts[j].y, d = Math.hypot(dx,dy);
-        if (d < 120) { ctx.strokeStyle = `rgba(255,255,255,${.12*(1-d/120)})`; ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y); ctx.stroke(); }
+        if (d < 120) { ctx.strokeStyle = `rgba(232,190,90,${.22*(1-d/120)})`; ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y); ctx.stroke(); }
       }
       requestAnimationFrame(draw);
     }
