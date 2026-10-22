@@ -586,11 +586,12 @@ app.post('/api/contact', async (req, res) => {
   if (!name || !email || !message) {
     return res.status(400).json({ error: 'Name, email and message are required.' });
   }
-  if (req.session && req.session.captchaAnswer !== undefined && captchaAnswer !== undefined) {
-    if (Number(captchaAnswer) !== Number(req.session.captchaAnswer)) {
-      return res.status(400).json({ error: 'Incorrect CAPTCHA answer.' });
-    }
+  const expected = req.session?.captchaAnswer;
+  if (expected === undefined || captchaAnswer === undefined || captchaAnswer === '' ||
+      Number(captchaAnswer) !== Number(expected)) {
+    return res.status(400).json({ error: 'Incorrect CAPTCHA answer.' });
   }
+  delete req.session.captchaAnswer; // single use
   let saved = false;
   try {
     await insert('inquiries', {
