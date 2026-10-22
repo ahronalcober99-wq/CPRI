@@ -306,10 +306,10 @@ export const FORM_CONFIG = {
       fields: [
         { key: 'title',           label: 'Working Title',                        type: 'text',  required: true },
         { key: 'authors',         label: 'Author(s)',                              type: 'text',  required: true },
-        { key: 'program',         label: 'Program or Department',                 type: 'text',  required: true },
+        { key: 'program',         label: 'Program or Department',                 type: 'program',  required: true },
         { key: 'category',        label: 'Research Category',                     type: 'text',  required: true },
         { key: 'research_type',   label: 'Research Type',                         type: 'select', required: true, options: RESEARCH_TYPES_BY_ROLE.student_researcher },
-        { key: 'school_year',     label: 'School Year',                           type: 'text',  required: true },
+        { key: 'school_year',     label: 'School Year',                           type: 'school_year',  required: true },
         { key: 'semester',        label: 'Semester',                              type: 'select', required: true, options: SEMESTERS },
         // Student-only fields
         { key: 'adviser',         label: 'Adviser',                               type: 'text',  required: true },
@@ -323,10 +323,10 @@ export const FORM_CONFIG = {
       fields: [
         { key: 'title',           label: 'Title of Research',                     type: 'text',  required: true },
         { key: 'authors',         label: 'Author(s)',                              type: 'text',  required: true },
-        { key: 'program',         label: 'Program or Department',                 type: 'text',  required: true },
+        { key: 'program',         label: 'Program or Department',                 type: 'program',  required: true },
         { key: 'category',        label: 'Research Category',                     type: 'text',  required: true },
         { key: 'research_type',   label: 'Research Type',                         type: 'select', required: true, options: RESEARCH_TYPES_BY_ROLE.student_researcher },
-        { key: 'school_year',     label: 'School Year',                           type: 'text',  required: true },
+        { key: 'school_year',     label: 'School Year',                           type: 'school_year',  required: true },
         { key: 'semester',        label: 'Semester',                              type: 'select', required: true, options: SEMESTERS },
         // Student-only fields
         { key: 'adviser',         label: 'Adviser',                               type: 'text',  required: true },
@@ -345,10 +345,10 @@ export const FORM_CONFIG = {
       fields: [
         { key: 'title',           label: 'Working Title',                        type: 'text',  required: true },
         { key: 'authors',         label: 'Author(s)',                              type: 'text',  required: true },
-        { key: 'program',         label: 'Program or Department',                 type: 'text',  required: true },
+        { key: 'program',         label: 'Program or Department',                 type: 'program',  required: true },
         { key: 'category',        label: 'Research Category',                     type: 'text',  required: true },
         { key: 'research_type',   label: 'Research Type',                         type: 'select', required: true, options: RESEARCH_TYPES_BY_ROLE.faculty_researcher },
-        { key: 'school_year',     label: 'School Year',                           type: 'text',  required: true },
+        { key: 'school_year',     label: 'School Year',                           type: 'school_year',  required: true },
         { key: 'semester',        label: 'Semester',                              type: 'select', required: true, options: SEMESTERS }
       ],
       slots: FACULTY_INITIAL_SLOTS
@@ -357,10 +357,10 @@ export const FORM_CONFIG = {
       fields: [
         { key: 'title',           label: 'Title of Research',                     type: 'text',  required: true },
         { key: 'authors',         label: 'Author(s)',                              type: 'text',  required: true },
-        { key: 'program',         label: 'Program or Department',                 type: 'text',  required: true },
+        { key: 'program',         label: 'Program or Department',                 type: 'program',  required: true },
         { key: 'category',        label: 'Research Category',                     type: 'text',  required: true },
         { key: 'research_type',   label: 'Research Type',                         type: 'select', required: true, options: RESEARCH_TYPES_BY_ROLE.faculty_researcher },
-        { key: 'school_year',     label: 'School Year',                           type: 'text',  required: true },
+        { key: 'school_year',     label: 'School Year',                           type: 'school_year',  required: true },
         { key: 'semester',        label: 'Semester',                              type: 'select', required: true, options: SEMESTERS },
         { key: 'abstract',        label: 'Abstract',                              type: 'textarea', required: true },
         { key: 'keywords',        label: 'Keywords',                              type: 'text',  required: true }
@@ -374,10 +374,10 @@ export const FORM_CONFIG = {
       fields: [
         { key: 'title',           label: 'Working Title',                        type: 'text',  required: true },
         { key: 'authors',         label: 'Author(s)',                              type: 'text',  required: true },
-        { key: 'program',         label: 'Program or Department',                 type: 'text',  required: true },
+        { key: 'program',         label: 'Program or Department',                 type: 'program',  required: true },
         { key: 'category',        label: 'Research Category',                     type: 'text',  required: true },
         { key: 'research_type',   label: 'Research Type',                         type: 'select', required: true, options: RESEARCH_TYPES_BY_ROLE.non_teaching_researcher },
-        { key: 'school_year',     label: 'School Year',                           type: 'text',  required: true },
+        { key: 'school_year',     label: 'School Year',                           type: 'school_year',  required: true },
         { key: 'semester',        label: 'Semester',                              type: 'select', required: true, options: SEMESTERS }
       ],
       slots: FACULTY_INITIAL_SLOTS
@@ -386,10 +386,10 @@ export const FORM_CONFIG = {
       fields: [
         { key: 'title',           label: 'Title of Research',                     type: 'text',  required: true },
         { key: 'authors',         label: 'Author(s)',                              type: 'text',  required: true },
-        { key: 'program',         label: 'Program or Department',                 type: 'text',  required: true },
+        { key: 'program',         label: 'Program or Department',                 type: 'program',  required: true },
         { key: 'category',        label: 'Research Category',                     type: 'text',  required: true },
         { key: 'research_type',   label: 'Research Type',                         type: 'select', required: true, options: RESEARCH_TYPES_BY_ROLE.non_teaching_researcher },
-        { key: 'school_year',     label: 'School Year',                           type: 'text',  required: true },
+        { key: 'school_year',     label: 'School Year',                           type: 'school_year',  required: true },
         { key: 'semester',        label: 'Semester',                              type: 'select', required: true, options: SEMESTERS },
         { key: 'abstract',        label: 'Abstract',                              type: 'textarea', required: true },
         { key: 'keywords',        label: 'Keywords',                              type: 'text',  required: true }
@@ -402,10 +402,10 @@ export const FORM_CONFIG = {
       fields: [
         { key: 'title',           label: 'Title of Research',                     type: 'text',  required: true },
         { key: 'authors',         label: 'Author(s)',                              type: 'text',  required: true },
-        { key: 'program',         label: 'Program or Department',                 type: 'text',  required: true },
+        { key: 'program',         label: 'Program or Department',                 type: 'program',  required: true },
         { key: 'category',        label: 'Research Category',                     type: 'text',  required: true },
         { key: 'research_type',   label: 'Research Type',                         type: 'select', required: true, options: RESEARCH_TYPES_BY_ROLE.presenter },
-        { key: 'school_year',     label: 'School Year',                           type: 'text',  required: true },
+        { key: 'school_year',     label: 'School Year',                           type: 'school_year',  required: true },
         { key: 'semester',        label: 'Semester',                              type: 'select', required: true, options: SEMESTERS },
         { key: 'institution',     label: 'Institution',                           type: 'text',  required: true },
         { key: 'nationality',     label: 'Nationality',                           type: 'text',  required: true },

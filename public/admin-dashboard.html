@@ -264,6 +264,30 @@
                 </form>
                 <div id="courses-table"><p class="form-note">Loading courses…</p></div>
               </div>
+
+              <!-- The School Year dropdown on Submit Research: the current school
+                   year plus the previous 4 are generated; admins add, rename and
+                   hide years here and set the month a school year begins. -->
+              <div class="admin-card" id="school-years-admin">
+                <h3><i class="bi bi-calendar3"></i> School Years <span class="status-pill active">Submit Research</span></h3>
+                <p class="form-note" style="margin-top:-6px;">The School Year list on the Submit Research form. The current school year and the 4 before it are generated automatically; add other years here, rename a year you added, or hide a year so it is no longer offered. Existing submissions keep their school year.</p>
+                <form class="courses-add" id="sy-settings-form" novalidate>
+                  <div class="form-group">
+                    <label for="sy-start-month">A school year starts in</label>
+                    <select id="sy-start-month" aria-describedby="sy-current-note"></select>
+                  </div>
+                  <button type="submit" class="btn btn-navy" id="sy-settings-submit">Save month</button>
+                </form>
+                <p class="form-note" id="sy-current-note"></p>
+                <form class="courses-add" id="sy-add-form" novalidate>
+                  <div class="form-group">
+                    <label for="sy-label">Add a school year</label>
+                    <input type="text" id="sy-label" maxlength="9" placeholder="e.g. 2031–2032" inputmode="numeric" required>
+                  </div>
+                  <button type="submit" class="btn btn-primary" id="sy-add-submit"><i class="bi bi-plus-lg"></i> Add school year</button>
+                </form>
+                <div id="school-years-table"><p class="form-note">Loading school years…</p></div>
+              </div>
             </div>
 
             <!-- Pending self-registrations (CPRI Staff, Ethics Reviewer) waiting for an admin decision. -->
@@ -712,12 +736,14 @@
         el.innerHTML = `
           <div class="table-scroll">
             <table>
-              <thead><tr><th>Title</th><th>Submitted by</th><th>Form</th><th>Submitted</th><th>Status</th><th>Repository</th></tr></thead>
+              <thead><tr><th>Title</th><th>Submitted by</th><th>Program / Department</th><th>School Year</th><th>Form</th><th>Submitted</th><th>Status</th><th>Repository</th></tr></thead>
               <tbody>
                 ${rows.map(r => `
                   <tr>
                     <td>${recordTitle(r)}</td>
                     <td>${escapeHtml(r.submittedBy || r.author || '—')}</td>
+                    <td>${escapeHtml(r.program || '—')}</td>
+                    <td style="white-space:nowrap;">${escapeHtml(r.schoolYear || '—')}</td>
                     <td>${escapeHtml(SOURCE_LABELS[r.source] || r.source || '—')}${r.source === 'module' && r.stage ? `<br><small style="color:var(--cpri-muted)">${escapeHtml(r.stage === 'final' ? 'Final' : 'Initial')}</small>` : ''}</td>
                     <td style="white-space:nowrap;">${escapeHtml(r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '—')}</td>
                     <td>${statusPill(r)}</td>
@@ -1377,6 +1403,104 @@
       }
     });
 
+    // ---- School Years (Content tab): the Submit Research dropdown ----
+    let syYears = [];
+    const SY_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+      'August', 'September', 'October', 'November', 'December'];
+
+    async function loadSchoolYearsAdmin() {
+      const box = document.getElementById('school-years-table');
+      try {
+        const out = await apiJson('/api/school-years?all=1');
+        syYears = out.years || [];
+        const select = document.getElementById('sy-start-month');
+        select.innerHTML = SY_MONTHS.map((m, i) =>
+          `<option value="${i + 1}"${i + 1 === out.startMonth ? ' selected' : ''}>${m}${i + 1 === out.defaultStartMonth ? ' (default)' : ''}</option>`).join('');
+        document.getElementById('sy-current-note').textContent =
+          `The current school year is ${out.current}. It is selected by default and marked "(current)" on the form.`;
+        renderSchoolYearsAdmin();
+      } catch (err) {
+        box.innerHTML = `<div class="form-message error" style="display:block;padding:16px;">Could not load school years: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderSchoolYearsAdmin() {
+      const box = document.getElementById('school-years-table');
+      box.innerHTML = '<div class="table-scroll"><table class="courses-table"><thead><tr><th>School year</th><th>Source</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
+        syYears.map(y => `
+          <tr data-label="${escapeHtml(y.label)}" class="${y.isActive ? '' : 'is-inactive'}">
+            <td>${y.source === 'added'
+              ? `<input type="text" class="sy-name" value="${escapeHtml(y.label)}" maxlength="9" aria-label="School year">`
+              : `<b>${escapeHtml(y.label)}</b>`}${y.isCurrent ? ' <span class="status-pill active">current</span>' : ''}</td>
+            <td>${y.source === 'added' ? 'Added by an admin' : 'Generated'}</td>
+            <td><span class="status-pill ${y.isActive ? 'active' : 'disabled'}">${y.isActive ? 'Offered' : 'Hidden'}</span></td>
+            <td style="white-space:nowrap;">
+              ${y.source === 'added' ? '<button type="button" class="btn btn-navy btn-sm sy-save" style="padding:5px 10px;font-size:.82rem;">Save</button>' : ''}
+              ${y.isCurrent ? '' : `<button type="button" class="link-btn ${y.isActive ? 'link-danger' : ''} sy-toggle" style="margin-left:8px;">${y.isActive ? 'Hide' : 'Show'}</button>`}
+            </td>
+          </tr>`).join('') + '</tbody></table></div>';
+    }
+
+    const syJson = (method, url, body) => apiJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+    document.getElementById('sy-add-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const input = document.getElementById('sy-label');
+      try {
+        const out = await syJson('POST', '/api/school-years', { label: input.value.trim() });
+        notify('success', 'School year added', out.message);
+        e.target.reset();
+        await loadSchoolYearsAdmin();
+      } catch (err) {
+        notify('error', 'School year not added', err.message);
+        input.focus();
+      }
+    });
+
+    document.getElementById('sy-settings-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const out = await syJson('PUT', '/api/school-years/settings', { startMonth: Number(document.getElementById('sy-start-month').value) });
+        notify('success', 'Start month saved', out.message);
+        await loadSchoolYearsAdmin();
+      } catch (err) {
+        notify('error', 'Start month not saved', err.message);
+      }
+    });
+
+    document.getElementById('school-years-table').addEventListener('click', async (e) => {
+      const row = e.target.closest('tr[data-label]');
+      if (!row) return;
+      const label = row.dataset.label;
+      const year = syYears.find(y => y.label === label);
+      if (!year) return;
+
+      if (e.target.closest('.sy-save')) {
+        try {
+          const out = await syJson('PATCH', '/api/school-years', { label, newLabel: row.querySelector('.sy-name').value.trim() });
+          notify('success', 'School year saved', out.message);
+          await loadSchoolYearsAdmin();
+        } catch (err) {
+          notify('error', 'School year not saved', err.message);
+        }
+        return;
+      }
+
+      if (e.target.closest('.sy-toggle')) {
+        const hide = year.isActive;
+        if (hide && !await adminConfirmDialog(
+          `Hide ${label}? It will no longer be offered on Submit Research. Submissions that already use it keep it.`, 'Hide'
+        )) return;
+        try {
+          const out = await syJson('PATCH', '/api/school-years', { label, isActive: !hide });
+          notify('success', hide ? 'School year hidden' : 'School year shown', out.message);
+          await loadSchoolYearsAdmin();
+        } catch (err) {
+          notify('error', 'School year not changed', err.message);
+        }
+      }
+    });
+
     async function loadCharts() {
       const [deptRes, yearRes, subRes, ethicsRes] = await Promise.all([
         fetch('/api/admin/reports/department'),
@@ -2005,6 +2129,7 @@
       loadRecentSubmissions();
       loadUserManagement();
       loadCoursesAdmin();
+      loadSchoolYearsAdmin();
       loadLogs();
       loadEventsList();
       loadResearchList();

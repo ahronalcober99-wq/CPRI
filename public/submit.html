@@ -96,6 +96,7 @@
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/course-picker.js"></script>
   <script>
     (function () {
       'use strict';
@@ -139,7 +140,10 @@
       let fieldErrorsMap = new Map();  // fieldKey -> message
       let fileUploads = new Map();     // slotKey -> { file, name, size } | { error }
       let conditionFlags = new Map();  // condition_key -> boolean
-      let programPrefill = '';         // ?program= or the profile department
+      let programPrefill = null;       // { courseId, courseOther } from ?program= or the student's course
+      let programChoice = null;        // what the visitor has picked so far (survives a stage switch)
+      let programPicker = null;        // the shared course picker behind "Program or Department"
+      let coursesData = null;          // CPRICourses.load() result — the shared courses table
       let submitting = false;
 
       // The active stage's slice of the payload. Every renderer and validator
@@ -151,6 +155,44 @@
 
       function fieldInput(key) {
         return document.getElementById('field-' + key);
+      }
+
+      // Program or Department is a picker over the shared courses table, so the
+      // value to send is derived from it: a listed course's name, or the text
+      // typed under "Other (please specify)". program_mode tells the server
+      // which of the two it is; the server validates both.
+      function programValue() {
+        if (!programPicker) return { value: '', mode: 'listed' };
+        const v = programPicker.getValue();
+        if (v.courseId === CPRICourses.OTHER) return { value: (v.courseOther || '').trim(), mode: 'other' };
+        const course = v.courseId != null && coursesData ? coursesData.byId.get(Number(v.courseId)) : null;
+        return { value: course ? course.name : '', mode: 'listed' };
+      }
+
+      // The trimmed value of one form field, whatever kind of control it is.
+      function fieldValue(f) {
+        if (f.type === 'program') return programValue().value;
+        const input = fieldInput(f.key);
+        return input && input.value != null ? String(input.value).trim() : '';
+      }
+
+      // ?program= or the student's own course, as picker values. A course that
+      // is no longer offered cannot be submitted as a listed course, so it
+      // falls back to "Other" with its name.
+      function prefillFromName(name) {
+        const text = String(name || '').trim();
+        if (!text) return null;
+        const match = coursesData && coursesData.active.find(c => c.name.toLowerCase() === text.toLowerCase());
+        return match ? { courseId: match.id, courseOther: '' } : { courseId: CPRICourses.OTHER, courseOther: text };
+      }
+
+      function prefillFromProfile(prof) {
+        if (!prof) return null;
+        const id = prof.courseId != null ? Number(prof.courseId) : null;
+        const course = id != null && coursesData ? coursesData.byId.get(id) : null;
+        if (course) return prefillFromName(course.name);
+        if (prof.courseOther) return { courseId: CPRICourses.OTHER, courseOther: String(prof.courseOther) };
+        return prefillFromName(prof.courseName);
       }
 
       // ---- Small theme helpers (no new stylesheet rules) ----
@@ -259,6 +301,7 @@
       }
 
       function renderFields(stageConfig) {
+        if (programPicker) { programPicker.destroy(); programPicker = null; }
         fieldsContainer.innerHTML = '';
 
         for (const f of stageConfig.fields) {
@@ -288,6 +331,35 @@
           } else if (f.type === 'textarea') {
             input = document.createElement('textarea');
             input.rows = 4;
+          } else if (f.type === 'program') {
+            // Searchable, grouped by college/department; "Other" reveals a text field.
+            programPicker = CPRICourses.picker({
+              allowOther: true,
+              data: coursesData,
+              placeholder: 'Select program or department',
+              ariaLabel: 'Program or Department',
+              otherPlaceholder: 'Type your program or department',
+              otherLabel: 'Your program or department (please specify)'
+            });
+            const start = programChoice || programPrefill;
+            if (start) programPicker.setValue(start.courseId, start.courseOther);
+            programPicker.el.addEventListener('coursechange', () => {
+              programChoice = programPicker.getValue();
+              updateSubmitSummary();
+            });
+            programPicker.el.addEventListener('input', updateSubmitSummary);
+            programPicker.el.querySelector('.cp-trigger').id = 'field-' + f.key;
+            input = programPicker.el;
+          } else if (f.type === 'school_year') {
+            // The current school year is selected; the list comes from the server.
+            input = document.createElement('select');
+            for (const opt of (f.options || [])) {
+              const o = document.createElement('option');
+              o.value = opt.value;
+              o.textContent = opt.label;
+              if (opt.value === f.default) o.selected = true;
+              input.appendChild(o);
+            }
           } else if (f.type === 'select') {
             input = document.createElement('select');
             const blank = document.createElement('option');
@@ -305,17 +377,14 @@
             input.type = f.type === 'url' ? 'url' : 'text';
             if (f.type === 'url') input.placeholder = 'https://…';
           }
-          input.id = 'field-' + f.key;
-          input.name = f.key;
+          if (f.type !== 'program') {
+            input.id = 'field-' + f.key;
+            input.name = f.key;
+          }
           group.appendChild(input);
 
           fieldsContainer.appendChild(group);
         }
-
-        // Program / Department keeps whatever the visitor arrived with: the
-        // portal links here with ?program=, and the profile has a department.
-        const programInput = fieldInput('program');
-        if (programInput && !programInput.value && programPrefill) programInput.value = programPrefill;
 
         for (const input of fieldsContainer.querySelectorAll('input, textarea, select')) {
           input.addEventListener('input', updateSubmitSummary);
@@ -556,9 +625,9 @@
         if (!stageConfig) return body;
         for (const f of stageConfig.fields) {
           if (f.type === 'display') continue;
-          const input = fieldInput(f.key);
-          body[f.key] = input && input.value != null ? String(input.value).trim() : '';
+          body[f.key] = fieldValue(f);
         }
+        if (programPicker) body.program_mode = programValue().mode;
         body.stage = currentStage;
         // The role is never sent — the server reads it from the session. The
         // conditional flags are the only client input allowed to affect what is
@@ -585,6 +654,10 @@
           const value = body[f.key] || '';
           if (isFieldRequiredNow(f) && !value) {
             problems.push(f.label + ' is required.');
+            continue;
+          }
+          if (f.type === 'program' && value && programValue().mode === 'other' && value.length < 2) {
+            problems.push(f.label + ' must be the full name of your program or department.');
             continue;
           }
           if (f.type === 'url' && value && !looksLikeLink(value)) {
@@ -653,9 +726,9 @@
           const fd = new FormData();
           for (const f of stageConfig.fields) {
             if (f.type === 'display') continue;
-            const input = fieldInput(f.key);
-            fd.append(f.key, input && input.value != null ? String(input.value).trim() : '');
+            fd.append(f.key, fieldValue(f));
           }
+          if (programPicker) fd.append('program_mode', programValue().mode);
           fd.append('stage', currentStage);
           for (const [key, on] of conditionFlags) fd.append(key, on ? 'true' : 'false');
           if (asDraft) fd.append('as_draft', '1');
@@ -676,6 +749,7 @@
           if (asDraft) {
             // A draft stays on this page so the rest can be finished now.
             form.reset();
+            programChoice = null;
             renderFields(activeStage());
             renderSlots(activeStage());
             showMessage(out.message || 'Draft saved. Finish the details and submit when you are ready.', 'success');
@@ -762,20 +836,22 @@
           }
           config = cfg;
 
-          // Program / Department: honour ?program= (the Student Researcher
-          // Portal links here with it) and fall back to the profile department.
+          // Program / Department comes from the shared courses table (the same
+          // list as the register page and User Management).
           try {
-            const params = new URLSearchParams(window.location.search);
-            const fromQuery = params.get('program');
+            coursesData = await CPRICourses.load();
+          } catch { /* the picker shows the load error itself */ }
+
+          // Honour ?program= (the Student Researcher Portal links here with it);
+          // otherwise a student starts with the course saved on their account,
+          // which they can change. Every other role chooses it themselves.
+          try {
+            const fromQuery = new URLSearchParams(window.location.search).get('program');
             if (fromQuery) {
-              programPrefill = fromQuery;
-            } else {
+              programPrefill = prefillFromName(fromQuery);
+            } else if (currentRole === 'student_researcher') {
               const profRes = await fetch('/api/auth/profile').catch(() => null);
-              if (profRes && profRes.ok) {
-                const prof = (await profRes.json()).profile;
-                // A student's course (set at registration) comes first.
-                programPrefill = (prof && (prof.course || prof.department || prof.program)) || '';
-              }
+              if (profRes && profRes.ok) programPrefill = prefillFromProfile((await profRes.json()).profile);
             }
           } catch { /* prefill is a convenience, never a blocker */ }
 

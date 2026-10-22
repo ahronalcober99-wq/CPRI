@@ -15,6 +15,8 @@
      placeholder  trigger text while empty (default "Select course")
      name         hidden input name for the id (default none)
      otherName    text input name for the "Other" value (default none)
+     otherPlaceholder  placeholder of the "Other" text field (default "Type your course")
+     otherLabel   accessible name of the "Other" text field
      highlightEmpty  gold border while empty (admin table: "no course yet")
      compact      smaller trigger for table cells
      ariaLabel    accessible name of the trigger
@@ -114,6 +116,8 @@
       placeholder: 'Select course',
       name: '',
       otherName: '',
+      otherPlaceholder: 'Type your course',
+      otherLabel: 'Your course (please specify)',
       highlightEmpty: false,
       compact: false,
       ariaLabel: 'Course',
@@ -129,7 +133,7 @@
         <span class="cp-label"></span><i class="bi bi-chevron-down cp-caret" aria-hidden="true"></i>
       </button>
       ${o.name ? `<input type="hidden" name="${esc(o.name)}" class="cp-value">` : ''}
-      <input type="text" class="cp-other" ${o.otherName ? `name="${esc(o.otherName)}"` : ''} maxlength="180" placeholder="Type your course" aria-label="Your course (please specify)" hidden>`;
+      <input type="text" class="cp-other" ${o.otherName ? `name="${esc(o.otherName)}"` : ''} maxlength="180" placeholder="${esc(o.otherPlaceholder)}" aria-label="${esc(o.otherLabel)}" hidden>`;
     const trigger = root.querySelector('.cp-trigger');
     const labelEl = root.querySelector('.cp-label');
     const hidden = root.querySelector('.cp-value');

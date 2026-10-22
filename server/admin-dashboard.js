@@ -14,6 +14,7 @@ import { notify } from './notifications.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
 import { cleanupEventImages, EVENT_IMAGE_FORMAT_ERROR, MAX_EVENT_IMAGE_SIZE, isEventImageObjectId, normalizeEventImage, validateEventImage } from './event-image-utils.js';
 import { listAllSubmissions } from './lib/submission-index.js';
+import { loadSchoolYears, normalizeSchoolYear, offeredSchoolYears } from './lib/school-years.js';
 import { fromClassicSubmission, fromModuleSubmission, publishSubmission } from './lib/repository-publishing.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -259,6 +260,9 @@ function submissionRow(s) {
     author: s.authors || s.studentName || 'Unknown',
     department: s.program || 'General',
     year: yearOfRecord(s.school_year, s.created_at),
+    // The two fields as recorded (blank stays blank), for the Submissions table.
+    program: s.program || '',
+    schoolYear: s.school_year || '',
     status: s.status,
     statusLabel: s.statusLabel || s.status,
     stage: s.stage,
@@ -544,10 +548,21 @@ router.get('/impact-dashboard', requireAdmin, async (req, res) => {
     // The page's filters, applied to the merged list (they used to be SQL
     // against the classic table only).
     const allSubs = merged.map(s => ({ ...s, schoolYear: s.school_year || '' }));
+    // Older rows may hold "2025-2026" (hyphen); the form now stores "2025–2026".
+    // Both are the same school year for filtering and for the dropdown.
+    const schoolYearKey = (v) => normalizeSchoolYear(v) || String(v || '');
+    const yearConfig = await loadSchoolYears({ all }).catch(() => null);
+    const academicYears = new Map();
+    for (const y of yearConfig ? offeredSchoolYears(yearConfig) : []) academicYears.set(y.label, y.label);
+    for (const s of allSubs) {
+      if (s.schoolYear && !academicYears.has(schoolYearKey(s.schoolYear))) {
+        academicYears.set(schoolYearKey(s.schoolYear), normalizeSchoolYear(s.schoolYear) || s.schoolYear);
+      }
+    }
     const fromTime = from ? toDate(String(from)) : null;
     const toTime = to ? toDate(String(to) + 'T23:59:59') : null;
     const subs = allSubs.filter(s => {
-      if (year && s.schoolYear !== String(year)) return false;
+      if (year && schoolYearKey(s.schoolYear) !== schoolYearKey(year)) return false;
       if (department && s.program !== String(department)) return false;
       if (category && s.category !== String(category)) return false;
       if (adviser && s.adviser !== String(adviser)) return false;
@@ -648,7 +663,7 @@ router.get('/impact-dashboard', requireAdmin, async (req, res) => {
         timestamp: l.timestamp ? new Date(l.timestamp).toLocaleString() : ''
       })),
       filters: {
-        academicYears: [...new Set(allSubs.map(s => s.schoolYear).filter(Boolean))].sort().reverse(),
+        academicYears: [...academicYears.values()].sort().reverse(),
         departments: [...new Set(allSubs.map(s => s.program).filter(Boolean))].sort(),
         categories: [...new Set(allSubs.map(s => s.category).filter(Boolean))].sort(),
         advisers: [...new Set(allSubs.map(s => s.adviser).filter(Boolean))].sort()

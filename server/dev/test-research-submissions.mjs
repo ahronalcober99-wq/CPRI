@@ -151,8 +151,22 @@ function account(role, overrides = {}) {
   return user;
 }
 
+// The shared `courses` table the Program or Department dropdown reads. POSTs
+// are validated against it, so every program a test submits is seeded here.
+const SEEDED_COURSES = [
+  ['BS Biology', 'College of Arts and Sciences'],
+  ['BS Information Technology', 'College of Computer Studies'],
+  ['CPRI', 'Research Office'],
+  ['CAS', 'College of Arts and Sciences'],
+  ['BSIT', 'College of Computer Studies'],
+  ['P', 'Test College']
+];
+
 async function startModule({ uploadDir, notify, sendEmail, storage } = {}) {
   const store = fakeStore();
+  SEEDED_COURSES.forEach(([name, department], i) => {
+    store.rowsOf('courses').push({ id: i + 1, name, department, is_active: 1, sort_order: i + 1 });
+  });
   const inApp = [];
   const emails = [];
   const dir = uploadDir || await mkdtemp(join(tmpdir(), 'research-subs-'));
@@ -2057,6 +2071,244 @@ test('the status history names who submitted, never the raw account id', async (
     old.changed_by_name = '';
     const again = await module.json(await module.call(student, `/${created.id}`));
     assert.equal(again.body.submission.statusHistory[0].changed_by_name, 'Songco, Mary Joy A.');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+// ===========================================================================
+//  Program or Department + School Year: listed values, validated on the server
+// ===========================================================================
+const FACULTY_INITIAL_FORM = {
+  stage: 'initial',
+  title: 'Faculty working title',
+  authors: 'F. Author',
+  program: 'BS Information Technology',
+  category: 'Education',
+  research_type: 'faculty_research',
+  school_year: '2026–2027',
+  semester: '2nd'
+};
+const FACULTY_INITIAL_FILES = { manuscript_docx: docx('m.docx'), manuscript_pdf: pdf('m.pdf') };
+
+const postSubmission = (module, as, fields, files) => module.call(as, '/', {
+  method: 'POST',
+  body: uploadForm(files, fields)
+});
+
+test('school year helpers: current + previous 4, new year starts in June, formats normalise', async () => {
+  const {
+    loadSchoolYears, normalizeSchoolYear, currentStartYear, offeredSchoolYears
+  } = await import('../lib/school-years.js');
+
+  assert.equal(normalizeSchoolYear('2026-2027'), '2026–2027');
+  assert.equal(normalizeSchoolYear(' 2026 – 2027 '), '2026–2027');
+  assert.equal(normalizeSchoolYear('2026-2028'), null, 'not consecutive');
+  assert.equal(normalizeSchoolYear('SY 2026'), null);
+
+  assert.equal(currentStartYear(new Date(2026, 4, 31)), 2025, 'May is still the old school year');
+  assert.equal(currentStartYear(new Date(2026, 5, 1)), 2026, 'June starts the new one');
+
+  const none = async () => [];
+  const config = await loadSchoolYears({ all: none, now: new Date(2026, 9, 22) });
+  assert.equal(config.current, '2026–2027');
+  assert.deepEqual(config.years.map(y => y.label),
+    ['2026–2027', '2025–2026', '2024–2025', '2023–2024', '2022–2023']);
+  assert.deepEqual(config.years.filter(y => y.isCurrent).map(y => y.label), ['2026–2027']);
+
+  // An admin changing the start month moves "current"; adding / hiding years works.
+  const tables = {
+    app_settings: [{ setting_key: 'school_year_start_month', setting_value: '11' }],
+    school_years: [
+      { label: '2030–2031', is_active: 1 },   // added
+      { label: '2025–2026', is_active: 0 }    // generated year, hidden
+    ]
+  };
+  const all = async (sql) => tables[sql.match(/FROM (\w+)/)[1]] || [];
+  const custom = await loadSchoolYears({ all, now: new Date(2026, 9, 22) });
+  assert.equal(custom.current, '2025–2026', 'in October the school year has not started yet if it starts in November');
+  const offered = offeredSchoolYears(custom).map(y => y.label);
+  assert.ok(offered.includes('2030–2031'));
+  assert.ok(!offered.includes('2025–2026'), 'a hidden year is not offered');
+});
+
+test('form-config gives the School Year dropdown with the current year marked and selected', async () => {
+  const module = await startModule();
+  try {
+    const { loadSchoolYears } = await import('../lib/school-years.js');
+    const current = (await loadSchoolYears({ all: async () => [] })).current;
+
+    for (const role of ['student_researcher', 'non_teaching_researcher', 'presenter']) {
+      const cfg = await module.json(await module.call(account(role), '/form-config'));
+      for (const stage of cfg.body.stages) {
+        const field = stage.fields.find(f => f.key === 'school_year');
+        assert.equal(field.type, 'school_year');
+        assert.equal(field.required, true);
+        assert.equal(field.options.length, 5);
+        assert.equal(field.default, current);
+        assert.deepEqual(field.options.filter(o => o.isCurrent).map(o => o.label), [`${current} (current)`]);
+        assert.equal(stage.fields.find(f => f.key === 'program').type, 'program');
+      }
+    }
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('a student and a faculty submission save the listed program and school year in the same columns', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    // Old-style hyphen input and different letter case still land as the listed values.
+    const s = await module.json(await postSubmission(module, student,
+      { ...STUDENT_INITIAL_FORM, program: 'bs biology', school_year: '2026-2027' }, STUDENT_INITIAL_FILES));
+    assert.equal(s.status, 201, JSON.stringify(s.body));
+    assert.equal(s.body.submission.program, 'BS Biology');
+    assert.equal(s.body.submission.school_year, '2026–2027');
+
+    const faculty = account('faculty_researcher');
+    const f = await module.json(await postSubmission(module, faculty, FACULTY_INITIAL_FORM, FACULTY_INITIAL_FILES));
+    assert.equal(f.status, 201, JSON.stringify(f.body));
+    assert.equal(f.body.submission.program, 'BS Information Technology');
+    assert.equal(f.body.submission.school_year, '2026–2027');
+
+    const row = module.store.rowsOf('research_submissions').find(r => r.id === f.body.submission.id);
+    assert.equal(row.program, 'BS Information Technology');
+    assert.equal(row.school_year, '2026–2027');
+
+    // The detail the pages read returns them untouched.
+    const detail = await module.json(await module.call(faculty, `/${f.body.submission.id}`));
+    assert.equal(detail.body.submission.program, 'BS Information Technology');
+    assert.equal(detail.body.submission.school_year, '2026–2027');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('the server refuses a program or school year that is not on the lists', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const attempt = async (patch) => module.json(await postSubmission(module, student,
+      { ...STUDENT_INITIAL_FORM, ...patch }, STUDENT_INITIAL_FILES));
+
+    const unlistedProgram = await attempt({ program: 'Made Up Program' });
+    assert.equal(unlistedProgram.status, 400);
+    assert.equal(unlistedProgram.body.field, 'program');
+
+    for (const school_year of ['1999–2000', '2026–2028', 'last year', '2031–2032']) {
+      const res = await attempt({ school_year });
+      assert.equal(res.status, 400, school_year);
+      assert.equal(res.body.field, 'school_year');
+    }
+
+    // Both stay required.
+    assert.equal((await attempt({ program: '' })).body.field, 'program');
+    assert.equal((await attempt({ school_year: '' })).body.field, 'school_year');
+
+    // A deactivated course is no longer a listed choice...
+    const biology = module.store.rowsOf('courses').find(c => c.name === 'BS Biology');
+    biology.is_active = 0;
+    assert.equal((await attempt({ program: 'BS Biology' })).status, 400);
+    biology.is_active = 1;
+
+    // ...and neither is a school year an admin hid.
+    module.store.rowsOf('school_years').push({ label: '2025–2026', is_active: 0 });
+    assert.equal((await attempt({ school_year: '2025–2026' })).status, 400);
+
+    assert.equal(module.store.rowsOf('research_submissions').length, 0, 'nothing was saved');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('"Other (please specify)" stores the typed program; an added school year is accepted', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const withOther = (patch) => postSubmission(module, student,
+      { ...STUDENT_INITIAL_FORM, program_mode: 'other', ...patch }, STUDENT_INITIAL_FILES);
+
+    const ok = await module.json(await withOther({ program: '  BS Marine   Biology ' }));
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+    assert.equal(ok.body.submission.program, 'BS Marine Biology');
+
+    // Typing a listed name under Other still stores the listed course.
+    const listed = await module.json(await withOther({ program: 'bs biology' }));
+    assert.equal(listed.body.submission.program, 'BS Biology');
+
+    assert.equal((await module.json(await withOther({ program: 'X' }))).status, 400);
+    assert.equal((await module.json(await withOther({ program: 'Y'.repeat(181) }))).status, 400);
+
+    module.store.rowsOf('school_years').push({ label: '2031–2032', is_active: 1 });
+    const added = await module.json(await withOther({ school_year: '2031-2032' }));
+    assert.equal(added.status, 201, JSON.stringify(added.body));
+    assert.equal(added.body.submission.school_year, '2031–2032');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('a draft may leave the two fields empty, but still cannot hold an unlisted value', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const draft = (patch) => postSubmission(module, student,
+      { ...STUDENT_INITIAL_FORM, as_draft: '1', ...patch }, {});
+    const empty = await module.json(await draft({ program: '', school_year: '' }));
+    assert.equal(empty.status, 201, JSON.stringify(empty.body));
+    assert.equal(empty.body.submission.status, 'draft');
+    assert.equal(empty.body.submission.program, '');
+
+    assert.equal((await module.json(await draft({ program: 'Nope' }))).status, 400);
+    assert.equal((await module.json(await draft({ school_year: '1990–1991' }))).status, 400);
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('older free-text submissions keep working and show as they are; edits are validated', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const created = await createStudentInitial(module, student);
+    // Simulate a row saved before the dropdowns: free text in both columns.
+    const row = module.store.rowsOf('research_submissions').find(r => r.id === created.id);
+    row.program = 'Comp Sci (old entry)';
+    row.school_year = 'SY 2019-20';
+
+    const list = await module.json(await module.call(student, '/'));
+    const listed = list.body.submissions.find(x => x.id === created.id);
+    assert.equal(listed.program, 'Comp Sci (old entry)');
+    assert.equal(listed.school_year, 'SY 2019-20');
+    const detail = await module.json(await module.call(student, `/${created.id}`));
+    assert.equal(detail.body.submission.program, 'Comp Sci (old entry)');
+    assert.equal(detail.body.submission.school_year, 'SY 2019-20');
+
+    const put = (body) => module.call(student, `/${created.id}`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+    });
+    // Saving the old values back unchanged is fine, e.g. while fixing the title.
+    const keep = await put({ title: 'Renamed', program: 'Comp Sci (old entry)', school_year: 'SY 2019-20' });
+    assert.equal(keep.status, 200);
+    assert.equal(row.program, 'Comp Sci (old entry)');
+
+    // Changing them means choosing from the lists.
+    const bad = await module.json(await put({ school_year: 'SY 2020-21' }));
+    assert.equal(bad.status, 400);
+    assert.equal(bad.body.field, 'school_year');
+    assert.equal((await put({ program: 'Another free text' })).status, 400);
+    assert.equal((await put({ program: '' })).status, 400, 'required once submitted');
+    const good = await put({ program: 'BS Biology', school_year: '2025-2026' });
+    assert.equal(good.status, 200);
+    assert.equal(row.program, 'BS Biology');
+    assert.equal(row.school_year, '2025–2026');
   } finally {
     await module.close();
     await module.cleanup();

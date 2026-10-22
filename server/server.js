@@ -26,6 +26,8 @@ import { ensureBackupSchema, startBackupScheduler } from './lib/backup-service.j
 import { researchersRouter } from './researchers.js';
 import { coursesRouter } from './courses.js';
 import { ensureCoursesSchema } from './lib/courses.js';
+import { schoolYearsRouter } from './school-years.js';
+import { ensureSchoolYearsSchema } from './lib/school-years.js';
 import { eventsModuleRouter, ensureEventsSchema } from './events-module.js';
 import { innovationExtensionRouter } from './innovation-extension.js';
 import { researchSubmissionsRouter, ensureResearchSubmissionsSchema } from './research-submissions.js';
@@ -247,6 +249,7 @@ app.use('/api/gala', galaRouter);
 app.use('/api/admin/backups', backupsRouter);
 app.use('/api/researchers', researchersRouter);
 app.use('/api/courses', coursesRouter);
+app.use('/api/school-years', schoolYearsRouter);
 app.use('/api/events-module', eventsModuleRouter);
 // CPRI research submission module.
 app.use('/api/research-submissions', researchSubmissionsRouter);
@@ -733,6 +736,13 @@ try {
   await ensureCoursesSchema();
 } catch (err) {
   console.error('[courses] schema ensure failed:', err.message);
+}
+
+// The School Year list (admin additions / hidden years) and the start-month setting.
+try {
+  await ensureSchoolYearsSchema();
+} catch (err) {
+  console.error('[school-years] schema ensure failed:', err.message);
 }
 
 try {

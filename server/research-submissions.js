@@ -46,6 +46,7 @@ import { createResearchStorage } from './lib/research-storage.js';
 import { fromModuleSubmission, syncSubmissionVisibility } from './lib/repository-publishing.js';
 import { profileOf, recommendationsFor } from './lib/recommendations.js';
 import { courseFields } from './lib/courses.js';
+import { loadSchoolYears, offeredSchoolYears, resolveListedFields } from './lib/school-years.js';
 import { CATEGORY_TYPES } from './repository.js';
 // The record shape every reader of a submission shares, plus the status
 // labels. A monitoring dashboard reads BOTH stores, so a classic row and a
@@ -445,6 +446,24 @@ router.get('/form-config', requireAuth, async (req, res) => {
     return res.status(403).json({ error: 'Your account type cannot submit research through this module.' });
   }
 
+  // School Year is a dropdown of the admin-managed list (current year + the 4
+  // before it, plus additions). The page renders `options` and pre-selects
+  // `default`; POST re-validates whatever comes back.
+  const schoolYears = await loadSchoolYears({ all });
+  const schoolYearOptions = offeredSchoolYears(schoolYears).map(y => ({
+    value: y.label,
+    label: y.isCurrent ? `${y.label} (current)` : y.label,
+    isCurrent: y.isCurrent
+  }));
+  const describeFormField = (field) => {
+    const described = describeField(field);
+    if (field.type === 'school_year') {
+      described.options = schoolYearOptions;
+      described.default = schoolYears.current;
+    }
+    return described;
+  };
+
   // Decide which stage(s) the caller can see. Presenters see no Initial tab.
   const result = {
     role,
@@ -456,7 +475,7 @@ router.get('/form-config', requireAuth, async (req, res) => {
     result.stages.push({
       stage: 'initial',
       stageLabel: 'Initial Submission',
-      fields: config.initial.fields.map(describeField),
+      fields: config.initial.fields.map(describeFormField),
       slots: config.initial.slots.map(describeSlot)
     });
   }
@@ -464,7 +483,7 @@ router.get('/form-config', requireAuth, async (req, res) => {
     result.stages.push({
       stage: 'final',
       stageLabel: 'Final Submission',
-      fields: config.final.fields.map(describeField),
+      fields: config.final.fields.map(describeFormField),
       slots: config.final.slots.map(describeSlot)
     });
   }
@@ -549,6 +568,12 @@ router.post(
       if (problem) return res.status(400).json(problem);
     }
 
+    // Program or Department and School Year come from shared lists (courses /
+    // school years), so the values are checked against them here — the form's
+    // dropdowns are a convenience, not the rule. A draft may leave them empty.
+    const listed = await resolveListedFields({ body, all });
+    if (listed.error) return res.status(400).json({ error: listed.error, field: listed.field });
+
     // Build the submission record. Ignore client owner_id / status.
     const now = new Date().toISOString();
     const stageDefaults = {
@@ -564,12 +589,12 @@ router.post(
       stage: requestedStage,
       title:            String(body.title || '').trim(),
       authors:          String(body.authors || '').trim(),
-      program:          String(body.program || '').trim(),
+      program:          listed.values.program,
       institution:      String(body.institution || '').trim(),
       nationality:      String(body.nationality || '').trim(),
       category:         String(body.category || '').trim(),
       research_type:    String(body.research_type || '').trim(),
-      school_year:      String(body.school_year || '').trim(),
+      school_year:      listed.values.school_year,
       semester:         String(body.semester || '').trim(),
       adviser_id:       body.adviser ? String(body.adviser).trim() : null,
       facilitator_id:   body.facilitator ? String(body.facilitator).trim() : null,
@@ -1014,6 +1039,21 @@ router.put('/:id', requireAuth, async (req, res) => {
 
   if (Object.keys(updates).length === 0) {
     return res.status(400).json({ error: 'No valid changes to save.' });
+  }
+
+  // The two listed fields get the same check as on create. A value already on
+  // the record (an older free-text one) may be sent back unchanged.
+  const listedKeys = ['program', 'school_year'].filter(k => k in updates);
+  if (listedKeys.length) {
+    const listed = await resolveListedFields({ body, existing: sub, keys: listedKeys, all });
+    if (listed.error) return res.status(400).json({ error: listed.error, field: listed.field });
+    // Both stay required once the record has left draft.
+    const blank = listedKeys.find(k => !listed.values[k]);
+    if (blank && sub.status !== 'draft') {
+      const label = FORM_CONFIG[user.role][sub.stage].fields.find(f => f.key === blank).label;
+      return res.status(400).json({ error: `Required field is missing: ${label}.`, field: blank });
+    }
+    Object.assign(updates, listed.values);
   }
 
   updates.updated_at = new Date().toISOString();

@@ -25,6 +25,7 @@
     "test:uploads": "node --test server/dev/test-upload-safety.mjs",
     "test:gap": "node --test server/dev/test-gap-features.mjs",
     "test:research-submissions": "node --test server/dev/test-research-submissions.mjs",
+    "test:school-years": "node --experimental-test-module-mocks --test server/dev/test-school-years-admin.mjs",
     "test:legacy-migration": "node --test server/dev/test-legacy-migration.mjs",
     "test:research-submissions:db": "node --test --test-force-exit server/dev/test-research-submissions-db.mjs",
     "check:research-submissions-doc": "node docs/research-submissions/check-doc.js",
