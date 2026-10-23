@@ -24,6 +24,7 @@
     "test:repository": "node --test server/dev/test-repository-delete.mjs server/dev/test-repository-files.mjs",
     "test:uploads": "node --test server/dev/test-upload-safety.mjs",
     "test:gap": "node --test server/dev/test-gap-features.mjs",
+    "test:gala": "node --test --test-force-exit server/dev/test-gala-final-paper.mjs",
     "test:research-submissions": "node --test server/dev/test-research-submissions.mjs",
     "test:school-years": "node --experimental-test-module-mocks --test server/dev/test-school-years-admin.mjs",
     "test:legacy-migration": "node --test server/dev/test-legacy-migration.mjs",

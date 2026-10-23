@@ -6,18 +6,8 @@
   <title>Research Gala Submission | CPRI</title>
   <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
   <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/gala.css">
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
-  <style>
-    .gala-status { display:inline-block; padding:2px 10px; border-radius:999px; font-size:.75rem; font-weight:600; }
-    .gala-status[data-status="submitted"] { background:#e0e7ff; color:#3730a3; }
-    .gala-status[data-status="under_review"] { background:#fef3c7; color:#92400e; }
-    .gala-status[data-status="accepted"] { background:#d1fae5; color:#065f46; }
-    .gala-status[data-status="rejected"] { background:#fee2e2; color:#991b1b; }
-    [data-theme="dark"] .gala-status[data-status="submitted"] { background:#312e81; color:#e0e7ff; }
-    [data-theme="dark"] .gala-status[data-status="under_review"] { background:#78350f; color:#fef3c7; }
-    [data-theme="dark"] .gala-status[data-status="accepted"] { background:#064e3b; color:#d1fae5; }
-    [data-theme="dark"] .gala-status[data-status="rejected"] { background:#7f1d1d; color:#fee2e2; }
-  </style>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
@@ -27,93 +17,166 @@
     <section class="page-header">
       <div class="container">
         <h1>Research Gala Submission</h1>
-        <p>Present your research at the annual Research Gala.</p>
+        <p>Submit the final paper you will present at the Research Gala.</p>
       </div>
     </section>
 
     <section class="section">
       <div class="container">
-        <div class="form-message" id="message"></div>
+        <div class="gx-wrap">
+          <div class="form-message" id="message" role="alert"></div>
+          <div id="loading" class="empty-state">Loading…</div>
+          <div id="blocked" class="empty-state" style="display:none;"></div>
 
-        <div id="loading" class="empty-state">Loading…</div>
+          <!-- Shown when the presenter already has an unfinished entry. -->
+          <div id="resume" class="card" style="display:none;">
+            <h3 style="margin-top:0;">Pick up where you left off</h3>
+            <p class="form-note">You have an entry in progress. Open it to continue, or start a new one.</p>
+            <div id="resume-list"></div>
+            <div style="margin-top:14px;">
+              <button type="button" class="btn btn-soft" id="resume-new"><i class="bi bi-plus-lg"></i> Start a new submission</button>
+            </div>
+          </div>
 
-        <div id="not-logged" class="empty-state" style="display:none;">
-          Please <a href="login.html">log in</a> to submit a Research Gala entry.
-        </div>
+          <div id="app" style="display:none;">
+            <p><a href="presenter-dashboard.html">&larr; My Gala submissions</a></p>
 
-        <div id="form-area" style="display:none;max-width:900px;">
-          <p><a href="presenter-dashboard.html">&larr; My Gala submissions</a></p>
+            <ol class="gx-stepper" id="stepper" aria-label="Submission steps">
+              <li data-step="1"><button type="button" data-goto="1"><span class="gx-dot">1</span><span class="gx-step-name">Presentation</span><span class="gx-step-sub">Details of your research</span></button></li>
+              <li data-step="2"><button type="button" data-goto="2"><span class="gx-dot">2</span><span class="gx-step-name">Documents</span><span class="gx-step-sub">Attach required files</span></button></li>
+              <li data-step="3"><button type="button" data-goto="3"><span class="gx-dot">3</span><span class="gx-step-name">Review and submit</span><span class="gx-step-sub">Check, confirm, send</span></button></li>
+            </ol>
 
-          <div class="card">
-            <h3 style="margin-top:0;" id="form-title">New Research Gala Submission</h3>
-            <form id="gala-form">
-              <div class="grid grid-2" style="gap:16px;">
-                <div class="form-group">
-                  <label for="f-event">Research Gala event</label>
-                  <select id="f-event" name="eventId">
-                    <option value="">— Not linked to an event —</option>
-                  </select>
-                  <p class="form-note" id="event-note"></p>
-                </div>
-                <div class="form-group">
-                  <label for="f-type">Presentation type *</label>
-                  <select id="f-type" name="presentationType" required>
-                    <option value="oral">Oral Presentation</option>
-                    <option value="poster">Poster Presentation</option>
-                    <option value="both">Oral and Poster</option>
-                  </select>
-                </div>
-                <div class="form-group" style="grid-column:1 / -1;">
-                  <label for="f-title">Research title *</label>
-                  <input type="text" id="f-title" name="title" maxlength="255" required>
-                </div>
-                <div class="form-group" style="grid-column:1 / -1;">
-                  <label for="f-authors">Author/s *</label>
-                  <input type="text" id="f-authors" name="authors" maxlength="255" required placeholder="Separate multiple authors with commas">
-                </div>
-                <div class="form-group">
-                  <label for="f-institution">Institution / Affiliation *</label>
-                  <input type="text" id="f-institution" name="institution" maxlength="180" required>
-                </div>
-                <div class="form-group">
-                  <label for="f-nationality">Nationality *</label>
-                  <input type="text" id="f-nationality" name="nationality" maxlength="80" required>
-                </div>
-                <div class="form-group">
-                  <label for="f-contact">Contact number</label>
-                  <input type="tel" id="f-contact" name="contactNumber" maxlength="60" placeholder="+63 912 345 6789">
-                </div>
-                <div class="form-group">
-                  <label for="f-strand">Strand / Track</label>
-                  <input type="text" id="f-strand" name="strand" maxlength="120" placeholder="e.g. Education, Health">
-                </div>
-                <div class="form-group" style="grid-column:1 / -1;">
-                  <label for="f-keywords">Keywords</label>
-                  <input type="text" id="f-keywords" name="keywords" maxlength="255" placeholder="Comma-separated keywords">
-                </div>
-                <div class="form-group" style="grid-column:1 / -1;">
-                  <label for="f-interests">Research interests</label>
-                  <textarea id="f-interests" name="researchInterests" rows="2" maxlength="500" placeholder="Your broader research interests"></textarea>
-                </div>
-                <div class="form-group" style="grid-column:1 / -1;">
-                  <label for="f-abstract">Abstract *</label>
-                  <textarea id="f-abstract" name="abstractText" rows="8" required placeholder="Paste your abstract (aim for 200–300 words)"></textarea>
-                  <p class="form-note">Your entry starts as <strong>Submitted</strong> and is then reviewed by the organizers.</p>
-                </div>
-                <div class="form-group" style="grid-column:1 / -1;">
-                  <label for="f-file">Abstract file (optional)</label>
-                  <input type="file" id="f-file" name="abstractFile" accept=".pdf,.doc,.docx,.odt,.rtf,.txt,.png,.jpg,.jpeg,.webp">
-                  <p class="form-note">PDF, Word, OpenDocument, text or image — up to 15 MB.</p>
-                </div>
-              </div>
+            <div class="card">
+              <div id="problems" class="gx-problems" role="alert" hidden></div>
 
-              <div id="existing-file" style="display:none;margin-top:12px;"></div>
+              <form id="gala-form" novalidate autocomplete="off">
+                <!-- ===== Step 1: Presentation details ===== -->
+                <section class="gx-panel" data-step="1" aria-labelledby="h-step1">
+                  <h3 id="h-step1" tabindex="-1">Step 1 &middot; Presentation details</h3>
+                  <p class="form-note">Fields marked <span class="gx-req">*</span> are required. Use <strong>Save draft</strong> at any time and finish later from My Account.</p>
 
-              <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;">
-                <button type="submit" class="btn btn-primary" id="submit-btn">Submit entry</button>
-                <a class="btn btn-navy" href="presenter-dashboard.html">My submissions</a>
-              </div>
-            </form>
+                  <div class="gx-grid">
+                    <div class="form-group gx-full" data-field="title">
+                      <label for="f-title">Title of Research <span class="gx-req">*</span></label>
+                      <input type="text" id="f-title" maxlength="255">
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group gx-full" data-field="presenters">
+                      <label for="f-presenters">Presenter(s) <span class="gx-req">*</span></label>
+                      <div class="gx-tags" id="t-presenters"><input type="text" id="f-presenters" placeholder="Type a name, press Enter"></div>
+                      <p class="gx-hint">You are added automatically. Add anyone presenting with you.</p>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group gx-full" data-field="coAuthors">
+                      <label for="f-coauthors">Co-author(s)</label>
+                      <div class="gx-tags" id="t-coauthors"><input type="text" id="f-coauthors" placeholder="Type a name, press Enter"></div>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group" data-field="program">
+                      <label for="f-program-slot">Program or Department <span class="gx-req">*</span></label>
+                      <div id="f-program-slot"></div>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group" data-field="category">
+                      <label for="f-category">Research Category <span class="gx-req">*</span></label>
+                      <select id="f-category"><option value="">Select category</option></select>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group" data-field="presentationType">
+                      <label id="l-format">Presentation format <span class="gx-req">*</span></label>
+                      <div class="gx-choices" role="radiogroup" aria-labelledby="l-format" id="f-format"></div>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group" data-field="adviser">
+                      <label for="f-adviser">Adviser <span class="gx-req">*</span></label>
+                      <input type="text" id="f-adviser" maxlength="160">
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group" data-field="schoolYear">
+                      <label for="f-schoolyear">School Year <span class="gx-req">*</span></label>
+                      <select id="f-schoolyear"><option value="">Select school year</option></select>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group" data-field="semester">
+                      <label for="f-semester">Semester <span class="gx-req">*</span></label>
+                      <select id="f-semester"><option value="">Select semester</option></select>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group gx-full" data-field="abstract">
+                      <label for="f-abstract">Abstract <span class="gx-req">*</span></label>
+                      <textarea id="f-abstract" rows="8" aria-describedby="abstract-counter"></textarea>
+                      <div class="gx-counter" id="abstract-counter" aria-live="polite">0 / 250 words</div>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group gx-full" data-field="keywords">
+                      <label for="f-keywords">Keywords <span class="gx-req">*</span></label>
+                      <div class="gx-tags" id="t-keywords"><input type="text" id="f-keywords" placeholder="Type a keyword, press Enter"></div>
+                      <div class="gx-counter" id="keywords-counter" aria-live="polite">0 of 3&ndash;5 keywords</div>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group gx-full" data-field="schedulePreference">
+                      <label id="l-pref">Schedule preference <span class="form-note">(optional)</span></label>
+                      <div class="gx-choices" role="radiogroup" aria-labelledby="l-pref" id="f-pref"></div>
+                      <p class="gx-hint">This is only a preference. The organizers set the final schedule and it will appear on your account once announced.</p>
+                      <p class="gx-error"></p>
+                    </div>
+
+                    <div class="form-group gx-full" data-field="eventId" id="g-event" style="display:none;">
+                      <label for="f-event">Research Gala event <span class="form-note">(optional)</span></label>
+                      <select id="f-event"><option value="">Not linked to an event</option></select>
+                      <p class="gx-error"></p>
+                    </div>
+                  </div>
+                </section>
+
+                <!-- ===== Step 2: Required documents ===== -->
+                <section class="gx-panel" data-step="2" aria-labelledby="h-step2">
+                  <h3 id="h-step2" tabindex="-1">Step 2 &middot; Required documents</h3>
+                  <p class="form-note">PDF or Word files only, up to 20 MB each. Every document must be a different file.</p>
+                  <div class="gx-progress">
+                    <div class="gx-progress-text" id="docs-count" aria-live="polite">0 of 6 required documents attached</div>
+                    <div class="gx-bar" aria-hidden="true"><span id="docs-bar"></span></div>
+                  </div>
+                  <div class="gx-docs" id="docs"></div>
+                </section>
+
+                <!-- ===== Step 3: Review and submit ===== -->
+                <section class="gx-panel" data-step="3" aria-labelledby="h-step3">
+                  <h3 id="h-step3" tabindex="-1">Step 3 &middot; Review and submit</h3>
+                  <p class="form-note">Check everything below. Use <strong>Edit</strong> to change a section.</p>
+                  <div id="review"></div>
+                  <label class="gx-confirm" for="f-confirm">
+                    <input type="checkbox" id="f-confirm">
+                    <span>I confirm that the details and documents above are correct and that this is the final paper I will present at the Research Gala.</span>
+                  </label>
+                  <p class="gx-error" id="confirm-error" style="display:none;margin-top:8px;">Please tick the box to confirm before submitting.</p>
+                </section>
+
+                <div class="gx-actions">
+                  <div>
+                    <button type="button" class="btn btn-soft" id="btn-draft"><i class="bi bi-floppy"></i> Save draft</button>
+                    <span class="gx-saved" id="saved-note" aria-live="polite"></span>
+                  </div>
+                  <div class="gx-right">
+                    <button type="button" class="btn btn-navy" id="btn-back"><i class="bi bi-arrow-left"></i> Back</button>
+                    <button type="button" class="btn btn-primary" id="btn-next">Next <i class="bi bi-arrow-right"></i></button>
+                    <button type="button" class="btn btn-primary" id="btn-submit" style="display:none;"><i class="bi bi-send"></i> Submit final paper</button>
+                  </div>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>
@@ -122,151 +185,750 @@
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/course-picker.js"></script>
+  <script src="assets/js/gala-ui.js"></script>
   <script>
-    const message = document.getElementById('message');
-    const loading = document.getElementById('loading');
-    const notLogged = document.getElementById('not-logged');
-    const formArea = document.getElementById('form-area');
-    const form = document.getElementById('gala-form');
-    const eventSelect = document.getElementById('f-event');
-    const eventNote = document.getElementById('event-note');
-    const submitBtn = document.getElementById('submit-btn');
-    const existingFile = document.getElementById('existing-file');
+  (function () {
+    'use strict';
 
-    const ALLOWED_ROLES = ['presenter', 'student_researcher', 'faculty_researcher', 'non_teaching_researcher', 'adviser', 'admin'];
-    let editId = new URLSearchParams(location.search).get('edit');
-    let currentUser = null;
+    var esc = GalaUI.esc;
+    var $ = function (id) { return document.getElementById(id); };
 
+    var messageEl = $('message');
+    var els = {
+      loading: $('loading'), blocked: $('blocked'), resume: $('resume'), app: $('app'),
+      title: $('f-title'), adviser: $('f-adviser'), category: $('f-category'), schoolYear: $('f-schoolyear'),
+      semester: $('f-semester'), abstract: $('f-abstract'), event: $('f-event'),
+      abstractCounter: $('abstract-counter'), keywordsCounter: $('keywords-counter'),
+      docs: $('docs'), docsCount: $('docs-count'), docsBar: $('docs-bar'),
+      review: $('review'), confirm: $('f-confirm'), confirmError: $('confirm-error'),
+      problems: $('problems'), saved: $('saved-note'),
+      back: $('btn-back'), next: $('btn-next'), submit: $('btn-submit'), draft: $('btn-draft')
+    };
+
+    var cfg = null;          // GET /api/gala/config
+    var sub = null;          // the entry as the server last returned it (null until the first save)
+    var step = 1;
+    var maxStep = 1;         // furthest step the presenter has reached
+    var dirty = false;
+    var busy = false;
+    var coursesData = null;
+    var programPicker = null;
+    var tags = {};           // presenters, coAuthors, keywords
+
+    // ------------------------------------------------------------------
+    // Small helpers
+    // ------------------------------------------------------------------
     function showMsg(type, text) {
-      message.className = 'form-message ' + type;
-      message.textContent = text || '';
+      messageEl.className = 'form-message' + (type ? ' ' + type : '');
+      messageEl.textContent = text || '';
+      if (text) messageEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     }
 
-    function escapeHtml(s) {
-      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    async function api(method, url, body, isForm) {
+      var opts = { method: method, credentials: 'include', headers: {} };
+      if (body !== undefined) {
+        if (isForm) opts.body = body;
+        else { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+      }
+      var res;
+      try { res = await fetch(url, opts); }
+      catch (e) { return { ok: false, status: 0, data: { error: 'Could not reach the server. Check your connection and try again.' } }; }
+      var data = await res.json().catch(function () { return {}; });
+      return { ok: res.ok, status: res.status, data: data };
     }
 
-    // Events are optional; a failure to load them must not block the form.
-    async function loadEvents() {
-      try {
-        const res = await fetch('/api/events-module');
-        if (!res.ok) throw new Error('events unavailable');
-        const data = await res.json();
-        // Only Events-module rows can be linked: the server validates the id
-        // against events_module, so content-only events are left out here.
-        const events = (data.events || []).filter(e => e.source === 'module');
-        events.forEach(e => {
-          const opt = document.createElement('option');
-          opt.value = e.id;
-          opt.textContent = e.title + (e.dateTime ? ' — ' + String(e.dateTime).slice(0, 10) : '');
-          eventSelect.appendChild(opt);
+    function wordCount(text) {
+      return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function slotIcon(key) {
+      if (key === 'manuscript_pdf') return 'bi-file-earmark-pdf';
+      if (key === 'manuscript_docx') return 'bi-file-earmark-word';
+      return 'bi-file-earmark-text';
+    }
+
+    // ------------------------------------------------------------------
+    // Tag input (presenters, co-authors, keywords)
+    // ------------------------------------------------------------------
+    function TagInput(root, opts) {
+      var input = root.querySelector('input');
+      var list = [];
+      var self = {};
+
+      function render() {
+        root.querySelectorAll('.gx-tag').forEach(function (n) { n.remove(); });
+        list.forEach(function (text, i) {
+          var locked = opts.locked && text.toLowerCase() === opts.locked.toLowerCase();
+          var chip = document.createElement('span');
+          chip.className = 'gx-tag' + (locked ? ' is-locked' : '');
+          chip.innerHTML = '<span>' + esc(text) + '</span>' + (locked ? '' :
+            '<button type="button" aria-label="Remove ' + esc(text) + '" data-i="' + i + '">&times;</button>');
+          root.insertBefore(chip, input);
         });
-        eventNote.textContent = events.length
-          ? 'Pick the Research Gala this entry is for.'
-          : 'No events are published yet — you can still submit your entry and link it later.';
-      } catch {
-        eventNote.textContent = 'Could not load events right now — you can still submit your entry.';
+        if (opts.onChange) opts.onChange(list.slice());
       }
-    }
 
-    async function loadExisting() {
-      const res = await fetch('/api/gala/' + encodeURIComponent(editId));
-      const out = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(out.error || 'Submission not found.');
-      const s = out.submission;
-      document.getElementById('form-title').textContent = 'Edit Research Gala Submission';
-      submitBtn.textContent = 'Save changes';
-      const fields = {
-        eventId: 'f-event', presentationType: 'f-type', title: 'f-title', authors: 'f-authors',
-        institution: 'f-institution', nationality: 'f-nationality', contactNumber: 'f-contact',
-        strand: 'f-strand', keywords: 'f-keywords', researchInterests: 'f-interests', abstractText: 'f-abstract'
-      };
-      Object.entries(fields).forEach(([key, id]) => {
-        const el = document.getElementById(id);
-        if (el && s[key] !== undefined && s[key] !== null) el.value = s[key];
+      function add(raw) {
+        var parts = String(raw).split(/[,;\n]/);
+        var rejected = '';
+        parts.forEach(function (p) {
+          var text = p.replace(/\s+/g, ' ').trim();
+          if (!text) return;
+          if (list.some(function (t) { return t.toLowerCase() === text.toLowerCase(); })) return;
+          if (text.length > opts.maxLength) { rejected = 'Each entry must be ' + opts.maxLength + ' characters or fewer.'; return; }
+          if (list.length >= opts.max) { rejected = 'You can add at most ' + opts.max + '.'; return; }
+          list.push(text);
+          dirty = true;
+        });
+        input.value = '';
+        render();
+        if (rejected) setFieldError(opts.field, rejected);
+      }
+
+      root.addEventListener('click', function (e) {
+        var btn = e.target.closest('button[data-i]');
+        if (btn) {
+          list.splice(Number(btn.dataset.i), 1);
+          dirty = true;
+          render();
+          input.focus();
+        } else if (e.target === root) {
+          input.focus();
+        }
       });
-      const file = (s.files || [])[0];
-      if (file) {
-        existingFile.style.display = 'block';
-        existingFile.innerHTML = `<p class="form-note">Current file:
-          <a href="/api/gala/${encodeURIComponent(s.id)}/file/${encodeURIComponent(file.filename)}">${escapeHtml(file.originalName)}</a>
-          — uploading a new file replaces it.</p>`;
+      input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ',') {
+          e.preventDefault();
+          if (input.value.trim()) add(input.value);
+        } else if (e.key === 'Backspace' && !input.value && list.length) {
+          var last = list[list.length - 1];
+          if (!(opts.locked && last.toLowerCase() === opts.locked.toLowerCase())) { list.pop(); dirty = true; render(); }
+        }
+      });
+      input.addEventListener('input', function () { if (/[,;]/.test(input.value)) add(input.value); });
+      input.addEventListener('blur', function () { if (input.value.trim()) add(input.value); });
+
+      self.get = function () {
+        if (input.value.trim()) add(input.value);
+        return list.slice();
+      };
+      self.set = function (values) {
+        list = [];
+        (values || []).forEach(function (v) { if (v) list.push(v); });
+        render();
+      };
+      self.setLocked = function (name) { opts.locked = name; render(); };
+      return self;
+    }
+
+    // ------------------------------------------------------------------
+    // Errors
+    // ------------------------------------------------------------------
+    function clearErrors() {
+      document.querySelectorAll('.has-error').forEach(function (n) { n.classList.remove('has-error'); });
+      document.querySelectorAll('.gx-error').forEach(function (n) { if (n.id !== 'confirm-error') n.textContent = ''; });
+      els.confirmError.style.display = 'none';
+      if (programPicker) programPicker.setInvalid(false);
+      els.problems.hidden = true;
+      els.problems.innerHTML = '';
+    }
+
+    function setFieldError(field, message) {
+      // "doc_<slot>" is a problem with a document; anything else is a form field.
+      var wrap = field.indexOf('doc_') === 0
+        ? document.querySelector('[data-slot="' + field.slice(4) + '"]')
+        : document.querySelector('[data-field="' + field + '"]');
+      if (!wrap) return;
+      wrap.classList.add('has-error');
+      var err = wrap.querySelector('.gx-error');
+      if (err) err.textContent = message;
+      if (field === 'program' && programPicker) programPicker.setInvalid(true);
+    }
+
+    // Shows the server's problems for one step; returns how many there were.
+    function showProblems(problems, forStep) {
+      clearErrors();
+      var mine = (problems || []).filter(function (p) { return p.step === forStep; });
+      mine.forEach(function (p) { setFieldError(p.field, p.message); });
+      if (mine.length) {
+        var first = document.querySelector('.has-error');
+        if (first) {
+          first.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          var focusable = first.querySelector('input:not([type="file"]):not([type="radio"]), select, textarea, button.cp-trigger, [role="radiogroup"] input');
+          if (focusable) focusable.focus({ preventScroll: true });
+        }
       }
-      if (['accepted', 'rejected'].includes(s.status)) {
-        showMsg('error', 'This submission has already been decided and can no longer be edited.');
-        submitBtn.disabled = true;
+      return mine.length;
+    }
+
+    // ------------------------------------------------------------------
+    // Fields <-> entry
+    // ------------------------------------------------------------------
+    function radioValue(container) {
+      var checked = container.querySelector('input:checked');
+      return checked ? checked.value : '';
+    }
+
+    function programValue() {
+      if (!programPicker) return null;
+      var v = programPicker.getValue();
+      if (v.courseId === CPRICourses.OTHER) return { value: (v.courseOther || '').trim(), mode: 'other' };
+      var course = v.courseId != null && coursesData ? coursesData.byId.get(Number(v.courseId)) : null;
+      return { value: course ? course.name : '', mode: 'listed' };
+    }
+
+    function collect() {
+      var body = {
+        title: els.title.value,
+        presenters: tags.presenters.get(),
+        coAuthors: tags.coAuthors.get(),
+        category: els.category.value,
+        presentationType: radioValue($('f-format')),
+        adviser: els.adviser.value,
+        schoolYear: els.schoolYear.value,
+        semester: els.semester.value,
+        abstract: els.abstract.value,
+        keywords: tags.keywords.get(),
+        schedulePreference: radioValue($('f-pref')) || 'none',
+        // Resume lands on the furthest step reached, not the one last viewed.
+        step: Math.max(step, maxStep)
+      };
+      if (cfg.events.length) body.eventId = els.event.value;
+      // If the course list could not load, leave the stored program alone.
+      var program = programValue();
+      if (program) { body.program = program.value; body.programMode = program.mode; }
+      return body;
+    }
+
+    function selectOption(select, value) {
+      if (!value) { select.value = ''; return; }
+      if (![].some.call(select.options, function (o) { return o.value === value; })) {
+        // A value that is saved but no longer offered stays selectable, so
+        // opening and saving never silently drops it.
+        var opt = document.createElement('option');
+        opt.value = value; opt.textContent = value;
+        select.appendChild(opt);
+      }
+      select.value = value;
+    }
+
+    function fill(entry) {
+      els.title.value = entry.title || '';
+      tags.presenters.set(entry.presenters && entry.presenters.length ? entry.presenters : [cfg.presenterName]);
+      tags.coAuthors.set(entry.coAuthors || []);
+      selectOption(els.category, entry.category);
+      var fmt = document.querySelector('#f-format input[value="' + (entry.presentationType || '') + '"]');
+      if (fmt) fmt.checked = true;
+      els.adviser.value = entry.adviser || '';
+      selectOption(els.schoolYear, entry.schoolYear);
+      selectOption(els.semester, entry.semester);
+      els.abstract.value = entry.abstract || '';
+      tags.keywords.set(entry.keywords || []);
+      var pref = document.querySelector('#f-pref input[value="' + (entry.schedulePreference || 'none') + '"]');
+      if (pref) pref.checked = true;
+      selectOption(els.event, entry.eventId);
+      if (programPicker && entry.program) {
+        var match = coursesData && coursesData.active.find(function (c) { return c.name.toLowerCase() === entry.program.toLowerCase(); });
+        if (match) programPicker.setValue(match.id, '');
+        else programPicker.setValue(CPRICourses.OTHER, entry.program);
+      }
+      updateCounters();
+    }
+
+    function updateCounters() {
+      var n = wordCount(els.abstract.value);
+      var max = cfg.limits.abstractWordsMax;
+      els.abstractCounter.textContent = n + ' / ' + max + ' words';
+      els.abstractCounter.classList.toggle('is-over', n > max);
+      var k = tags.keywords.get().length;
+      els.keywordsCounter.textContent = k + ' of ' + cfg.limits.keywordsMin + '–' + cfg.limits.keywordsMax + ' keywords';
+      els.keywordsCounter.classList.toggle('is-over', k > cfg.limits.keywordsMax);
+    }
+
+    // ------------------------------------------------------------------
+    // Saving
+    // ------------------------------------------------------------------
+    function setBusy(on) {
+      busy = on;
+      [els.back, els.next, els.submit, els.draft].forEach(function (b) { b.disabled = on; });
+    }
+
+    function adopt(submission) {
+      sub = submission;
+      if (!new URLSearchParams(location.search).get('id')) {
+        history.replaceState(null, '', 'gala-form.html?id=' + encodeURIComponent(sub.id));
       }
     }
 
-    (async () => {
+    // Creates the draft the first time something needs a home (a save or an upload).
+    async function ensureDraft() {
+      if (sub) return { ok: true };
+      var res = await api('POST', '/api/gala', collect());
+      if (!res.ok) return res;
+      adopt(res.data.submission);
+      dirty = false;
+      return { ok: true, data: res.data };
+    }
+
+    // Saves the fields. Returns { ok, problems }.
+    async function save() {
+      if (!sub) {
+        var created = await ensureDraft();
+        if (!created.ok) return { ok: false, error: created.data.error, problems: created.data.problems || [] };
+        return { ok: true, problems: created.data.problems || [] };
+      }
+      var res = await api('PATCH', '/api/gala/' + encodeURIComponent(sub.id), collect());
+      if (!res.ok) return { ok: false, error: res.data.error, problems: res.data.problems || [] };
+      adopt(res.data.submission);
+      dirty = false;
+      return { ok: true, problems: res.data.problems || [] };
+    }
+
+    function stamp() {
+      els.saved.textContent = 'Draft saved at ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    // ------------------------------------------------------------------
+    // Documents (step 2)
+    // ------------------------------------------------------------------
+    function slotLabel(slot) {
+      var fmt = sub ? sub.presentationType : radioValue($('f-format'));
+      if (slot.key === 'presentation') {
+        if (fmt === 'oral') return slot.labelOral;
+        if (fmt === 'poster') return slot.labelPoster;
+      }
+      return slot.label;
+    }
+
+    function fileFor(key) {
+      return sub ? (sub.files || []).find(function (f) { return f.slot === key; }) : null;
+    }
+
+    function attachedCount() {
+      return cfg.slots.filter(function (s) { return fileFor(s.key); }).length;
+    }
+
+    function renderDocs() {
+      var total = cfg.slots.length;
+      var count = attachedCount();
+      els.docsCount.textContent = count + ' of ' + total + ' required documents attached';
+      els.docsBar.style.width = Math.round(count / total * 100) + '%';
+
+      els.docs.innerHTML = cfg.slots.map(function (slot) {
+        var f = fileFor(slot.key);
+        var label = slotLabel(slot);
+        return '<div class="gx-doc' + (f ? ' is-attached' : '') + '" data-slot="' + esc(slot.key) + '">' +
+          '<i class="bi ' + slotIcon(slot.key) + ' gx-doc-icon" aria-hidden="true"></i>' +
+          '<div><div class="gx-doc-name">' + esc(label) +
+          (f ? '<span class="gx-chip is-ok"><i class="bi bi-check-circle-fill"></i> Attached</span>'
+             : '<span class="gx-chip is-missing"><i class="bi bi-exclamation-circle"></i> Missing</span>') + '</div>' +
+          '<div class="gx-doc-file">' + (f ? esc(f.originalName) + ' &middot; ' + formatSize(f.size)
+             : esc(slot.accept) + ' &middot; max 20 MB') + '</div></div>' +
+          '<div class="gx-doc-actions">' +
+          (f && sub ? '<a class="btn btn-soft btn-sm" target="_blank" rel="noopener" href="/api/gala/' + encodeURIComponent(sub.id) + '/files/' + encodeURIComponent(slot.key) + '?inline=1">View</a>' : '') +
+          '<button type="button" class="btn btn-navy btn-sm" data-pick="' + esc(slot.key) + '">' + (f ? 'Replace' : 'Choose file') + '</button>' +
+          (f ? '<button type="button" class="btn btn-soft btn-sm" data-remove="' + esc(slot.key) + '">Remove</button>' : '') +
+          '</div>' +
+          '<input type="file" data-file="' + esc(slot.key) + '" accept="' + esc(slot.extensions.join(',')) + '" tabindex="-1">' +
+          '<p class="gx-error" role="alert"></p></div>';
+      }).join('');
+    }
+
+    function docError(key, message) {
+      var row = els.docs.querySelector('[data-slot="' + key + '"]');
+      if (!row) return;
+      row.classList.toggle('has-error', !!message);
+      row.querySelector('.gx-error').textContent = message || '';
+    }
+
+    function setDocBusy(key, text) {
+      var row = els.docs.querySelector('[data-slot="' + key + '"]');
+      if (!row) return;
+      var chip = row.querySelector('.gx-chip');
+      if (chip) { chip.className = 'gx-chip is-busy'; chip.textContent = text; }
+    }
+
+    // Quick checks so an obvious mistake never costs an upload; the server
+    // repeats all of them (and looks inside the file) before anything is kept.
+    function precheck(slot, file) {
+      if (file.size === 0) return 'That file is empty (0 bytes). Choose the real document.';
+      if (file.size > cfg.limits.maxFileBytes) return 'That file is larger than 20 MB.';
+      var dot = file.name.lastIndexOf('.');
+      var ext = dot >= 0 ? file.name.slice(dot).toLowerCase() : '';
+      if (slot.extensions.indexOf(ext) === -1) return slotLabel(slot) + ' accepts ' + slot.accept + ' (' + slot.extensions.join(', ') + ').';
+      return '';
+    }
+
+    async function uploadFile(key, file) {
+      var slot = cfg.slots.find(function (s) { return s.key === key; });
+      docError(key, '');
+      var problem = precheck(slot, file);
+      if (problem) { docError(key, problem); return; }
+
+      setBusy(true);
+      setDocBusy(key, 'Uploading…');
       try {
-        const meRes = await fetch('/api/auth/me');
-        if (!meRes.ok) { loading.style.display = 'none'; notLogged.style.display = 'block'; return; }
-        const { user } = await meRes.json();
-        currentUser = user;
-        if (!ALLOWED_ROLES.includes(user.role)) {
-          loading.style.display = 'none';
-          notLogged.style.display = 'block';
-          notLogged.innerHTML = 'Your account type is not allowed to submit a Research Gala entry.';
+        var created = await ensureDraft();
+        if (!created.ok) { docError(key, created.data.error || 'Could not start your draft.'); renderDocs(); return; }
+        var fd = new FormData();
+        fd.append('file', file);
+        var res = await api('POST', '/api/gala/' + encodeURIComponent(sub.id) + '/files/' + encodeURIComponent(key), fd, true);
+        if (!res.ok) {
+          renderDocs();
+          docError(key, res.data.error || 'The upload failed.');
           return;
         }
-        await loadEvents();
-        if (editId) {
-          try { await loadExisting(); }
-          catch (err) { showMsg('error', err.message); editId = null; }
-        } else {
-          // Prefill the presenter's own profile details. /api/auth/me returns the
-          // short public user, so the institution/nationality the Presenter
-          // registered with have to come from the full profile endpoint.
-          try {
-            const profileRes = await fetch('/api/auth/profile', { credentials: 'include' });
-            if (profileRes.ok) {
-              const { profile } = await profileRes.json();
-              document.getElementById('f-institution').value = profile?.institution || '';
-              document.getElementById('f-nationality').value = profile?.nationality || '';
-              document.getElementById('f-contact').value = profile?.contactNumber || '';
-              document.getElementById('f-interests').value = profile?.researchInterests || '';
-            }
-          } catch { /* the fields simply stay empty and can be typed in */ }
-        }
-        loading.style.display = 'none';
-        formArea.style.display = 'block';
-      } catch (err) {
-        loading.textContent = 'Could not load this page: ' + err.message;
+        adopt(res.data.submission);
+        renderDocs();
+      } finally {
+        setBusy(false);
       }
-    })();
+    }
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
+    async function removeFile(key) {
+      if (!sub) return;
+      var slot = cfg.slots.find(function (s) { return s.key === key; });
+      if (!confirm('Remove "' + slotLabel(slot) + '"?')) return;
+      setBusy(true);
+      var res = await api('DELETE', '/api/gala/' + encodeURIComponent(sub.id) + '/files/' + encodeURIComponent(key));
+      setBusy(false);
+      if (!res.ok) { docError(key, res.data.error || 'Could not remove the file.'); return; }
+      adopt(res.data.submission);
+      renderDocs();
+    }
+
+    els.docs.addEventListener('click', function (e) {
+      var pick = e.target.closest('[data-pick]');
+      if (pick) { els.docs.querySelector('input[data-file="' + pick.dataset.pick + '"]').click(); return; }
+      var rm = e.target.closest('[data-remove]');
+      if (rm) removeFile(rm.dataset.remove);
+    });
+    els.docs.addEventListener('change', function (e) {
+      var input = e.target.closest('input[data-file]');
+      if (!input || !input.files.length) return;
+      var file = input.files[0];
+      input.value = '';
+      uploadFile(input.dataset.file, file);
+    });
+
+    // ------------------------------------------------------------------
+    // Review (step 3)
+    // ------------------------------------------------------------------
+    function dl(rows) {
+      return '<dl class="gx-dl">' + rows.map(function (r) {
+        return '<dt>' + esc(r[0]) + '</dt><dd>' + (r[2] ? r[1] : (r[1] ? esc(r[1]) : '<span class="form-note">Not provided</span>')) + '</dd>';
+      }).join('') + '</dl>';
+    }
+
+    function renderReview() {
+      var d = collect();
+      var cat = cfg.categories.find(function (c) { return c.value === d.category; });
+      var fmt = cfg.formats.find(function (f) { return f.value === d.presentationType; });
+      var sem = cfg.semesters.find(function (s) { return s.value === d.semester; });
+      var pref = cfg.schedulePreferences.find(function (p) { return p.value === d.schedulePreference; });
+      var event = d.eventId ? cfg.events.find(function (e) { return e.id === d.eventId; }) : null;
+      var prog = programValue();
+
+      var details = dl([
+        ['Title of Research', d.title],
+        ['Presenter(s)', d.presenters.join(', ')],
+        ['Co-author(s)', d.coAuthors.join(', ')],
+        ['Program or Department', prog ? prog.value : (sub ? sub.program : '')],
+        ['Research Category', cat ? cat.label : ''],
+        ['Presentation format', fmt ? fmt.label : ''],
+        ['Adviser', d.adviser],
+        ['School Year', d.schoolYear],
+        ['Semester', sem ? sem.label : ''],
+        ['Keywords', d.keywords.join(', ')],
+        ['Abstract', d.abstract],
+        ['Schedule preference', pref ? pref.label : 'No preference']
+      ].concat(event ? [['Research Gala event', event.title]] : []));
+
+      var files = dl(cfg.slots.map(function (slot) {
+        var f = fileFor(slot.key);
+        return [slotLabel(slot), f ? esc(f.originalName) + ' (' + formatSize(f.size) + ')' : '<span class="gx-chip is-missing" style="margin:0;">Missing</span>', true];
+      }));
+
+      els.review.innerHTML =
+        '<div class="gx-section"><div class="gx-section-head"><h4>Presentation details</h4><a href="#" data-goto="1">Edit</a></div>' + details + '</div>' +
+        '<div class="gx-section"><div class="gx-section-head"><h4>Documents &middot; ' + attachedCount() + ' of ' + cfg.slots.length + ' attached</h4><a href="#" data-goto="2">Edit</a></div>' + files + '</div>';
+    }
+
+    els.review.addEventListener('click', function (e) {
+      var link = e.target.closest('[data-goto]');
+      if (link) { e.preventDefault(); goTo(Number(link.dataset.goto)); }
+    });
+
+    // ------------------------------------------------------------------
+    // Navigation
+    // ------------------------------------------------------------------
+    function showStep(n, silent) {
+      step = n;
+      maxStep = Math.max(maxStep, n);
+      document.querySelectorAll('.gx-panel').forEach(function (p) { p.classList.toggle('is-active', Number(p.dataset.step) === n); });
+      document.querySelectorAll('#stepper li').forEach(function (li) {
+        var i = Number(li.dataset.step);
+        li.classList.toggle('is-current', i === n);
+        li.classList.toggle('is-done', i < n);
+        var dot = li.querySelector('.gx-dot');
+        dot.innerHTML = i < n ? '&#10003;' : String(i);
+        li.querySelector('button').disabled = i > maxStep;
+        if (i === n) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+      });
+      els.back.style.visibility = n === 1 ? 'hidden' : 'visible';
+      els.next.style.display = n === 3 ? 'none' : '';
+      els.submit.style.display = n === 3 ? '' : 'none';
+      if (n === 2) renderDocs();
+      if (n === 3) renderReview();
+      if (silent) return;
+      var heading = $('h-step' + n);
+      heading.focus({ preventScroll: true });
+      window.scrollTo({ top: Math.max(0, $('stepper').getBoundingClientRect().top + window.scrollY - 90), behavior: 'smooth' });
+    }
+
+    // Moves between steps. Going back (or jumping) saves quietly; going
+    // forward is handled by next().
+    async function goTo(n) {
+      if (busy || n === step) return;
+      if (n > step) return next();
+      clearErrors();
+      setBusy(true);
+      var r = await save();
+      setBusy(false);
+      if (!r.ok) { showMsg('error', r.error || 'Could not save your changes.'); return; }
       showMsg('', '');
-      const fd = new FormData(form);
-      // The visible textarea is the abstract; keep it as the required field.
-      if (!String(fd.get('abstractText') || '').trim()) {
-        showMsg('error', 'An abstract is required.');
+      showStep(n);
+    }
+
+    async function next() {
+      if (busy) return;
+      showMsg('', '');
+      clearErrors();
+      setBusy(true);
+      try {
+        var r = await save();
+        if (!r.ok) { showMsg('error', r.error || 'Could not save your changes.'); return; }
+        if (showProblems(r.problems, step)) {
+          showMsg('error', 'Please fix the highlighted ' + (step === 1 ? 'fields' : 'documents') + ' before continuing.');
+          return;
+        }
+        maxStep = Math.max(maxStep, step + 1);
+        var advanced = await save();
+        if (!advanced.ok) { showMsg('error', advanced.error || 'Could not save your changes.'); return; }
+        stamp();
+        showStep(step + 1);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function saveDraft() {
+      if (busy) return;
+      showMsg('', '');
+      setBusy(true);
+      try {
+        var r = await save();
+        if (!r.ok) { showMsg('error', r.error || 'Could not save your draft.'); return; }
+        stamp();
+        showMsg('success', 'Draft saved. You can resume it later from My Account.');
+        setTimeout(function () { if (messageEl.classList.contains('success')) showMsg('', ''); }, 4000);
+      } finally {
+        setBusy(false);
+      }
+    }
+
+    async function submit() {
+      if (busy) return;
+      showMsg('', '');
+      clearErrors();
+      if (!els.confirm.checked) {
+        els.confirmError.style.display = 'block';
+        els.confirm.focus();
         return;
       }
-      submitBtn.disabled = true;
-      const label = submitBtn.textContent;
-      submitBtn.textContent = 'Submitting…';
+      setBusy(true);
       try {
-        const res = await fetch('/api/gala' + (editId ? '/' + encodeURIComponent(editId) : ''), {
-          method: editId ? 'PATCH' : 'POST',
-          body: fd
-        });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(out.error || 'The submission could not be saved.');
-        showMsg('success', out.message || 'Saved.');
-        if (!editId) {
-          form.reset();
-          setTimeout(() => { window.location.href = 'presenter-dashboard.html'; }, 1200);
+        var r = await save();
+        if (!r.ok) { showMsg('error', r.error || 'Could not save your changes.'); return; }
+        var res = await api('POST', '/api/gala/' + encodeURIComponent(sub.id) + '/submit', { confirm: true });
+        if (!res.ok) {
+          var problems = res.data.problems || [];
+          if (problems.length) {
+            var target = Math.min.apply(null, problems.map(function (p) { return p.step; }));
+            var count = problems.length;
+            showStep(target);
+            showProblems(problems, target);
+            showMsg('error', 'Your submission is not complete yet (' + count + ' item' + (count === 1 ? '' : 's') + ' to fix). ' + problems[0].message);
+          } else {
+            showMsg('error', res.data.error || 'The submission could not be sent.');
+          }
+          return;
         }
-      } catch (err) {
-        showMsg('error', err.message);
+        dirty = false;
+        window.location.href = 'gala-success.html?id=' + encodeURIComponent(sub.id);
       } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = label;
+        setBusy(false);
       }
+    }
+
+    $('stepper').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-goto]');
+      if (btn && !btn.disabled) goTo(Number(btn.dataset.goto));
     });
+    els.next.addEventListener('click', next);
+    els.back.addEventListener('click', function () { goTo(step - 1); });
+    els.draft.addEventListener('click', saveDraft);
+    els.submit.addEventListener('click', submit);
+    $('gala-form').addEventListener('submit', function (e) { e.preventDefault(); });
+    $('gala-form').addEventListener('input', function () { dirty = true; });
+    els.abstract.addEventListener('input', updateCounters);
+    $('t-keywords').addEventListener('click', updateCounters);
+    $('f-keywords').addEventListener('keyup', updateCounters);
+    $('f-keywords').addEventListener('blur', function () { setTimeout(updateCounters, 0); });
+    // Choosing Oral or Poster changes the name of the slides/poster document.
+    $('f-format').addEventListener('change', function () { if (step === 2) renderDocs(); });
+    window.addEventListener('beforeunload', function (e) {
+      if (dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+
+    // ------------------------------------------------------------------
+    // Start-up
+    // ------------------------------------------------------------------
+    function fillSelect(select, items, valueKey, labelKey) {
+      items.forEach(function (it) {
+        var o = document.createElement('option');
+        o.value = it[valueKey]; o.textContent = it[labelKey];
+        select.appendChild(o);
+      });
+    }
+
+    function radios(container, name, items, selected) {
+      container.innerHTML = items.map(function (it) {
+        return '<label class="gx-choice"><input type="radio" name="' + name + '" value="' + esc(it.value) + '"' +
+          (it.value === selected ? ' checked' : '') + '> <span>' + esc(it.label) + '</span></label>';
+      }).join('');
+    }
+
+    function buildForm() {
+      tags.presenters = TagInput($('t-presenters'), { field: 'presenters', max: cfg.limits.presentersMax, maxLength: cfg.limits.personNameMax, locked: cfg.presenterName });
+      tags.coAuthors = TagInput($('t-coauthors'), { field: 'coAuthors', max: cfg.limits.coAuthorsMax, maxLength: cfg.limits.personNameMax });
+      tags.keywords = TagInput($('t-keywords'), { field: 'keywords', max: cfg.limits.keywordsMax, maxLength: cfg.limits.keywordLengthMax, onChange: function () { updateCounters(); } });
+      tags.presenters.set([cfg.presenterName]);
+
+      fillSelect(els.category, cfg.categories, 'value', 'label');
+      fillSelect(els.schoolYear, cfg.schoolYears, 'value', 'label');
+      fillSelect(els.semester, cfg.semesters, 'value', 'label');
+      radios($('f-format'), 'format', cfg.formats, '');
+      radios($('f-pref'), 'pref', cfg.schedulePreferences, 'none');
+      if (cfg.events.length) {
+        $('g-event').style.display = '';
+        fillSelect(els.event, cfg.events.map(function (e) {
+          return { id: e.id, title: e.title + (e.dateTime ? ' — ' + String(e.dateTime).slice(0, 10) : '') };
+        }), 'id', 'title');
+      }
+      // The current school year is selected for a new entry, as on Submit Research.
+      if (cfg.currentSchoolYear) els.schoolYear.value = cfg.currentSchoolYear;
+
+      programPicker = CPRICourses.picker({
+        allowOther: true,
+        data: coursesData,
+        placeholder: 'Select program or department',
+        ariaLabel: 'Program or Department',
+        otherPlaceholder: 'Type your program or department',
+        otherLabel: 'Your program or department (please specify)'
+      });
+      $('f-program-slot').appendChild(programPicker.el);
+      programPicker.el.querySelector('.cp-trigger').id = 'f-program';
+      $('f-program-slot').previousElementSibling.setAttribute('for', 'f-program');
+      programPicker.el.addEventListener('input', function () { dirty = true; });
+      programPicker.el.addEventListener('coursechange', function () { dirty = true; });
+    }
+
+    function showBlocked(html) {
+      els.loading.style.display = 'none';
+      els.blocked.style.display = 'block';
+      els.blocked.innerHTML = html;
+    }
+
+    function begin(entry) {
+      els.loading.style.display = 'none';
+      els.resume.style.display = 'none';
+      els.app.style.display = 'block';
+      if (entry) {
+        sub = entry;
+        fill(entry);
+        var saved = Number(entry.draftStep) || 1;
+        maxStep = Math.max(1, Math.min(3, saved));
+        showStep(Math.min(3, saved), true);
+        if (entry.status === 'for_revision') {
+          showMsg('error', 'The organizers sent this back for revision' + (entry.remarks ? ': ' + entry.remarks : '.') + ' Update it, then submit again.');
+        }
+      } else {
+        showStep(1, true);
+      }
+      dirty = false;
+    }
+
+    async function start() {
+      var meRes = await api('GET', '/api/auth/me');
+      if (!meRes.ok) {
+        return showBlocked('Please <a href="login.html?next=' + encodeURIComponent('gala-form.html') + '">log in</a> to submit a Research Gala entry.');
+      }
+      var user = meRes.data.user;
+      if (user.role !== 'presenter') {
+        return showBlocked('<strong>Presenter accounts only.</strong><br>The Research Gala submission form is open to accounts registered as a Presenter. Your account is registered as ' + esc(user.roleLabel || user.role) + '.<br><a class="btn btn-navy" style="margin-top:12px;" href="account.html">Back to My Account</a>');
+      }
+
+      var cfgRes = await api('GET', '/api/gala/config');
+      if (!cfgRes.ok) {
+        return showBlocked(esc(cfgRes.data.error || 'The form could not be loaded.'));
+      }
+      cfg = cfgRes.data;
+      try { coursesData = await CPRICourses.load(); } catch (e) { coursesData = null; }
+      buildForm();
+
+      var id = new URLSearchParams(location.search).get('id');
+      if (id) {
+        var one = await api('GET', '/api/gala/' + encodeURIComponent(id));
+        if (!one.ok) return showBlocked(esc(one.data.error || 'That submission could not be found.') + '<br><a class="btn btn-navy" style="margin-top:12px;" href="presenter-dashboard.html">My Gala submissions</a>');
+        var entry = one.data.submission;
+        if (!entry.editable) {
+          return showBlocked('This submission is <strong>' + esc(entry.statusLabel) + '</strong> and can no longer be edited. It can be edited again only if the organizers send it back for revision.<br><a class="btn btn-navy" style="margin-top:12px;" href="gala-submission.html?id=' + encodeURIComponent(entry.id) + '">View submission</a>');
+        }
+        return begin(entry);
+      }
+
+      // No id: offer to resume anything unfinished before starting fresh.
+      var list = await api('GET', '/api/gala');
+      var open = list.ok ? (list.data.submissions || []).filter(function (s) { return s.status === 'draft' || s.status === 'for_revision'; }) : [];
+      var forceNew = new URLSearchParams(location.search).get('new') === '1';
+      if (open.length && !forceNew) {
+        els.loading.style.display = 'none';
+        els.resume.style.display = 'block';
+        $('resume-list').innerHTML = open.map(function (s) {
+          return '<div class="gala-item"><div class="gala-item-head"><div><h3>' + esc(s.title || 'Untitled draft') + '</h3>' +
+            '<div class="gala-meta">Last saved ' + esc(GalaUI.fmtWhen(s.updatedAt)) + ' &middot; ' + s.docsAttached + ' of ' + s.docsRequired + ' documents</div></div>' +
+            GalaUI.pill(s.status, s.statusLabel) + '</div>' +
+            '<div class="gala-actions"><a class="btn btn-primary" href="gala-form.html?id=' + encodeURIComponent(s.id) + '">' + (s.status === 'for_revision' ? 'Revise' : 'Resume') + '</a></div></div>';
+        }).join('');
+        $('resume-new').onclick = function () { begin(null); };
+        return undefined;
+      }
+      return begin(null);
+    }
+
+    start().catch(function (err) {
+      els.loading.style.display = 'none';
+      showBlocked('Could not load this page: ' + esc(err.message));
+    });
+  })();
   </script>
 </body>
 </html>

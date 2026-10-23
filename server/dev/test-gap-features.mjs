@@ -1,8 +1,7 @@
 // Tests for the gap-analysis work:
 //   • the new roles (Non-Teaching Researcher, Presenter, self-registered CPRI
 //     Staff) and their RBAC permissions;
-//   • the Research Gala API — ownership, review decisions, event validation,
-//     upload safety — over a real Express + multer stack;
+//   • the Research Gala schema (the API itself: test-gala-final-paper.mjs);
 //   • the account-approval endpoints' rules;
 //   • the generated ethics certificate PDF;
 //   • the publication-monitoring schema addition;
@@ -36,7 +35,7 @@ import {
 import pool from '../db.js';
 import { notificationsRouter } from '../notifications.js';
 import { DM_ROLES } from '../messages.js';
-import { createGalaRouter, GALA_STATUS, ensureGalaSchema } from '../gala.js';
+import { ensureGalaSchema } from '../gala.js';
 import { createBackupsRouter } from '../backups.js';
 import { keepCount, dumpDatabase, ensureBackupSchema } from '../lib/backup-service.js';
 import { ensurePublicationSchema } from '../publications.js';
@@ -438,260 +437,54 @@ test('the public role list exposes the new roles to the registration form', () =
 });
 
 // ---------------------------------------------------------------
-// Research Gala API (real HTTP, injected data layer)
+// Research Gala API
+//   The Presenter final-paper flow (drafts, uploads, submit, review, export)
+//   is covered end to end in server/dev/test-gala-final-paper.mjs
+//   (npm run test:gala).
 // ---------------------------------------------------------------
-const PUBLISHED_EVENT = { id: 'evt-1', title: '2026 Research Gala', dateTime: '2026-11-20' };
-
-// The driver returns JSON columns parsed (gala_submissions declares
-// statusHistory/files as JSON), so the fake store does the same on read.
-function hydrate(row) {
-  if (!row) return row;
-  const copy = { ...row };
-  for (const key of ['statusHistory', 'files']) {
-    if (typeof copy[key] === 'string') {
-      try { copy[key] = JSON.parse(copy[key]); } catch { copy[key] = []; }
-    }
-  }
-  return copy;
-}
-
-function galaStore(seed = []) {
-  const rows = [...seed];
-  return {
-    rows,
-    all: async (sql, params = []) => {
-      if (/FROM events_module/.test(sql)) return [PUBLISHED_EVENT];
-      if (/FROM gala_submissions/.test(sql)) {
-        // GET / uses `userId = ?`; the owner scoping is what we assert on.
-        if (/userId = \?/.test(sql)) return rows.filter(r => r.userId === params[0]).map(hydrate);
-        return rows.map(hydrate);
-      }
-      return [];
-    },
-    get: async (sql, params = []) => {
-      if (/FROM events_module/.test(sql)) return params[0] === PUBLISHED_EVENT.id ? PUBLISHED_EVENT : null;
-      if (/FROM gala_submissions/.test(sql)) return hydrate(rows.find(r => r.id === params[0])) || null;
-      return null;
-    },
-    insert: async (table, record) => { rows.push({ ...record }); },
-    update: async (table, id, changes) => {
-      const row = rows.find(r => r.id === id);
-      if (row) Object.assign(row, changes);
-    },
-    remove: async (table, id) => {
-      const i = rows.findIndex(r => r.id === id);
-      if (i >= 0) rows.splice(i, 1);
-    }
-  };
-}
-
-const PRESENTER = { id: 'u-presenter', role: 'presenter', status: 'active', fullName: 'Pat Presenter', username: 'pat' };
-const OTHER = { id: 'u-other', role: 'presenter', status: 'active', fullName: 'Other Person', username: 'other' };
-const REVIEWER = { id: 'u-admin', role: 'admin', status: 'active', fullName: 'Site Admin', username: 'admin' };
-
-async function startGalaServer({ user = PRESENTER, store = galaStore(), reviewGate = null, allowAll = true } = {}) {
-  const logs = [];
-  const app = express();
-  app.use(express.json());
-  const router = createGalaRouter({
-    ...store,
-    requireAuth: (req, res, next) => (allowAll ? next() : res.status(401).json({ error: 'Not authenticated.' })),
-    caller: async () => user,
-    addLog: async (action, details) => { logs.push({ action, details }); },
-    reviewGate: reviewGate || ((req, res, next) => next())
-  });
-  app.use('/api/gala', router);
-
-  const server = await new Promise(resolve => {
-    const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
-  });
-  server.unref();
-  return {
-    base: `http://127.0.0.1:${server.address().port}/api/gala`,
-    store,
-    logs,
-    close: () => new Promise((resolve, reject) => server.close(e => (e ? reject(e) : resolve())))
-  };
-}
-
-function multipart({ fields = {}, file = null, fieldName = 'abstractFile' } = {}) {
-  const boundary = '----cprigala' + Date.now();
-  const parts = [];
-  for (const [name, value] of Object.entries(fields)) {
-    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
-  }
-  if (file) {
-    parts.push(Buffer.from(
-      `--${boundary}\r\nContent-Disposition: form-data; name="${fieldName}"; filename="${file.filename}"\r\n`
-      + `Content-Type: ${file.type}\r\n\r\n`
-    ));
-    parts.push(Buffer.isBuffer(file.body) ? file.body : Buffer.from(file.body));
-    parts.push(Buffer.from('\r\n'));
-  }
-  parts.push(Buffer.from(`--${boundary}--\r\n`));
-  return { body: Buffer.concat(parts), contentType: `multipart/form-data; boundary=${boundary}` };
-}
-
-const VALID_ENTRY = {
-  title: 'Adaptive Learning in Rural Schools',
-  authors: 'A. Cruz, M. Reyes',
-  abstractText: 'A study of adaptive learning platforms in rural secondary schools.'
-};
-
-test('POST /gala requires authentication', async () => {
-  const api = await startGalaServer({ allowAll: false });
-  const res = await fetch(api.base, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' });
-  assert.equal(res.status, 401);
-  await api.close();
-});
-
-test('POST /gala creates a submitted entry owned by the signed-in presenter', async () => {
-  const api = await startGalaServer();
-  const form = multipart({ fields: VALID_ENTRY });
-  const res = await fetch(api.base, { method: 'POST', headers: { 'content-type': form.contentType }, body: form.body });
-  const out = await res.json();
-  assert.equal(res.status, 201);
-  assert.equal(out.submission.status, 'submitted');
-  assert.equal(out.submission.userId, PRESENTER.id, 'owner always comes from the session');
-  assert.equal(api.store.rows.length, 1);
-  assert.equal(api.logs.at(-1).action, 'gala_submitted');
-  await api.close();
-});
-
-test('POST /gala rejects a missing required field', async () => {
-  const api = await startGalaServer();
-  const form = multipart({ fields: { title: 'No abstract' } });
-  const res = await fetch(api.base, { method: 'POST', headers: { 'content-type': form.contentType }, body: form.body });
-  const out = await res.json();
-  assert.equal(res.status, 400);
-  assert.match(out.error, /required/i);
-  await api.close();
-});
-
-test('POST /gala refuses an event id that does not exist', async () => {
-  const api = await startGalaServer();
-  const form = multipart({ fields: { ...VALID_ENTRY, eventId: 'evt-does-not-exist' } });
-  const res = await fetch(api.base, { method: 'POST', headers: { 'content-type': form.contentType }, body: form.body });
-  const out = await res.json();
-  assert.equal(res.status, 400);
-  assert.match(out.error, /does not exist/i);
-  await api.close();
-});
-
-test('POST /gala accepts a link to a real event from the Events module', async () => {
-  const api = await startGalaServer();
-  const form = multipart({ fields: { ...VALID_ENTRY, eventId: PUBLISHED_EVENT.id } });
-  const res = await fetch(api.base, { method: 'POST', headers: { 'content-type': form.contentType }, body: form.body });
-  const out = await res.json();
-  assert.equal(res.status, 201);
-  assert.equal(out.submission.eventId, PUBLISHED_EVENT.id);
-  await api.close();
-});
-
-test('POST /gala refuses an unsupported file type through the shared upload guard', async () => {
-  const api = await startGalaServer();
-  const form = multipart({
-    fields: VALID_ENTRY,
-    file: { filename: 'payload.svg', type: 'image/svg+xml', body: '<svg/>' }
-  });
-  const res = await fetch(api.base, { method: 'POST', headers: { 'content-type': form.contentType }, body: form.body });
-  const out = await res.json();
-  assert.equal(res.status, 400);
-  assert.match(out.error, /not allowed/i);
-  await api.close();
-});
-
-test('GET /gala only lists the presenter their own entries', async () => {
-  const store = galaStore([
-    { id: 'g1', userId: PRESENTER.id, title: 'Mine', status: 'submitted' },
-    { id: 'g2', userId: OTHER.id, title: 'Someone else', status: 'submitted' }
-  ]);
-  const api = await startGalaServer({ store });
-  const res = await fetch(api.base);
-  const out = await res.json();
-  assert.equal(res.status, 200);
-  assert.equal(out.submissions.length, 1);
-  assert.equal(out.submissions[0].id, 'g1');
-  await api.close();
-});
-
-test('GET /gala shows a reviewer every entry', async () => {
-  const store = galaStore([
-    { id: 'g1', userId: PRESENTER.id, title: 'Mine', status: 'submitted' },
-    { id: 'g2', userId: OTHER.id, title: 'Someone else', status: 'accepted' }
-  ]);
-  const api = await startGalaServer({ store, user: REVIEWER });
-  const res = await fetch(api.base);
-  const out = await res.json();
-  assert.equal(out.submissions.length, 2);
-  assert.equal(out.submissions[0].statusLabel, GALA_STATUS[out.submissions[0].status]);
-  await api.close();
-});
-
-test('PATCH /gala/:id/status rejects an unknown status', async () => {
-  const store = galaStore([{ id: 'g1', userId: PRESENTER.id, title: 'Mine', status: 'submitted' }]);
-  const api = await startGalaServer({ store, user: REVIEWER });
-  const res = await fetch(`${api.base}/g1/status`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ status: 'maybe' })
-  });
-  assert.equal(res.status, 400);
-  assert.match((await res.json()).error, /invalid status/i);
-  await api.close();
-});
-
-test('a reviewer decision records who made it and the status history', async () => {
-  const store = galaStore([{ id: 'g1', userId: PRESENTER.id, title: 'Mine', status: 'submitted' }]);
-  const api = await startGalaServer({ store, user: REVIEWER });
-  const res = await fetch(`${api.base}/g1/status`, {
-    method: 'PATCH',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ status: 'accepted', note: 'Strong dataset' })
-  });
-  const out = await res.json();
-  assert.equal(res.status, 200);
-  assert.equal(out.submission.status, 'accepted');
-  assert.equal(out.submission.reviewedBy, REVIEWER.fullName);
-  assert.equal(out.submission.reviewNote, 'Strong dataset');
-  assert.equal(out.submission.statusHistory.at(-1).status, 'accepted');
-  assert.equal(api.logs.at(-1).action, 'gala_reviewed');
-  await api.close();
-});
-
-test('a presenter cannot withdraw someone else\'s entry', async () => {
-  const store = galaStore([{ id: 'g2', userId: OTHER.id, title: 'Not mine', status: 'submitted' }]);
-  const api = await startGalaServer({ store, user: PRESENTER });
-  const res = await fetch(`${api.base}/g2`, { method: 'DELETE' });
-  assert.equal(res.status, 403);
-  assert.equal(store.rows.length, 1, 'the entry is untouched');
-  await api.close();
-});
-
-test('a presenter can withdraw their own open entry, but not a decided one', async () => {
-  const store = galaStore([
-    { id: 'g1', userId: PRESENTER.id, title: 'Open', status: 'under_review' },
-    { id: 'g3', userId: PRESENTER.id, title: 'Decided', status: 'accepted' }
-  ]);
-  const api = await startGalaServer({ store, user: PRESENTER });
-  const decided = await fetch(`${api.base}/g3`, { method: 'DELETE' });
-  assert.equal(decided.status, 409);
-  const open = await fetch(`${api.base}/g1`, { method: 'DELETE' });
-  assert.equal(open.status, 200);
-  assert.equal(store.rows.length, 1);
-  await api.close();
-});
 
 // ---------------------------------------------------------------
 // Schema additions
 // ---------------------------------------------------------------
 test('ensureGalaSchema creates the gala_submissions table with its indexes', async () => {
   const run = [];
-  await ensureGalaSchema({ run: async (sql) => run.push(sql) });
-  assert.equal(run.length, 1);
+  // A fresh table: only the original columns and indexes exist.
+  await ensureGalaSchema({
+    run: async (sql) => run.push(sql),
+    all: async (sql) => (/SHOW COLUMNS/.test(sql)
+      ? [{ Field: 'id' }, { Field: 'status' }]
+      : [{ Key_name: 'PRIMARY' }])
+  });
   assert.match(run[0], /CREATE TABLE IF NOT EXISTS gala_submissions/);
   assert.match(run[0], /idx_gala_user/);
   assert.match(run[0], /status varchar\(40\) DEFAULT 'submitted'/);
+});
+
+test('ensureGalaSchema adds the final-paper columns once and is a no-op afterwards', async () => {
+  const added = [];
+  const columns = new Set(['id', 'status']);
+  const indexes = new Set(['PRIMARY']);
+  const dependencies = {
+    run: async (sql) => {
+      const col = sql.match(/ADD COLUMN (\w+)/);
+      if (col) { added.push(col[1]); columns.add(col[1]); }
+      const idx = sql.match(/ADD (?:UNIQUE )?KEY (\w+)/);
+      if (idx) indexes.add(idx[1]);
+    },
+    all: async (sql) => (/SHOW COLUMNS/.test(sql)
+      ? [...columns].map(Field => ({ Field }))
+      : [...indexes].map(Key_name => ({ Key_name })))
+  };
+  await ensureGalaSchema(dependencies);
+  for (const column of ['refNo', 'presenters', 'coAuthors', 'program', 'category', 'adviser', 'schoolYear',
+    'semester', 'schedulePreference', 'scheduleDate', 'scheduleTime', 'scheduleRoom', 'draftStep', 'submittedAt']) {
+    assert.ok(added.includes(column), `adds ${column}`);
+  }
+  assert.ok(indexes.has('uq_gala_refno'), 'reference numbers are unique');
+
+  added.length = 0;
+  await ensureGalaSchema(dependencies);
+  assert.equal(added.length, 0, 'a second run adds nothing');
 });
 
 test('ensurePublicationSchema adds only the four missing monitoring columns', async () => {

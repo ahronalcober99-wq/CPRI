@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Submission Received | CPRI Research Gala</title>
+  <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/gala.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1>Submission Received</h1>
+        <p>Your final paper is in. Keep your reference number.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="gx-wrap" style="max-width:720px;">
+          <div id="loading" class="empty-state">Loading…</div>
+          <div id="error" class="empty-state" style="display:none;"></div>
+
+          <div id="done" class="card gx-success" style="display:none;">
+            <div class="gx-check" aria-hidden="true"><i class="bi bi-check-lg"></i></div>
+            <h2 style="margin:0 0 4px;">Your final paper was submitted</h2>
+            <p class="form-note" style="margin:0;">Reference number</p>
+            <div class="gx-ref" id="ref" aria-label="Reference number"></div>
+            <div><button type="button" class="btn btn-soft btn-sm" id="copy"><i class="bi bi-clipboard"></i> Copy reference</button></div>
+
+            <p id="summary" style="margin:18px 0 6px;"></p>
+            <div id="tracker" style="text-align:left;"></div>
+
+            <div style="text-align:left;margin:14px 0 4px;">
+              <h4 style="margin:0 0 6px;">What happens next</h4>
+              <ol style="margin:0;padding-left:20px;">
+                <li>The organizers check your documents.</li>
+                <li>If something needs fixing, the status becomes <strong>For Revision</strong> and you can update and resubmit.</li>
+                <li>Your date, time and room appear on My Account once the schedule is announced.</li>
+              </ol>
+              <p class="form-note" style="margin-top:8px;">You will get a notification each time the status changes.</p>
+            </div>
+
+            <div class="gala-actions" style="justify-content:center;margin-top:18px;">
+              <a class="btn btn-primary" id="view" href="presenter-dashboard.html">View submission</a>
+              <a class="btn btn-navy" href="account.html">Go to My Account</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script src="assets/js/gala-ui.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var $ = function (id) { return document.getElementById(id); };
+    var esc = GalaUI.esc;
+
+    function fail(html) {
+      $('loading').style.display = 'none';
+      $('error').style.display = 'block';
+      $('error').innerHTML = html;
+    }
+
+    (async function () {
+      var id = new URLSearchParams(location.search).get('id');
+      if (!id) return fail('No submission was specified. <a href="presenter-dashboard.html">My Gala submissions</a>');
+      var res = await fetch('/api/gala/' + encodeURIComponent(id), { credentials: 'include' });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) return fail(esc(data.error || 'That submission could not be found.') + '<br><a href="presenter-dashboard.html">My Gala submissions</a>');
+      var s = data.submission;
+      // This page confirms a submission; a draft has not been sent yet.
+      if (s.status === 'draft' || !s.refNo) {
+        location.replace('gala-form.html?id=' + encodeURIComponent(s.id));
+        return;
+      }
+      $('ref').textContent = s.refNo;
+      $('summary').innerHTML = '<strong>' + esc(s.title) + '</strong><br><span class="form-note">' +
+        esc(s.presentationTypeLabel) + ' &middot; ' + s.docsAttached + ' of ' + s.docsRequired + ' documents &middot; ' + GalaUI.pill(s.status, s.statusLabel) + '</span>';
+      $('tracker').innerHTML = GalaUI.tracker(s);
+      $('view').href = 'gala-submission.html?id=' + encodeURIComponent(s.id);
+      $('loading').style.display = 'none';
+      $('done').style.display = 'block';
+
+      $('copy').addEventListener('click', async function () {
+        try {
+          await navigator.clipboard.writeText(s.refNo);
+          $('copy').innerHTML = '<i class="bi bi-check2"></i> Copied';
+        } catch (e) {
+          // Clipboard blocked: select the number so it can be copied by hand.
+          var range = document.createRange();
+          range.selectNodeContents($('ref'));
+          var sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+        }
+      });
+    })().catch(function (err) { fail('Could not load this page: ' + esc(err.message)); });
+  })();
+  </script>
+</body>
+</html>

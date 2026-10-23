@@ -8,6 +8,8 @@ server/data/sessions/
 # Uploaded research documents (Research Submission Module) — private, and never
 # served from a public folder. Only the download endpoint may read them.
 server/data/research-submissions/
+# Research Gala documents (final papers) on the local-disk backend — private, like the above.
+server/data/gala-files/
 backups/
 public/assets/uploads/
 *.log

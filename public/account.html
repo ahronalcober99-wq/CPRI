@@ -6,6 +6,7 @@
   <title>My Account | CPRI</title>
   <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
   <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/gala.css">
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
 <body>
@@ -37,6 +38,15 @@
             </div>
             <button class="btn btn-navy" id="logout-btn" style="margin-top:10px;">Log Out</button>
           </div>
+          <!-- Presenter accounts only: Research Gala drafts, status tracker and schedule. -->
+          <div class="card" id="gala-card" style="display:none;margin-top:18px;">
+            <div class="gala-item-head" style="margin-bottom:8px;">
+              <h3 style="margin:0;"><i class="bi bi-mic"></i> My Research Gala</h3>
+              <a class="btn btn-primary btn-sm" href="gala-form.html?new=1">New submission</a>
+            </div>
+            <div id="gala-list"><p class="form-note">Loading your submissions…</p></div>
+            <p style="margin:10px 0 0;"><a href="presenter-dashboard.html">All my Gala submissions &rarr;</a></p>
+          </div>
           <div id="not-logged" class="empty-state" style="display:none;">
             You are not logged in. <a href="login.html">Log in here</a>.
           </div>
@@ -47,6 +57,7 @@
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/gala-ui.js"></script>
   <script>
     const message = document.getElementById('message');
     const card = document.getElementById('account-card');
@@ -78,6 +89,7 @@
           ? user.course + (user.courseNeedsReview ? ' (awaiting admin review)' : '')
           : 'No course yet. Please contact the CPRI administrator.';
       }
+      if (user.role === 'presenter') loadGala();
       const links = document.getElementById('acc-links');
       if (links) links.style.display = 'block';
       if (user.role === 'ethics_reviewer' && user.status === 'pending') {
@@ -86,6 +98,39 @@
         note.textContent = 'Your Ethics Reviewer account is pending admin approval.';
       }
     })();
+
+    // Research Gala (Presenter accounts): drafts to resume, then the status
+    // tracker and — once announced — the presentation schedule.
+    async function loadGala() {
+      const card = document.getElementById('gala-card');
+      const box = document.getElementById('gala-list');
+      card.style.display = 'block';
+      try {
+        const res = await fetch('/api/gala', { credentials: 'include' });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'Could not load your submissions.');
+        const items = out.submissions || [];
+        if (!items.length) {
+          box.innerHTML = '<p class="form-note">You have not started a Research Gala submission yet.</p>';
+          return;
+        }
+        box.innerHTML = items.map(s => {
+          const open = s.status === 'draft' || s.status === 'for_revision';
+          return '<article class="gala-item">' +
+            '<div class="gala-item-head"><div><h3>' + GalaUI.esc(s.title || 'Untitled draft') + '</h3>' +
+            '<div class="gala-meta">' + (s.refNo ? GalaUI.esc(s.refNo) + ' &middot; ' : '') + s.docsAttached + ' of ' + s.docsRequired + ' documents</div></div>' +
+            GalaUI.pill(s.status, s.statusLabel) + '</div>' +
+            (s.status === 'draft' ? '<p class="form-note" style="margin:6px 0;">Draft saved ' + GalaUI.esc(GalaUI.fmtWhen(s.updatedAt)) + '. Not submitted yet.</p>'
+              : GalaUI.tracker(s) + GalaUI.scheduleBlock(s)) +
+            GalaUI.notes(s) +
+            '<div class="gala-actions">' +
+            (open ? '<a class="btn btn-primary btn-sm" href="gala-form.html?id=' + encodeURIComponent(s.id) + '">' + (s.status === 'draft' ? 'Resume draft' : 'Revise and resubmit') + '</a>' : '') +
+            '<a class="btn btn-navy btn-sm" href="gala-submission.html?id=' + encodeURIComponent(s.id) + '">Details</a></div></article>';
+        }).join('');
+      } catch (err) {
+        box.innerHTML = '<p class="form-message error" style="display:block;">' + GalaUI.esc(err.message) + '</p>';
+      }
+    }
 
     document.getElementById('logout-btn').addEventListener('click', async () => {
       const res = await fetch('/api/auth/logout', { method: 'POST' });

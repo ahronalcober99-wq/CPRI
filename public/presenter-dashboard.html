@@ -6,23 +6,12 @@
   <title>My Research Gala Submissions | CPRI</title>
   <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
   <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/gala.css">
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
   <style>
-    .gala-status { display:inline-block; padding:2px 10px; border-radius:999px; font-size:.75rem; font-weight:600; }
-    .gala-status[data-status="submitted"] { background:#e0e7ff; color:#3730a3; }
-    .gala-status[data-status="under_review"] { background:#fef3c7; color:#92400e; }
-    .gala-status[data-status="accepted"] { background:#d1fae5; color:#065f46; }
-    .gala-status[data-status="rejected"] { background:#fee2e2; color:#991b1b; }
-    [data-theme="dark"] .gala-status[data-status="submitted"] { background:#312e81; color:#e0e7ff; }
-    [data-theme="dark"] .gala-status[data-status="under_review"] { background:#78350f; color:#fef3c7; }
-    [data-theme="dark"] .gala-status[data-status="accepted"] { background:#064e3b; color:#d1fae5; }
-    [data-theme="dark"] .gala-status[data-status="rejected"] { background:#7f1d1d; color:#fee2e2; }
-    .gala-item { border:1px solid var(--cpri-border); border-radius:10px; padding:16px; margin-bottom:14px; background:var(--cpri-card); }
-    .gala-item h3 { margin:0 0 4px; font-size:1.05rem; }
-    .gala-meta { color:var(--cpri-muted); font-size:.85rem; margin-bottom:8px; }
     .gala-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:12px; margin-bottom:18px; }
-    .gala-stat { border:1px solid var(--cpri-border); border-radius:10px; padding:12px 14px; background:var(--cpri-card); }
-    .gala-stat b { display:block; font-size:1.5rem; }
+    .gala-stat { border:1px solid var(--cpri-border); border-radius:12px; padding:12px 14px; background:var(--cpri-card); }
+    .gala-stat b { display:block; font-size:1.5rem; color:var(--cpri-secondary); }
     .gala-stat span { color:var(--cpri-muted); font-size:.8rem; }
   </style>
 </head>
@@ -40,7 +29,7 @@
 
     <section class="section">
       <div class="container">
-        <div class="form-message" id="message"></div>
+        <div class="form-message" id="message" role="alert"></div>
 
         <div id="loading" class="empty-state">Loading your submissions…</div>
 
@@ -51,7 +40,7 @@
         <div id="dashboard" style="display:none;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;">
             <h2 style="margin:0;">My entries</h2>
-            <a class="btn btn-primary" href="gala-form.html"><i class="bi bi-plus-lg"></i> New submission</a>
+            <a class="btn btn-primary" href="gala-form.html?new=1"><i class="bi bi-plus-lg"></i> New submission</a>
           </div>
 
           <div class="gala-summary" id="summary" style="display:none;"></div>
@@ -64,25 +53,39 @@
 
   <div id="site-footer"></div>
   <script src="assets/js/main.js"></script>
+  <script src="assets/js/gala-ui.js"></script>
   <script>
-    const message = document.getElementById('message');
-    const loading = document.getElementById('loading');
-    const notLogged = document.getElementById('not-logged');
-    const dashboard = document.getElementById('dashboard');
-    const list = document.getElementById('list');
-    const summary = document.getElementById('summary');
+    var esc = GalaUI.esc;
+    var message = document.getElementById('message');
+    var loading = document.getElementById('loading');
+    var notLogged = document.getElementById('not-logged');
+    var dashboard = document.getElementById('dashboard');
+    var list = document.getElementById('list');
+    var summary = document.getElementById('summary');
 
     function showMsg(type, text) {
       message.className = 'form-message ' + type;
       message.textContent = text || '';
     }
-    function escapeHtml(s) {
-      return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    }
-    function fmtDate(v) {
-      if (!v) return '';
-      const d = new Date(v);
-      return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleDateString();
+
+    function card(s) {
+      var title = s.title || 'Untitled draft';
+      var primary = '';
+      if (s.status === 'draft') primary = '<a class="btn btn-primary" href="gala-form.html?id=' + encodeURIComponent(s.id) + '">Resume draft</a>';
+      else if (s.status === 'for_revision') primary = '<a class="btn btn-primary" href="gala-form.html?id=' + encodeURIComponent(s.id) + '">Revise and resubmit</a>';
+      else if (s.editable) primary = '<a class="btn btn-soft" href="gala-form.html?id=' + encodeURIComponent(s.id) + '">Edit</a>';
+      return '<article class="gala-item" data-id="' + esc(s.id) + '">' +
+        '<div class="gala-item-head"><div><h3>' + esc(title) + '</h3>' +
+        '<div class="gala-meta">' + (s.refNo ? esc(s.refNo) + ' &middot; ' : '') + esc(s.presentationTypeLabel || 'Format not chosen') +
+        ' &middot; ' + (s.submittedAt ? 'submitted ' + esc(GalaUI.fmtDate(s.submittedAt)) : 'last saved ' + esc(GalaUI.fmtDate(s.updatedAt))) +
+        ' &middot; ' + s.docsAttached + ' of ' + s.docsRequired + ' documents</div></div>' +
+        GalaUI.pill(s.status, s.statusLabel) + '</div>' +
+        (s.status === 'draft' ? '' : GalaUI.tracker(s) + GalaUI.scheduleBlock(s)) +
+        GalaUI.notes(s) +
+        '<div class="gala-actions">' + primary +
+        '<a class="btn btn-navy" href="gala-submission.html?id=' + encodeURIComponent(s.id) + '">Details</a>' +
+        (s.withdrawable ? '<button type="button" class="btn btn-soft" data-action="withdraw">' + (s.status === 'draft' ? 'Delete draft' : 'Withdraw') + '</button>' : '') +
+        '</div></article>';
     }
 
     async function load() {
@@ -90,86 +93,58 @@
       list.innerHTML = '';
       showMsg('', '');
       try {
-        const res = await fetch('/api/gala');
+        var res = await fetch('/api/gala', { credentials: 'include' });
         if (res.status === 401) {
           loading.style.display = 'none';
           notLogged.style.display = 'block';
           return;
         }
-        const out = await res.json().catch(() => ({}));
+        var out = await res.json().catch(function () { return {}; });
         if (!res.ok) throw new Error(out.error || 'Could not load your submissions.');
-        const items = out.submissions || [];
+        var items = out.submissions || [];
         loading.style.display = 'none';
         dashboard.style.display = 'block';
 
         if (!items.length) {
           summary.style.display = 'none';
-          list.innerHTML = `<div class="empty-state">
-            You have no Research Gala submissions yet.<br>
-            <a class="btn btn-primary" style="margin-top:12px;" href="gala-form.html">Submit your first entry</a>
-          </div>`;
+          list.innerHTML = '<div class="empty-state">You have no Research Gala submissions yet.<br>' +
+            '<a class="btn btn-primary" style="margin-top:12px;" href="gala-form.html">Start your first submission</a></div>';
           return;
         }
 
-        const counts = { submitted: 0, under_review: 0, accepted: 0, rejected: 0 };
-        items.forEach(s => { counts[s.status] = (counts[s.status] || 0) + 1; });
+        var count = function (status) { return items.filter(function (s) { return s.status === status; }).length; };
         summary.style.display = 'grid';
         summary.innerHTML = [
           ['Total', items.length],
-          ['Submitted', counts.submitted || 0],
-          ['Under review', counts.under_review || 0],
-          ['Accepted', counts.accepted || 0]
-        ].map(([label, value]) => `<div class="gala-stat"><b>${value}</b><span>${label}</span></div>`).join('');
+          ['Drafts', count('draft')],
+          ['Submitted', count('submitted')],
+          ['Under checking', count('under_checking')],
+          ['Scheduled', count('scheduled')]
+        ].map(function (p) { return '<div class="gala-stat"><b>' + p[1] + '</b><span>' + p[0] + '</span></div>'; }).join('');
 
-        list.innerHTML = items.map(s => {
-          const file = (s.files || [])[0];
-          const decidable = !['accepted', 'rejected'].includes(s.status);
-          return `<article class="gala-item" data-id="${escapeHtml(s.id)}">
-            <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-              <div>
-                <h3>${escapeHtml(s.title)}</h3>
-                <div class="gala-meta">
-                  ${escapeHtml(s.presentationTypeLabel || s.presentationType || '')}
-                  ${s.eventTitle ? ' · ' + escapeHtml(s.eventTitle) : ''}
-                  ${s.eventDate ? ' · ' + fmtDate(s.eventDate) : ''}
-                  · submitted ${fmtDate(s.createdAt)}
-                </div>
-              </div>
-              <span class="gala-status" data-status="${escapeHtml(s.status)}">${escapeHtml(s.statusLabel || s.status)}</span>
-            </div>
-            ${s.authors ? `<p style="margin:0 0 6px;"><strong>Authors:</strong> ${escapeHtml(s.authors)}</p>` : ''}
-            ${s.reviewNote ? `<p class="form-note" style="margin:0 0 8px;"><strong>Reviewer note:</strong> ${escapeHtml(s.reviewNote)}</p>` : ''}
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-              ${file ? `<a class="btn btn-navy" href="/api/gala/${encodeURIComponent(s.id)}/file/${encodeURIComponent(file.filename)}">Download abstract</a>` : ''}
-              ${decidable ? `<a class="btn btn-soft" href="gala-form.html?edit=${encodeURIComponent(s.id)}">Edit</a>` : ''}
-              ${decidable ? `<button type="button" class="btn btn-soft" data-action="withdraw">Withdraw</button>` : ''}
-            </div>
-          </article>`;
-        }).join('');
+        list.innerHTML = items.map(card).join('');
       } catch (err) {
         loading.style.display = 'none';
         showMsg('error', err.message);
       }
     }
 
-    list.addEventListener('click', async (e) => {
-      const btn = e.target.closest('[data-action="withdraw"]');
+    list.addEventListener('click', async function (e) {
+      var btn = e.target.closest('[data-action="withdraw"]');
       if (!btn) return;
-      const item = btn.closest('.gala-item');
+      var item = btn.closest('.gala-item');
       if (!item) return;
-      if (!confirm('Withdraw this submission? This cannot be undone.')) return;
+      if (!confirm('Remove this submission? This cannot be undone.')) return;
       btn.disabled = true;
-      btn.textContent = 'Withdrawing…';
       try {
-        const res = await fetch('/api/gala/' + encodeURIComponent(item.dataset.id), { method: 'DELETE' });
-        const out = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(out.error || 'Could not withdraw the submission.');
-        showMsg('success', out.message || 'Submission withdrawn.');
+        var res = await fetch('/api/gala/' + encodeURIComponent(item.dataset.id), { method: 'DELETE', credentials: 'include' });
+        var out = await res.json().catch(function () { return {}; });
+        if (!res.ok) throw new Error(out.error || 'Could not remove the submission.');
+        showMsg('success', out.message || 'Submission removed.');
         load();
       } catch (err) {
         showMsg('error', err.message);
         btn.disabled = false;
-        btn.textContent = 'Withdraw';
       }
     });
 

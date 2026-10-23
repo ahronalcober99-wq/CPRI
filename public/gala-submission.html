@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gala Submission Details | CPRI</title>
+  <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
+  <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/gala.css">
+  <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <div id="site-header"></div>
+
+  <main id="main">
+    <section class="page-header">
+      <div class="container">
+        <h1 id="page-title">Research Gala Submission</h1>
+        <p id="page-sub">Status, schedule and documents.</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="container">
+        <div class="gx-wrap">
+          <div class="form-message" id="message" role="alert"></div>
+          <div id="loading" class="empty-state">Loading…</div>
+          <div id="error" class="empty-state" style="display:none;"></div>
+
+          <div id="detail" style="display:none;">
+            <p><a href="presenter-dashboard.html">&larr; My Gala submissions</a></p>
+
+            <div class="card" style="margin-bottom:16px;">
+              <div class="gala-item-head">
+                <div>
+                  <h3 style="margin:0;" id="d-title"></h3>
+                  <div class="gala-meta" id="d-meta"></div>
+                </div>
+                <span id="d-pill"></span>
+              </div>
+              <div id="d-tracker"></div>
+              <div id="d-schedule"></div>
+              <div id="d-notes"></div>
+              <div class="gala-actions" id="d-actions"></div>
+            </div>
+
+            <div class="grid grid-2" style="gap:16px;align-items:start;">
+              <div class="card">
+                <h4 style="margin-top:0;">Presentation details</h4>
+                <div id="d-info"></div>
+              </div>
+              <div>
+                <div class="card" style="margin-bottom:16px;">
+                  <h4 style="margin-top:0;">Documents <span class="form-note" id="d-docs-count"></span></h4>
+                  <div id="d-docs"></div>
+                </div>
+                <div class="card">
+                  <h4 style="margin-top:0;">History</h4>
+                  <div id="d-timeline"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="site-footer"></div>
+  <script src="assets/js/main.js"></script>
+  <script src="assets/js/gala-ui.js"></script>
+  <script>
+  (function () {
+    'use strict';
+    var $ = function (id) { return document.getElementById(id); };
+    var esc = GalaUI.esc;
+    var id = new URLSearchParams(location.search).get('id');
+    var cfg = null;
+
+    function showMsg(type, text) {
+      $('message').className = 'form-message' + (type ? ' ' + type : '');
+      $('message').textContent = text || '';
+    }
+    function fail(html) {
+      $('loading').style.display = 'none';
+      $('error').style.display = 'block';
+      $('error').innerHTML = html;
+    }
+    function formatSize(b) { return b < 1048576 ? (b / 1024).toFixed(1) + ' KB' : (b / 1048576).toFixed(1) + ' MB'; }
+    function label(list, value, key) {
+      var hit = (list || []).find(function (x) { return x.value === value; });
+      return hit ? hit[key || 'label'] : '';
+    }
+
+    function render(s) {
+      $('page-title').textContent = s.title || 'Research Gala Submission';
+      $('d-title').textContent = s.title || 'Untitled draft';
+      $('d-meta').innerHTML = (s.refNo ? 'Reference <strong>' + esc(s.refNo) + '</strong> &middot; ' : '') +
+        esc(s.presentationTypeLabel || 'Format not chosen') +
+        (s.submittedAt ? ' &middot; submitted ' + esc(GalaUI.fmtDate(s.submittedAt)) : ' &middot; last saved ' + esc(GalaUI.fmtDate(s.updatedAt)));
+      $('d-pill').innerHTML = GalaUI.pill(s.status, s.statusLabel);
+      $('d-tracker').innerHTML = GalaUI.tracker(s);
+      $('d-schedule').innerHTML = s.status === 'draft' ? '' : GalaUI.scheduleBlock(s);
+      $('d-notes').innerHTML = GalaUI.notes(s);
+
+      var actions = '';
+      if (s.editable) {
+        actions += '<a class="btn btn-primary" href="gala-form.html?id=' + encodeURIComponent(s.id) + '">' +
+          (s.status === 'draft' ? 'Resume draft' : s.status === 'for_revision' ? 'Revise and resubmit' : 'Edit') + '</a>';
+      }
+      if (s.withdrawable) {
+        actions += '<button type="button" class="btn btn-soft" id="withdraw">' + (s.status === 'draft' ? 'Delete draft' : 'Withdraw') + '</button>';
+      }
+      if (!s.editable && s.status === 'under_checking') {
+        actions += '<span class="form-note">Editing is locked while your paper is being checked.</span>';
+      }
+      $('d-actions').innerHTML = actions;
+
+      var rows = [
+        ['Presenter(s)', (s.presenters || []).join(', ')],
+        ['Co-author(s)', (s.coAuthors || []).join(', ')],
+        ['Program or Department', s.program],
+        ['Research Category', s.categoryLabel],
+        ['Presentation format', s.presentationTypeLabel],
+        ['Adviser', s.adviser],
+        ['School Year', s.schoolYear],
+        ['Semester', label(cfg && cfg.semesters, s.semester)],
+        ['Keywords', (s.keywords || []).join(', ')],
+        ['Schedule preference', s.schedulePreferenceLabel],
+        ['Abstract', s.abstract]
+      ];
+      $('d-info').innerHTML = '<dl class="gx-dl" style="grid-template-columns:minmax(110px,160px) 1fr;">' + rows.map(function (r) {
+        return '<dt>' + esc(r[0]) + '</dt><dd>' + (r[1] ? esc(r[1]) : '<span class="form-note">Not provided</span>') + '</dd>';
+      }).join('') + '</dl>';
+
+      $('d-docs-count').textContent = '(' + s.docsAttached + ' of ' + s.docsRequired + ' attached)';
+      var required = cfg ? cfg.slots : [];
+      $('d-docs').innerHTML = required.length ? required.map(function (slot) {
+        var f = (s.files || []).find(function (x) { return x.slot === slot.key; });
+        var name = slot.key === 'presentation'
+          ? (s.presentationType === 'poster' ? slot.labelPoster : s.presentationType === 'oral' ? slot.labelOral : slot.label)
+          : slot.label;
+        return '<div class="gx-doc' + (f ? ' is-attached' : '') + '" style="margin-bottom:8px;grid-template-columns:1fr auto;">' +
+          '<div><div class="gx-doc-name">' + esc(name) +
+          (f ? '<span class="gx-chip is-ok">Attached</span>' : '<span class="gx-chip is-missing">Missing</span>') + '</div>' +
+          (f ? '<div class="gx-doc-file">' + esc(f.originalName) + ' &middot; ' + formatSize(f.size) + '</div>' : '') + '</div>' +
+          (f ? '<div class="gx-doc-actions"><a class="btn btn-soft btn-sm" href="/api/gala/' + encodeURIComponent(s.id) + '/files/' + encodeURIComponent(slot.key) + '">Download</a></div>' : '') +
+          '</div>';
+      }).join('') : '';
+      // Files from before the final-paper form have no slot.
+      (s.files || []).filter(function (f) { return !f.slot; }).forEach(function (f) {
+        $('d-docs').insertAdjacentHTML('beforeend', '<p class="form-note">Earlier upload: <a href="/api/gala/' + encodeURIComponent(s.id) + '/file/' + encodeURIComponent(f.legacyFilename) + '">' + esc(f.originalName) + '</a></p>');
+      });
+
+      $('d-timeline').innerHTML = GalaUI.timeline(s) || '<p class="form-note">Nothing has happened yet.</p>';
+    }
+
+    $('d-actions').addEventListener('click', async function (e) {
+      var btn = e.target.closest('#withdraw');
+      if (!btn) return;
+      if (!confirm('Remove this submission? This cannot be undone.')) return;
+      btn.disabled = true;
+      var res = await fetch('/api/gala/' + encodeURIComponent(id), { method: 'DELETE', credentials: 'include' });
+      var data = await res.json().catch(function () { return {}; });
+      if (!res.ok) { showMsg('error', data.error || 'Could not remove the submission.'); btn.disabled = false; return; }
+      location.href = 'presenter-dashboard.html';
+    });
+
+    (async function () {
+      if (!id) return fail('No submission was specified. <a href="presenter-dashboard.html">My Gala submissions</a>');
+      var results = await Promise.all([
+        fetch('/api/gala/' + encodeURIComponent(id), { credentials: 'include' }),
+        fetch('/api/gala/config', { credentials: 'include' })
+      ]);
+      var data = await results[0].json().catch(function () { return {}; });
+      if (!results[0].ok) return fail(esc(data.error || 'That submission could not be found.') + '<br><a href="presenter-dashboard.html">My Gala submissions</a>');
+      cfg = results[1].ok ? await results[1].json().catch(function () { return null; }) : null;
+      render(data.submission);
+      $('loading').style.display = 'none';
+      $('detail').style.display = 'block';
+    })().catch(function (err) { fail('Could not load this page: ' + esc(err.message)); });
+  })();
+  </script>
+</body>
+</html>

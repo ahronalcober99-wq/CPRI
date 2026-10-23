@@ -53,25 +53,25 @@ function approximateWidth(text, size, bold) {
   return factor * size * (bold ? 1.06 : 1);
 }
 
-/**
- * Build a one-page PDF from text lines.
- *
- * @param {object} options
- * @param {Array<{text:string,x?:number,y:number,size?:number,bold?:boolean,align?:'left'|'center'|'right'}>} options.lines
- * @param {{x:number,y:number,width:number,height:number}} [options.border]
- * @param {string} [options.title] Document title metadata
- * @returns {Buffer}
- */
-export function createPdf({ lines = [], border = null, title = 'Document' } = {}) {
+// Colours are [r, g, b] in 0..1 (PDF's DeviceRGB).
+const rgb = (c) => c.map(n => Math.min(1, Math.max(0, Number(n) || 0)).toFixed(3)).join(' ');
+
+function pageContent(page, width) {
   const ops = [];
 
-  if (border) {
+  if (page.border) {
     // `re` draws a rectangle path, `S` strokes it — a simple framed border.
     ops.push('0.85 w');
-    ops.push(`${border.x} ${border.y} ${border.width} ${border.height} re S`);
+    ops.push(`${page.border.x} ${page.border.y} ${page.border.width} ${page.border.height} re S`);
   }
 
-  for (const line of lines || []) {
+  // Filled rectangles (table header bands, accent rules) go first so text sits on top.
+  for (const r of page.rects || []) {
+    ops.push(`${rgb(r.fill)} rg ${r.x.toFixed(2)} ${r.y.toFixed(2)} ${r.width.toFixed(2)} ${r.height.toFixed(2)} re f`);
+  }
+  if ((page.rects || []).length) ops.push('0 g');
+
+  for (const line of page.lines || []) {
     if (line === null || line === undefined) continue;
     const text = line.text === '' || line.text === undefined ? '' : String(line.text);
     const size = line.size || 12;
@@ -79,27 +79,51 @@ export function createPdf({ lines = [], border = null, title = 'Document' } = {}
     const font = bold ? '/F2' : '/F1';
     let x = line.x ?? 72;
     if (line.align === 'center') {
-      x = (PAGE_WIDTH - approximateWidth(text, size, bold)) / 2;
+      x = (width - approximateWidth(text, size, bold)) / 2;
     } else if (line.align === 'right') {
-      x = PAGE_WIDTH - 72 - approximateWidth(text, size, bold);
+      x = width - 72 - approximateWidth(text, size, bold);
     }
     if (text === '') {
       continue;
     }
-    ops.push(`BT ${font} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${line.y.toFixed(2)} Tm (${escapeText(text)}) Tj ET`);
+    const colour = line.color ? `${rgb(line.color)} rg ` : '';
+    const reset = line.color ? ' 0 g' : '';
+    ops.push(`${colour}BT ${font} ${size} Tf 1 0 0 1 ${x.toFixed(2)} ${line.y.toFixed(2)} Tm (${escapeText(text)}) Tj ET${reset}`);
   }
+  return ops.join('\n');
+}
 
-  const content = ops.join('\n');
+/**
+ * Build a PDF from one or more pages of positioned text.
+ *
+ * @param {object} options
+ * @param {Array<{lines:Array, rects?:Array, border?:object}>} options.pages
+ * @param {number} [options.width]  page width in points (default A4 portrait)
+ * @param {number} [options.height] page height in points
+ * @param {string} [options.title]  Document title metadata
+ * @returns {Buffer}
+ */
+export function createPdfDocument({ pages = [], width = PAGE_WIDTH, height = PAGE_HEIGHT, title = 'Document' } = {}) {
+  const pageList = pages.length ? pages : [{ lines: [] }];
 
+  // Object layout: 1 catalog, 2 page tree, 3-4 fonts, then a page object and a
+  // content stream per page.
+  const firstPageObject = 5;
+  const kids = pageList.map((_, i) => `${firstPageObject + i * 2} 0 R`).join(' ');
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] `
-      + `/Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> /Contents 4 0 R >>`,
-    `<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`,
+    `<< /Type /Pages /Kids [${kids}] /Count ${pageList.length} >>`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'
   ];
+  pageList.forEach((page, i) => {
+    const content = pageContent(page, width);
+    objects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${width} ${height}] `
+      + `/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${firstPageObject + i * 2 + 1} 0 R >>`
+    );
+    objects.push(`<< /Length ${Buffer.byteLength(content, 'latin1')} >>\nstream\n${content}\nendstream`);
+  });
 
   // Assemble the file while recording each object's byte offset for the xref.
   let pdf = '%PDF-1.4\n';
@@ -126,4 +150,17 @@ export function createPdf({ lines = [], border = null, title = 'Document' } = {}
   return Buffer.from(pdf, 'latin1');
 }
 
-export { PAGE_WIDTH, PAGE_HEIGHT, escapeText, toWinAnsi };
+/**
+ * Build a one-page PDF from text lines.
+ *
+ * @param {object} options
+ * @param {Array<{text:string,x?:number,y:number,size?:number,bold?:boolean,align?:'left'|'center'|'right'}>} options.lines
+ * @param {{x:number,y:number,width:number,height:number}} [options.border]
+ * @param {string} [options.title] Document title metadata
+ * @returns {Buffer}
+ */
+export function createPdf({ lines = [], border = null, title = 'Document' } = {}) {
+  return createPdfDocument({ pages: [{ lines, border }], title });
+}
+
+export { PAGE_WIDTH, PAGE_HEIGHT, escapeText, toWinAnsi, approximateWidth };

@@ -7,6 +7,7 @@
   <link rel="icon" type="image/png" href="/images/cpri-logo.jpg">
   <meta name="theme-color" content="#240000">
   <link rel="stylesheet" href="assets/css/styles.css">
+  <link rel="stylesheet" href="assets/css/gala.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   <script>try{if(localStorage.getItem('cpri-theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 </head>
@@ -300,23 +301,48 @@
               </div>
             </div>
 
-            <!-- Research Gala review queue. -->
+            <!-- Research Gala review queue: filters, program export, review dialog. -->
             <div class="admin-panel" data-panel="gala">
               <div class="admin-card">
                 <h3><i class="bi bi-mic"></i> Research Gala Submissions <span class="status-pill active">Review</span></h3>
-                <div class="quick-actions" style="margin-bottom:14px;">
+                <p class="form-note">Final papers submitted by Presenter accounts. Open a row to review its documents, change the status, leave remarks and assign a date, time and room. Every change is written to the audit log and sent to the presenter.</p>
+
+                <div class="gala-filters">
                   <div class="form-group" style="margin:0;">
-                    <label for="gala-status-filter">Filter by status</label>
-                    <select id="gala-status-filter">
-                      <option value="">All</option>
-                      <option value="submitted">Submitted</option>
-                      <option value="under_review">Under Review</option>
-                      <option value="accepted">Accepted</option>
-                      <option value="rejected">Rejected</option>
-                    </select>
+                    <label for="gala-f-status">Status</label>
+                    <select id="gala-f-status"><option value="">All statuses</option></select>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label for="gala-f-category">Category</label>
+                    <select id="gala-f-category"><option value="">All categories</option></select>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label for="gala-f-format">Format</label>
+                    <select id="gala-f-format"><option value="">Oral and Poster</option></select>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label for="gala-f-year">School year</label>
+                    <select id="gala-f-year"><option value="">All school years</option></select>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label for="gala-f-search">Search</label>
+                    <input type="search" id="gala-f-search" placeholder="Title, presenter or reference">
                   </div>
                   <button class="btn btn-navy btn-sm" id="refresh-gala" style="align-self:flex-end;"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
                 </div>
+
+                <div class="gala-export" role="group" aria-label="Export the program of presenters">
+                  <strong><i class="bi bi-download"></i> Export program of presenters</strong>
+                  <button class="btn btn-primary btn-sm" id="gala-export-pdf" type="button"><i class="bi bi-file-earmark-pdf"></i> PDF</button>
+                  <button class="btn btn-primary btn-sm" id="gala-export-xlsx" type="button"><i class="bi bi-file-earmark-excel"></i> Excel</button>
+                  <label class="form-note" style="display:flex;gap:6px;align-items:center;margin:0;">
+                    <input type="checkbox" id="gala-export-all"> Include entries that are not scheduled yet
+                  </label>
+                  <span class="form-note">Uses the filters above (not the search box). By default only Scheduled and Presented entries are listed.</span>
+                </div>
+
+                <div id="gala-msg" class="form-message" role="alert"></div>
+                <p class="form-note" id="gala-count" aria-live="polite"></p>
                 <div id="gala-table"></div>
               </div>
             </div>
@@ -383,6 +409,7 @@
   <script src="assets/js/event-image-utils.js"></script>
   <script src="assets/js/main.js"></script>
   <script src="assets/js/course-picker.js"></script>
+  <script src="assets/js/gala-ui.js"></script>
 
   <!-- Add / Edit user. Sits before the confirm dialog so a confirmation
        (e.g. "this clears the course") stacks on top of it. -->
@@ -437,6 +464,66 @@
       </div>
     </form>
   </div>
+
+  <!-- Research Gala review dialog: documents, status, remarks, schedule. -->
+  <div class="confirm-overlay" id="galaReviewOverlay" hidden>
+    <div class="confirm-box gala-review-box" role="dialog" aria-modal="true" aria-labelledby="galaReviewTitle">
+      <div class="gala-item-head">
+        <div>
+          <h3 id="galaReviewTitle" style="margin:0;"></h3>
+          <div class="gala-meta" id="galaReviewMeta"></div>
+        </div>
+        <span id="galaReviewPill"></span>
+      </div>
+      <div class="form-message" id="galaReviewMsg" role="alert"></div>
+
+      <div class="gala-review-cols">
+        <div>
+          <h4>Presentation details</h4>
+          <div id="galaReviewInfo"></div>
+        </div>
+        <div>
+          <h4>Documents <span class="form-note" id="galaReviewDocsCount"></span></h4>
+          <div id="galaReviewDocs"></div>
+          <h4 style="margin-top:16px;">History</h4>
+          <div id="galaReviewTimeline"></div>
+        </div>
+      </div>
+
+      <form id="galaReviewForm" class="gala-review-form" novalidate>
+        <h4 style="margin-top:0;">Decision</h4>
+        <div class="gx-grid">
+          <div class="form-group">
+            <label for="grv-status">Status</label>
+            <select id="grv-status"></select>
+          </div>
+          <div class="form-group">
+            <label for="grv-remarks">Remarks <span class="form-note">(the presenter sees these)</span></label>
+            <textarea id="grv-remarks" rows="3" maxlength="1000" placeholder="Required for For Revision and Rejected"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="grv-date">Date</label>
+            <input type="date" id="grv-date">
+          </div>
+          <div class="form-group">
+            <label for="grv-time">Time</label>
+            <input type="time" id="grv-time">
+          </div>
+          <div class="form-group gx-full">
+            <label for="grv-room">Room</label>
+            <input type="text" id="grv-room" maxlength="120" placeholder="e.g. Gabriel Arcangel Hall, Room 204">
+            <p class="gx-hint" id="grv-pref"></p>
+            <p class="gx-hint">The presenter sees the date, time and room only once the status is Scheduled.</p>
+          </div>
+        </div>
+        <div class="confirm-actions" style="justify-content:flex-end;">
+          <button type="button" class="btn btn-navy" id="galaReviewClose">Close</button>
+          <button type="submit" class="btn btn-primary" id="galaReviewSave">Save changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 
   <!-- In-page confirmation dialog (native confirm() is blocked in sandboxed iframes) -->
   <div class="confirm-overlay" id="confirmOverlay" hidden>
@@ -1872,7 +1959,7 @@
       users: { title: 'User Management', sub: 'Roles, access and account status' },
       content: { title: 'Content Management', sub: 'Publish events and featured research' },
       approvals: { title: 'Account Approvals', sub: 'Approve or reject pending staff and reviewer accounts' },
-      gala: { title: 'Research Gala', sub: 'Review Research Gala submissions and set their status' },
+      gala: { title: 'Research Gala', sub: 'Review final papers, set status and schedule, and export the program' },
       backups: { title: 'Database Backups', sub: 'Take, list and download database backups' },
       logs: { title: 'System Logs', sub: 'Audit trail of administrative actions' }
     };
@@ -1971,64 +2058,250 @@
     }
 
     // ---- Research Gala review ----
+    let galaCfg = null;
+    let galaRows = [];
+    let galaFiltersBuilt = false;
+    let galaOpenId = null;
+
+    async function galaConfig() {
+      if (galaCfg) return galaCfg;
+      const res = await fetch('/api/gala/config', { credentials: 'include' });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || 'Could not load the Research Gala settings.');
+      galaCfg = out;
+      return out;
+    }
+
+    function galaMsg(type, text) {
+      const el = document.getElementById('gala-msg');
+      if (!el) return;
+      el.className = 'form-message' + (type ? ' ' + type : '');
+      el.textContent = text || '';
+    }
+
+    function galaFilterQuery(extra, { search = true } = {}) {
+      const p = new URLSearchParams();
+      const fields = [['gala-f-status', 'status'], ['gala-f-category', 'category'], ['gala-f-format', 'presentationType'], ['gala-f-year', 'schoolYear']];
+      if (search) fields.push(['gala-f-search', 'q']);
+      fields.forEach(([id, key]) => {
+        const v = (document.getElementById(id)?.value || '').trim();
+        if (v) p.set(key, v);
+      });
+      Object.entries(extra || {}).forEach(([k, v]) => p.set(k, v));
+      return p.toString();
+    }
+
+    function buildGalaFilters(cfg, facets) {
+      const fill = (id, items) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        items.forEach(([value, label]) => el.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`));
+      };
+      fill('gala-f-status', cfg.statuses.filter(s => s.value !== 'draft').map(s => [s.value, s.label]));
+      fill('gala-f-category', cfg.categories.map(c => [c.value, c.label]));
+      fill('gala-f-format', cfg.formats.map(f => [f.value, f.label]));
+      const years = [...new Set([...(cfg.schoolYears || []).map(y => y.value), ...(facets.schoolYears || [])])].sort().reverse();
+      fill('gala-f-year', years.map(y => [y, y]));
+      galaFiltersBuilt = true;
+    }
+
+    function galaScheduleText(s) {
+      return s.schedule ? `${s.schedule.dateLabel}, ${s.schedule.timeLabel} · ${s.schedule.room}` : '';
+    }
+
     async function loadGala() {
       const box = document.getElementById('gala-table');
       if (!box) return;
-      const filter = document.getElementById('gala-status-filter');
-      const status = filter ? filter.value : '';
+      galaMsg('', '');
       box.innerHTML = '<p class="form-note">Loading Research Gala submissions…</p>';
       try {
-        const res = await fetch('/api/gala' + (status ? '?status=' + encodeURIComponent(status) : ''), { credentials: 'include' });
+        const cfg = await galaConfig();
+        const res = await fetch('/api/gala?' + galaFilterQuery(), { credentials: 'include' });
         const out = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(out.error || 'Could not load submissions.');
-        const rows = out.submissions || [];
-        if (!rows.length) {
-          box.innerHTML = '<div class="empty-state">No Research Gala submissions' + (status ? ' with that status' : '') + ' yet.</div>';
+        if (!galaFiltersBuilt) buildGalaFilters(cfg, out.facets || {});
+        galaRows = out.submissions || [];
+        document.getElementById('gala-count').textContent = `${galaRows.length} submission${galaRows.length === 1 ? '' : 's'} shown.`;
+        if (!galaRows.length) {
+          box.innerHTML = '<div class="empty-state">No Research Gala submissions match these filters.</div>';
           return;
         }
         box.innerHTML = `<div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Title</th><th>Presenter</th><th>Event</th><th>Type</th><th>Status</th><th>Submitted</th><th>Decision</th></tr></thead>
-          <tbody>${rows.map(s => `<tr>
-            <td><b>${escapeHtml(s.title || '')}</b><div class="form-note">${escapeHtml(s.authors || '')}</div></td>
-            <td>${escapeHtml(s.submitterName || '')}</td>
-            <td>${escapeHtml(s.eventTitle || '—')}</td>
-            <td>${escapeHtml(s.presentationTypeLabel || s.presentationType || '')}</td>
-            <td><span class="status-pill ${['accepted'].includes(s.status) ? 'active' : ['rejected'].includes(s.status) ? 'pending' : 'active'}">${escapeHtml(s.statusLabel || s.status)}</span></td>
-            <td>${s.createdAt ? new Date(s.createdAt).toLocaleDateString() : '—'}</td>
-            <td>
-              <select class="gala-status-select" data-id="${s.id}" style="margin-bottom:6px;">
-                <option value="submitted" ${s.status === 'submitted' ? 'selected' : ''}>Submitted</option>
-                <option value="under_review" ${s.status === 'under_review' ? 'selected' : ''}>Under Review</option>
-                <option value="accepted" ${s.status === 'accepted' ? 'selected' : ''}>Accepted</option>
-                <option value="rejected" ${s.status === 'rejected' ? 'selected' : ''}>Rejected</option>
-              </select>
-              <input type="text" class="gala-note" data-id="${s.id}" placeholder="Note (optional)" style="margin-bottom:6px;">
-              <button class="btn btn-navy save-gala" data-id="${s.id}" style="padding:6px 12px;font-size:.85rem;">Save</button>
-            </td></tr>`).join('')}</tbody></table></div>`;
+          <thead><tr><th>Reference</th><th>Title / presenter</th><th>Program</th><th>Category</th><th>Format</th><th>School year</th><th>Docs</th><th>Status</th><th>Schedule</th><th>Submitted</th><th></th></tr></thead>
+          <tbody>${galaRows.map(s => `<tr>
+            <td><code>${escapeHtml(s.refNo || '—')}</code></td>
+            <td><b>${escapeHtml(s.title || '')}</b><div class="form-note">${escapeHtml((s.presenters || []).join(', ') || s.submitterName || '')}</div></td>
+            <td>${escapeHtml(s.program || '—')}</td>
+            <td>${escapeHtml(s.categoryLabel || '—')}</td>
+            <td>${escapeHtml(s.presentationTypeLabel || '—')}</td>
+            <td>${escapeHtml(s.schoolYear || '—')}</td>
+            <td>${s.docsAttached}/${s.docsRequired}</td>
+            <td>${GalaUI.pill(s.status, s.statusLabel)}</td>
+            <td>${escapeHtml(galaScheduleText(s) || '—')}</td>
+            <td>${s.submittedAt ? escapeHtml(GalaUI.fmtDate(s.submittedAt)) : '—'}</td>
+            <td><button class="btn btn-navy gala-review" data-id="${escapeHtml(s.id)}" style="padding:6px 12px;font-size:.85rem;">Review</button></td>
+          </tr>`).join('')}</tbody></table></div>`;
       } catch (err) {
         box.innerHTML = `<div class="form-message error" style="display:block;padding:16px;">Failed to load submissions: ${escapeHtml(err.message)}</div>`;
       }
     }
 
-    async function saveGalaStatus(id) {
-      const row = document.querySelector(`.gala-status-select[data-id="${id}"]`);
-      const noteEl = document.querySelector(`.gala-note[data-id="${id}"]`);
-      const btn = document.querySelector(`.save-gala[data-id="${id}"]`);
-      if (!row) return;
-      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+    // ---- Review dialog ----
+    function galaDialogMsg(type, text) {
+      const el = document.getElementById('galaReviewMsg');
+      el.className = 'form-message' + (type ? ' ' + type : '');
+      el.textContent = text || '';
+      if (text) el.scrollIntoView({ block: 'nearest' });
+    }
+
+    function renderGalaReview(s) {
+      const cfg = galaCfg;
+      document.getElementById('galaReviewTitle').textContent = s.title || 'Untitled';
+      document.getElementById('galaReviewMeta').innerHTML =
+        `${s.refNo ? '<b>' + escapeHtml(s.refNo) + '</b> · ' : ''}${escapeHtml(s.submitterName || '')} · submitted ${escapeHtml(GalaUI.fmtWhen(s.submittedAt) || '—')}`;
+      document.getElementById('galaReviewPill').innerHTML = GalaUI.pill(s.status, s.statusLabel);
+
+      const rows = [
+        ['Presenter(s)', (s.presenters || []).join(', ')],
+        ['Co-author(s)', (s.coAuthors || []).join(', ')],
+        ['Program', s.program],
+        ['Category', s.categoryLabel],
+        ['Format', s.presentationTypeLabel],
+        ['Adviser', s.adviser],
+        ['School year', s.schoolYear],
+        ['Semester', (cfg.semesters.find(x => x.value === s.semester) || {}).label],
+        ['Keywords', (s.keywords || []).join(', ')],
+        ['Schedule preference', s.schedulePreferenceLabel],
+        ['Abstract', s.abstract]
+      ];
+      document.getElementById('galaReviewInfo').innerHTML = '<dl class="gx-dl" style="grid-template-columns:minmax(100px,140px) 1fr;">' +
+        rows.map(r => `<dt>${escapeHtml(r[0])}</dt><dd>${r[1] ? escapeHtml(r[1]) : '<span class="form-note">—</span>'}</dd>`).join('') + '</dl>';
+
+      document.getElementById('galaReviewDocsCount').textContent = `(${s.docsAttached} of ${s.docsRequired} attached)`;
+      const base = '/api/gala/' + encodeURIComponent(s.id) + '/files/';
+      document.getElementById('galaReviewDocs').innerHTML = cfg.slots.map(slot => {
+        const f = (s.files || []).find(x => x.slot === slot.key);
+        const name = slot.key === 'presentation'
+          ? (s.presentationType === 'poster' ? slot.labelPoster : s.presentationType === 'oral' ? slot.labelOral : slot.label)
+          : slot.label;
+        const isPdf = f && /\.pdf$/i.test(f.originalName);
+        return `<div class="gx-doc ${f ? 'is-attached' : ''}" style="margin-bottom:8px;grid-template-columns:1fr auto;">
+          <div><div class="gx-doc-name">${escapeHtml(name)} ${f ? '<span class="gx-chip is-ok">Attached</span>' : '<span class="gx-chip is-missing">Missing</span>'}</div>
+          ${f ? `<div class="gx-doc-file">${escapeHtml(f.originalName)}</div>` : ''}</div>
+          ${f ? `<div class="gx-doc-actions">
+            ${isPdf ? `<a class="btn btn-soft btn-sm" target="_blank" rel="noopener" href="${base}${encodeURIComponent(slot.key)}?inline=1">View</a>` : ''}
+            <a class="btn btn-soft btn-sm" href="${base}${encodeURIComponent(slot.key)}">Download</a></div>` : ''}</div>`;
+      }).join('');
+
+      document.getElementById('galaReviewTimeline').innerHTML = GalaUI.timeline(s) || '<p class="form-note">No history yet.</p>';
+
+      // Status: stay as-is, or move to a status the server allows from here.
+      const allowed = cfg.transitions[s.status] || [];
+      const label = v => (cfg.statuses.find(x => x.value === v) || {}).label || v;
+      document.getElementById('grv-status').innerHTML =
+        `<option value="${escapeHtml(s.status)}" selected>${escapeHtml(label(s.status))} (current)</option>` +
+        allowed.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(label(v))}</option>`).join('');
+      document.getElementById('grv-remarks').value = s.remarks || '';
+      document.getElementById('grv-date').value = s.schedule ? s.schedule.date : '';
+      document.getElementById('grv-time').value = s.schedule ? s.schedule.time : '';
+      document.getElementById('grv-room').value = s.schedule ? s.schedule.room : '';
+      document.getElementById('grv-pref').textContent = s.schedulePreference && s.schedulePreference !== 'none'
+        ? `The presenter asked for: ${s.schedulePreferenceLabel}.` : 'No schedule preference given.';
+    }
+
+    function openGalaReview(id) {
+      const s = galaRows.find(x => x.id === id);
+      if (!s) return;
+      galaOpenId = id;
+      galaDialogMsg('', '');
+      renderGalaReview(s);
+      document.getElementById('galaReviewOverlay').hidden = false;
+      setTimeout(() => document.getElementById('grv-status').focus(), 30);
+    }
+
+    function closeGalaReview() {
+      document.getElementById('galaReviewOverlay').hidden = true;
+      galaOpenId = null;
+    }
+
+    async function saveGalaReview(e) {
+      e.preventDefault();
+      const s = galaRows.find(x => x.id === galaOpenId);
+      if (!s) return;
+      const btn = document.getElementById('galaReviewSave');
+      const body = {
+        status: document.getElementById('grv-status').value,
+        remarks: document.getElementById('grv-remarks').value,
+        scheduleDate: document.getElementById('grv-date').value,
+        scheduleTime: document.getElementById('grv-time').value,
+        scheduleRoom: document.getElementById('grv-room').value
+      };
+      const sameSchedule = body.scheduleDate === (s.schedule ? s.schedule.date : '')
+        && body.scheduleTime === (s.schedule ? s.schedule.time : '')
+        && body.scheduleRoom.trim() === (s.schedule ? s.schedule.room : '');
+      if (body.status === s.status && sameSchedule && body.remarks.trim() === (s.remarks || '')) {
+        galaDialogMsg('error', 'Nothing has changed yet.');
+        return;
+      }
+      btn.disabled = true;
+      galaDialogMsg('', '');
       try {
-        const res = await fetch('/api/gala/' + encodeURIComponent(id) + '/status', {
+        const res = await fetch('/api/gala/' + encodeURIComponent(s.id) + '/status', {
           method: 'PATCH', credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: row.value, note: noteEl ? noteEl.value : '' })
+          body: JSON.stringify(body)
         });
         const out = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(out.error || 'The status could not be saved.');
-        await loadGala();
+        if (!res.ok) throw new Error(out.error || 'The changes could not be saved.');
+        const at = galaRows.findIndex(x => x.id === s.id);
+        if (at >= 0) galaRows[at] = out.submission;
+        renderGalaReview(out.submission);
+        galaDialogMsg('success', out.message || 'Saved. The presenter has been notified.');
+        loadGala();
+        if (typeof loadLogs === 'function') loadLogs();
       } catch (err) {
-        const box = document.getElementById('gala-table');
-        box.insertAdjacentHTML('afterbegin', `<div class="form-message error" style="display:block;padding:12px;">${escapeHtml(err.message)}</div>`);
-        if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+        galaDialogMsg('error', err.message);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function wireGalaDialog() {
+      document.getElementById('galaReviewForm')?.addEventListener('submit', saveGalaReview);
+      document.getElementById('galaReviewClose')?.addEventListener('click', closeGalaReview);
+      document.getElementById('galaReviewOverlay')?.addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) closeGalaReview(); });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && !document.getElementById('galaReviewOverlay').hidden) closeGalaReview();
+      });
+    }
+
+    // ---- Program export ----
+    async function exportGalaProgram(format) {
+      const include = document.getElementById('gala-export-all')?.checked ? { include: 'all' } : {};
+      const buttons = ['gala-export-pdf', 'gala-export-xlsx'].map(id => document.getElementById(id));
+      buttons.forEach(b => { if (b) b.disabled = true; });
+      galaMsg('', '');
+      try {
+        const res = await fetch('/api/gala/export?' + galaFilterQuery({ format, ...include }, { search: false }), { credentials: 'include' });
+        if (!res.ok) {
+          const out = await res.json().catch(() => ({}));
+          throw new Error(out.error || 'The export could not be created.');
+        }
+        const blob = await res.blob();
+        const named = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = named ? named[1] : 'cpri-research-gala-program.' + format;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+        galaMsg('success', `Program exported as ${format === 'pdf' ? 'PDF' : 'Excel'}.`);
+        if (typeof loadLogs === 'function') loadLogs();
+      } catch (err) {
+        galaMsg('error', err.message);
+      } finally {
+        buttons.forEach(b => { if (b) b.disabled = false; });
       }
     }
 
@@ -2105,9 +2378,12 @@
     // ---- Wiring for the new panels ----
     document.getElementById('refresh-approvals')?.addEventListener('click', loadApprovals);
     document.getElementById('refresh-gala')?.addEventListener('click', loadGala);
+    ['gala-f-status', 'gala-f-category', 'gala-f-format', 'gala-f-year'].forEach(id => document.getElementById(id)?.addEventListener('change', loadGala));
+    document.getElementById('gala-f-search')?.addEventListener('input', (() => { let t; return () => { clearTimeout(t); t = setTimeout(loadGala, 350); }; })());
+    document.getElementById('gala-export-pdf')?.addEventListener('click', () => exportGalaProgram('pdf'));
+    document.getElementById('gala-export-xlsx')?.addEventListener('click', () => exportGalaProgram('xlsx'));
     document.getElementById('refresh-backups')?.addEventListener('click', loadBackups);
     document.getElementById('backup-now')?.addEventListener('click', createBackup);
-    document.getElementById('gala-status-filter')?.addEventListener('change', loadGala);
 
     // Delegated clicks so the tables keep working after every re-render.
     document.getElementById('approvals-table')?.addEventListener('click', (e) => {
@@ -2118,9 +2394,10 @@
       return undefined;
     });
     document.getElementById('gala-table')?.addEventListener('click', (e) => {
-      const save = e.target.closest('.save-gala');
-      if (save) saveGalaStatus(save.dataset.id);
+      const review = e.target.closest('.gala-review');
+      if (review) openGalaReview(review.dataset.id);
     });
+    wireGalaDialog();
 
     (async () => {
       const summary = await loadSummary();

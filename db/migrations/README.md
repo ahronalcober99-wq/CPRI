@@ -18,6 +18,7 @@ engine allows it; the `ensure*` functions remain the source of truth.
 | 004 | `004_publication_monitoring_fields.sql` | `ensurePublicationSchema()` — `server/publications.js` |
 | 005 | `005_research_submissions.sql` | `ensureResearchSubmissionsSchema()` — `server/research-submissions.js` |
 | 006 | `006_courses.sql` | `ensureCoursesSchema()` — `server/lib/courses.js` (also seeds an empty `courses` table from `server/data/courses-seed.json`) |
+| 008 | `008_gala_final_paper.sql` | `ensureGalaSchema()` — `server/gala.js` (adds the final-paper columns to `gala_submissions` and renames two old statuses) |
 
 ## Order
 
@@ -49,6 +50,7 @@ Each file carries its own rollback statement in a trailing comment block. Summar
 | 003 | `DROP TABLE db_backups` | Only forgets the backup index. The backup files themselves stay in Supabase Storage (`backups/<timestamp>.json`) or in `./backups/` and can still be restored by hand. |
 | 004 | `ALTER TABLE publications DROP COLUMN issn, DROP COLUMN isbn, DROP COLUMN indexing, DROP COLUMN impactFactor` | Report 9 stops showing those four fields. |
 | 006 | `ALTER TABLE users DROP INDEX idx_users_course, DROP COLUMN course_id, DROP COLUMN course_other, DROP COLUMN course_review; DROP TABLE courses` | Students lose their course. Every other account is unaffected. |
+| 008 | Reverse the two status renames, then drop the added columns and the `uq_gala_refno` / `idx_gala_schedule` indexes (full statements at the end of the file) | Presenters lose their reference numbers, schedules and the new form fields. Uploaded documents stay in the private store. |
 
 **User roles need no migration.** `role` is a `VARCHAR(30)`, so adding
 `non_teaching_researcher`, `presenter` and self-registered `cpri_staff` is a code

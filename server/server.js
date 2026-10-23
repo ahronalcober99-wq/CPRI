@@ -94,7 +94,20 @@ class DirectFileStore extends session.Store {
     return join(this.dir, String(sid).replace(/[^A-Za-z0-9_-]/g, '') + '.json');
   }
   get(sid, cb) {
-    fs.readFile(this._file(sid), 'utf8')
+    // set()/touch() rewrite the file in place on every response, so a request
+    // that reads at that instant can see it half-written. That used to look like
+    // "no session" and answered 401 to a signed-in user whose page made two
+    // requests at once. A file that does not parse is re-read a few times first.
+    const read = async () => {
+      let raw = await fs.readFile(this._file(sid), 'utf8');
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try { JSON.parse(raw); return raw; } catch { /* half-written: wait and re-read */ }
+        await new Promise((resolve) => setTimeout(resolve, 15 * (attempt + 1)));
+        raw = await fs.readFile(this._file(sid), 'utf8');
+      }
+      return raw;
+    };
+    read()
       .then((raw) => {
         let data;
         try { data = JSON.parse(raw); } catch { return cb(null, null); }
@@ -291,7 +304,11 @@ const MEMBER_ONLY_PAGES = new Set([
   'staff-dashboard.html',
   // Presenter's Research Gala dashboard — same treatment as the other personal
   // dashboards (account, my-submissions, facilitator-dashboard).
-  'presenter-dashboard.html'
+  'presenter-dashboard.html',
+  // Research Gala final-paper form, its success page and the submission detail
+  // page. Presenter-only (see DASHBOARD_PAGE_ROLES); the /api/gala routes
+  // enforce the same rule and are the actual boundary.
+  'gala-form.html', 'gala-success.html', 'gala-submission.html'
 ]);
 
 // Dashboard shells that belong to specific roles. The data behind each one is
@@ -303,7 +320,9 @@ const MEMBER_ONLY_PAGES = new Set([
 //                                   over a staff member's shoulder);
 //   my-submissions.html           → /api/research-submissions GET
 //                                   (RESEARCHER_ROLES + ASSIGNED_ROLES + staff);
-//   presenter-dashboard.html      → /api/gala (GALA_SUBMIT_ROLES + reviewers).
+//   presenter-dashboard.html, gala-form.html, gala-success.html,
+//   gala-submission.html          → /api/gala (GALA_SUBMIT_ROLES: Presenter only;
+//                                   reviewers use the Admin Console's Gala tab).
 const DASHBOARD_PAGE_ROLES = new Map([
   ['staff-dashboard.html', ['admin', 'cpri_staff']],
   ['facilitator-dashboard.html', ['admin', 'cpri_staff', 'adviser', 'facilitator']],
@@ -311,10 +330,10 @@ const DASHBOARD_PAGE_ROLES = new Map([
     'admin', 'cpri_staff', 'adviser', 'facilitator',
     'student_researcher', 'faculty_researcher', 'non_teaching_researcher', 'presenter'
   ]],
-  ['presenter-dashboard.html', [
-    'admin', 'cpri_staff', 'adviser',
-    'student_researcher', 'faculty_researcher', 'non_teaching_researcher', 'presenter'
-  ]]
+  ['presenter-dashboard.html', ['presenter']],
+  ['gala-form.html', ['presenter']],
+  ['gala-success.html', ['presenter']],
+  ['gala-submission.html', ['presenter']]
 ]);
 
 app.use(async (req, res, next) => {
