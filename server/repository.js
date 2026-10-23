@@ -7,6 +7,7 @@ import { addLog } from './audit.js';
 import { supabaseStorage } from './storage/supabase-storage.js';
 import { profileOf, recommendationsFor } from './lib/recommendations.js';
 import { appendKeywordSearch } from './lib/keyword-search.js';
+import { apaCitation } from './lib/citations.js';
 
 // ---------- Access levels ----------
 const ACCESS_LEVELS = {
@@ -32,7 +33,7 @@ const CATEGORY_TYPES = {
 function generateCitations(r) {
   const yr = r.yearCompleted || 'n.d.';
   return {
-    apa: `${r.authors} (${yr}). ${r.title}. ${r.department}.`,
+    apa: apaCitation({ authors: r.authors, year: yr, title: r.title, department: r.department }),
     mla: `${r.authors}. "${r.title}." ${r.department}, ${yr}.`,
     institutional: `CPRI (${yr}). ${r.title}. ${r.authors}. ${r.department}.`
   };

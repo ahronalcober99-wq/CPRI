@@ -191,7 +191,14 @@
       document.getElementById('d-abstract').textContent = r.abstract || '—';
       document.getElementById('d-keywords').textContent = r.keywords || '—';
       document.getElementById('d-file').textContent = r.fileAvailable ? 'Available' : 'Not available';
-      document.getElementById('c-apa').textContent = (r.citation && r.citation.apa) || '—';
+      // APA marks the italic title as *Title*; render it as real italics. The text
+      // is escaped first, so a title can never inject markup, and copying (which
+      // reads the rendered text) gets the plain reference without the asterisks.
+      const apaText = (r.citation && r.citation.apa) || '';
+      document.getElementById('c-apa').innerHTML = apaText
+        ? apaText.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+            .replace(/[*]([^*]+)[*]/g, '<i>$1</i>')
+        : '—';
       document.getElementById('c-mla').textContent = (r.citation && r.citation.mla) || '—';
       document.getElementById('c-inst').textContent = (r.citation && r.citation.institutional) || '—';
 

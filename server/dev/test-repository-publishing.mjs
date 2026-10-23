@@ -115,7 +115,7 @@ test('publishing creates one public repository entry and one publication', async
   assert.equal(entry.keywords, 'water, climate');
   assert.equal(entry.yearCompleted, '2026');
   assert.equal(entry.fileAvailable, 0, 'module uploads are private, never a public download');
-  assert.equal(JSON.parse(entry.citation).apa, 'S. Person (2026). Module paper m1. BS Biology.');
+  assert.equal(JSON.parse(entry.citation).apa, 'S. Person (2026). *Module paper m1* [Research paper, BS Biology]. CPRI Repository.');
 
   const [pub] = db.rows('publications');
   assert.equal(db.rows('publications').length, 1);

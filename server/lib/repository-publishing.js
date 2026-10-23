@@ -28,6 +28,7 @@
 import { randomUUID } from 'crypto';
 import { clean } from './submission-records.js';
 import { isPublicStatus } from './submission-index.js';
+import { apaCitation } from './citations.js';
 
 /**
  * @typedef {object} PublishSource
@@ -108,7 +109,7 @@ function yearOf(source) {
 
 function citationsFor(source, year) {
   return {
-    apa: `${source.authors} (${year}). ${source.title}. ${source.department}.`,
+    apa: apaCitation({ authors: source.authors, year, title: source.title, department: source.department }),
     mla: `${source.authors}. "${source.title}." ${source.department}, ${year}.`,
     institutional: `CPRI (${year}). ${source.title}. ${source.authors}. ${source.department}.`
   };
