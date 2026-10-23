@@ -325,6 +325,36 @@ try {
   check('Scheduled -> Presented', (await adm.patch(`/api/gala/${id}/status`, { status: 'presented' })).status === 200);
 
   // ------------------------------------------------------------------
+  section('5b. Grammar suggestions and the Turnitin record');
+  const g1 = await pat.post('/api/gala/grammar', { text: 'This are a testt of the grammer checker.' });
+  check('grammar endpoint answers 200 with a clear shape (service up or down)', g1.status === 200 && typeof g1.data.available === 'boolean' && Array.isArray(g1.data.issues), JSON.stringify(g1.data));
+  console.log(`        (LanguageTool ${g1.data.available ? `reachable, ${g1.data.issues.length} suggestion(s)` : `unavailable: ${g1.data.reason}`})`);
+  check('a second request straight away is rate limited (429)', (await pat.post('/api/gala/grammar', { text: 'Again.' })).status === 429);
+  check('a student cannot use the grammar endpoint (403)', (await stu.post('/api/gala/grammar', { text: 'Hello.' })).status === 403);
+
+  const turn = await adm.patch(`/api/gala/${id}/status`, { similarityScore: '18.5', similarityReportUrl: 'https://school.example.test/turnitin/abc' });
+  check('admin records the Turnitin score and report link', turn.status === 200 && turn.data.submission.similarity?.score === 18.5, JSON.stringify(turn.data));
+  const afterTurn = await get('SELECT similarityScore, similarityReportUrl, similarityCheckedBy FROM gala_submissions WHERE id = ?', [id]);
+  check('it is stored in the database with who recorded it', Number(afterTurn.similarityScore) === 18.5 && afterTurn.similarityCheckedBy === accounts.adm.fullName, JSON.stringify(afterTurn));
+  const presenterView = JSON.stringify((await pat.get(`/api/gala/${id}`)).data) + JSON.stringify((await pat.get('/api/gala')).data);
+  check('the presenter never sees the score or link', !/similarity|turnitin|18\.5/i.test(presenterView));
+  check('a presenter cannot record a score (403)', (await pat.patch(`/api/gala/${id}/status`, { similarityScore: 1 })).status === 403);
+  check('the score is in the Excel export', (await adm.get('/api/gala/export?format=xlsx')).data.includes('18.5%'));
+
+  // Normal Research Submissions: same record, real SQL, no leak to the researcher.
+  const rsId = `e2e-gala-rs-${tag}`;
+  await insert('research_submissions', { id: rsId, owner_id: accounts.stu.id, owner_name: accounts.stu.fullName, owner_role: 'student_researcher', stage: 'final', title: `E2E ${tag} research`, status: 'submitted' });
+  check('student cannot record a similarity result (403)', (await stu.patch(`/api/research-submissions/${rsId}/similarity`, { score: 5 })).status === 403);
+  const rs = await adm.patch(`/api/research-submissions/${rsId}/similarity`, { score: 12, reportUrl: 'https://school.example.test/t/9' });
+  check('admin records it on a research submission', rs.status === 200 && Number(rs.data.submission.similarity_score) === 12, JSON.stringify(rs.data));
+  const studentDetail = JSON.stringify((await stu.get(`/api/research-submissions/${rsId}`)).data);
+  check('the student\'s detail response has no similarity fields', !/similarity|turnitin/i.test(studentDetail));
+  check('the student\'s list response has no similarity fields', !/similarity|turnitin/i.test(JSON.stringify((await stu.get('/api/research-submissions')).data)));
+  const adminDetail = (await adm.get(`/api/research-submissions/${rsId}`)).data.submission;
+  check('admin sees it on the detail response', Number(adminDetail.similarity_score) === 12 && adminDetail.similarity_report_url === 'https://school.example.test/t/9');
+  await run('DELETE FROM research_submissions WHERE id = ?', [rsId]);
+
+  // ------------------------------------------------------------------
   section('6. Export the program');
   const exportPdf = await adm.get(`/api/gala/export?format=pdf&schoolYear=${encodeURIComponent(schoolYear)}`);
   check('PDF export', exportPdf.status === 200 && exportPdf.data.subarray(0, 5).toString() === '%PDF-' && exportPdf.data.toString('latin1').includes(`E2E ${tag}`), `status ${exportPdf.status}`);

@@ -116,6 +116,11 @@
                       <label for="f-abstract">Abstract <span class="gx-req">*</span></label>
                       <textarea id="f-abstract" rows="8" aria-describedby="abstract-counter"></textarea>
                       <div class="gx-counter" id="abstract-counter" aria-live="polite">0 / 250 words</div>
+                      <div class="gx-grammar">
+                        <button type="button" class="btn btn-soft btn-sm" id="btn-grammar"><i class="bi bi-spellcheck"></i> Check grammar</button>
+                        <span class="gx-hint" id="grammar-status" aria-live="polite">Optional suggestions. They never stop you from continuing.</span>
+                        <ul class="gx-issues" id="grammar-issues" hidden></ul>
+                      </div>
                       <p class="gx-error"></p>
                     </div>
 
@@ -451,6 +456,98 @@
       els.keywordsCounter.textContent = k + ' of ' + cfg.limits.keywordsMin + '–' + cfg.limits.keywordsMax + ' keywords';
       els.keywordsCounter.classList.toggle('is-over', k > cfg.limits.keywordsMax);
     }
+
+    // ------------------------------------------------------------------
+    // Grammar suggestions (advisory: never blocks Next or Submit)
+    // ------------------------------------------------------------------
+    var grammar = { issues: [], text: '' };
+    var grammarStatus = $('grammar-status');
+    var grammarList = $('grammar-issues');
+    var GRAMMAR_HINT = 'Optional suggestions. They never stop you from continuing.';
+
+    function grammarClear(message) {
+      grammar = { issues: [], text: '' };
+      grammarList.hidden = true;
+      grammarList.innerHTML = '';
+      grammarStatus.textContent = message || GRAMMAR_HINT;
+    }
+
+    function renderGrammar() {
+      grammarList.innerHTML = '';
+      grammar.issues.forEach(function (issue, index) {
+        var li = document.createElement('li');
+        var found = grammar.text.slice(issue.offset, issue.offset + issue.length);
+        var head = document.createElement('div');
+        var quoted = document.createElement('strong');
+        quoted.textContent = '“' + found + '”';
+        head.appendChild(quoted);
+        head.appendChild(document.createTextNode(' – ' + issue.message));
+        li.appendChild(head);
+        var actions = document.createElement('div');
+        actions.className = 'gx-issue-actions';
+        issue.replacements.forEach(function (value) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'btn btn-navy btn-sm';
+          btn.dataset.issue = String(index);
+          btn.dataset.value = value;
+          btn.textContent = value === '' ? 'Remove it' : 'Use “' + value + '”';
+          actions.appendChild(btn);
+        });
+        var ignore = document.createElement('button');
+        ignore.type = 'button';
+        ignore.className = 'btn btn-soft btn-sm';
+        ignore.dataset.issue = String(index);
+        ignore.dataset.ignore = '1';
+        ignore.textContent = 'Ignore';
+        actions.appendChild(ignore);
+        li.appendChild(actions);
+        grammarList.appendChild(li);
+      });
+      grammarList.hidden = grammar.issues.length === 0;
+      grammarStatus.textContent = grammar.issues.length
+        ? grammar.issues.length + ' suggestion' + (grammar.issues.length === 1 ? '' : 's') + '. These are only suggestions; you decide.'
+        : 'No more suggestions.';
+    }
+
+    async function checkGrammar() {
+      var text = els.abstract.value;
+      if (!text.trim()) { grammarClear('Type your abstract first.'); return; }
+      $('btn-grammar').disabled = true;
+      grammarStatus.textContent = 'Checking…';
+      var res = await api('POST', '/api/gala/grammar', { text: text });
+      $('btn-grammar').disabled = false;
+      if (res.status === 429) { grammarClear('Please wait a few seconds, then try again.'); return; }
+      if (!res.ok) { grammarClear(res.data.error || 'Grammar check is unavailable right now. You can still continue.'); return; }
+      if (!res.data.available) { grammarClear('Grammar check is unavailable right now. You can still continue.'); return; }
+      if (!res.data.issues.length) { grammarClear('No grammar issues found.'); return; }
+      grammar = { issues: res.data.issues, text: text };
+      renderGrammar();
+    }
+
+    grammarList.addEventListener('click', function (e) {
+      var btn = e.target.closest('button[data-issue]');
+      if (!btn) return;
+      var issue = grammar.issues[Number(btn.dataset.issue)];
+      if (!issue) return;
+      if (!btn.dataset.ignore) {
+        // Offsets belong to the text that was checked. Replace in that text, then
+        // shift the offsets of the suggestions that come after it.
+        var value = btn.dataset.value;
+        var next = grammar.text.slice(0, issue.offset) + value + grammar.text.slice(issue.offset + issue.length);
+        var delta = value.length - issue.length;
+        grammar.issues.forEach(function (other) { if (other.offset > issue.offset) other.offset += delta; });
+        grammar.text = next;
+        els.abstract.value = next;
+        dirty = true;
+        updateCounters();
+      }
+      grammar.issues = grammar.issues.filter(function (other) { return other !== issue; });
+      renderGrammar();
+    });
+    $('btn-grammar').addEventListener('click', checkGrammar);
+    // Typing by hand makes the old suggestions stale, so they are cleared.
+    els.abstract.addEventListener('input', function () { if (grammar.issues.length) grammarClear('The text changed. Check again for new suggestions.'); });
 
     // ------------------------------------------------------------------
     // Saving

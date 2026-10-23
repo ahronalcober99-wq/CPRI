@@ -38,7 +38,9 @@ export const EXTENDED_COLUMNS = [
   { key: 'category',   header: 'Category',    xlsx: 24 },
   { key: 'schoolYear', header: 'School Year', xlsx: 14 },
   { key: 'semester',   header: 'Semester',    xlsx: 12 },
-  { key: 'status',     header: 'Status',      xlsx: 16 }
+  { key: 'status',     header: 'Status',      xlsx: 16 },
+  // Excel only: the printed program is shared with presenters and guests.
+  { key: 'similarity', header: 'Turnitin similarity', xlsx: 20 }
 ];
 
 const SEMESTER_LABELS = { '1st': '1st Semester', '2nd': '2nd Semester', summer: 'Summer' };
@@ -65,6 +67,8 @@ export function programRows(submissions = []) {
       schoolYear: s.schoolYear || '',
       semester: SEMESTER_LABELS[s.semester] || s.semester || '',
       status: GALA_STATUS[s.status] || s.status || '',
+      similarity: s.similarityScore === null || s.similarityScore === undefined || s.similarityScore === ''
+        ? '' : `${Number(s.similarityScore)}%`,
       _sort: `${s.scheduleDate || '9999-99-99'} ${s.scheduleTime || '99:99'} ${s.scheduleRoom || ''} ${s.title || ''}`
     };
   });

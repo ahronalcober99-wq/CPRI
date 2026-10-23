@@ -19,6 +19,7 @@ engine allows it; the `ensure*` functions remain the source of truth.
 | 005 | `005_research_submissions.sql` | `ensureResearchSubmissionsSchema()` — `server/research-submissions.js` |
 | 006 | `006_courses.sql` | `ensureCoursesSchema()` — `server/lib/courses.js` (also seeds an empty `courses` table from `server/data/courses-seed.json`) |
 | 008 | `008_gala_final_paper.sql` | `ensureGalaSchema()` — `server/gala.js` (adds the final-paper columns to `gala_submissions` and renames two old statuses) |
+| 009 | `009_plagiarism_record.sql` | `ensureGalaSchema()` — `server/gala.js` and `ensureResearchSubmissionsSchema()` — `server/research-submissions.js` (the hand-entered Turnitin score and report link; admin and staff only, advisory) |
 
 ## Order
 
@@ -51,6 +52,7 @@ Each file carries its own rollback statement in a trailing comment block. Summar
 | 004 | `ALTER TABLE publications DROP COLUMN issn, DROP COLUMN isbn, DROP COLUMN indexing, DROP COLUMN impactFactor` | Report 9 stops showing those four fields. |
 | 006 | `ALTER TABLE users DROP INDEX idx_users_course, DROP COLUMN course_id, DROP COLUMN course_other, DROP COLUMN course_review; DROP TABLE courses` | Students lose their course. Every other account is unaffected. |
 | 008 | Reverse the two status renames, then drop the added columns and the `uq_gala_refno` / `idx_gala_schedule` indexes (full statements at the end of the file) | Presenters lose their reference numbers, schedules and the new form fields. Uploaded documents stay in the private store. |
+| 009 | `ALTER TABLE gala_submissions DROP COLUMN similarityScore, DROP COLUMN similarityReportUrl, DROP COLUMN similarityCheckedAt, DROP COLUMN similarityCheckedBy` and the four `similarity_*` columns of `research_submissions` (full statements at the end of the file) | Only the recorded Turnitin results are lost. |
 
 **User roles need no migration.** `role` is a `VARCHAR(30)`, so adding
 `non_teaching_researcher`, `presenter` and self-registered `cpri_staff` is a code

@@ -169,6 +169,7 @@ async function startModule({ uploadDir, notify, sendEmail, storage } = {}) {
   });
   const inApp = [];
   const emails = [];
+  const audit = [];
   const dir = uploadDir || await mkdtemp(join(tmpdir(), 'research-subs-'));
   const app = express();
   app.use(express.json());
@@ -200,6 +201,7 @@ async function startModule({ uploadDir, notify, sendEmail, storage } = {}) {
       },
       // Notification spies: the in-app writer is the site's notify(), the
       // email writer is its mailer. Recorded so the tests can assert on them.
+      addLog: async (action, details) => { audit.push({ action, details }); },
       notify: notify || (async (...args) => { inApp.push(args); }),
       sendEmail: sendEmail || (async (...args) => { emails.push(args); })
     })
@@ -227,6 +229,7 @@ async function startModule({ uploadDir, notify, sendEmail, storage } = {}) {
     uploadDir: dir,
     inApp,
     emails,
+    audit,
     call,
     json,
     close: () => new Promise((resolve, reject) => server.close(e => (e ? reject(e) : resolve()))),
@@ -1548,7 +1551,7 @@ test('the boot DDL adds a column only where it is missing', async () => {
   // adviser-evaluation link: only research_submissions is touched.
   assert.deepEqual(
     await bootDdlAlters({
-      research_submissions: ['id', 'title'],
+      research_submissions: ['id', 'title', 'similarity_score', 'similarity_report_url', 'similarity_checked_at', 'similarity_checked_by'],
       research_submission_files: ['id', 'stored_path', 'storage_backend'],
       research_ethics_clearances: ['id', 'file_path', 'storage_backend']
     }),
@@ -1558,7 +1561,7 @@ test('the boot DDL adds a column only where it is missing', async () => {
   // Everything already present: nothing is altered, so every boot is safe.
   assert.deepEqual(
     await bootDdlAlters({
-      research_submissions: ['id', 'adviser_eval_link'],
+      research_submissions: ['id', 'adviser_eval_link', 'similarity_score', 'similarity_report_url', 'similarity_checked_at', 'similarity_checked_by'],
       research_submission_files: ['id', 'storage_backend'],
       research_ethics_clearances: ['id', 'storage_backend']
     }),
@@ -1568,11 +1571,21 @@ test('the boot DDL adds a column only where it is missing', async () => {
   // A table that is missing one of them is caught up.
   assert.deepEqual(
     await bootDdlAlters({
-      research_submissions: ['id', 'adviser_eval_link'],
+      research_submissions: ['id', 'adviser_eval_link', 'similarity_score', 'similarity_report_url', 'similarity_checked_at', 'similarity_checked_by'],
       research_submission_files: ['id', 'stored_path', 'storage_backend'],
       research_ethics_clearances: ['id', 'file_path']
     }),
     ['research_ethics_clearances']
+  );
+
+  // The four Turnitin columns (migration 009) are each added when missing.
+  assert.equal(
+    (await bootDdlAlters({
+      research_submissions: ['id', 'adviser_eval_link'],
+      research_submission_files: ['id', 'storage_backend'],
+      research_ethics_clearances: ['id', 'storage_backend']
+    })).length,
+    4
   );
 });
 
@@ -2309,6 +2322,91 @@ test('older free-text submissions keep working and show as they are; edits are v
     assert.equal(good.status, 200);
     assert.equal(row.program, 'BS Biology');
     assert.equal(row.school_year, '2025–2026');
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+// ===========================================================================
+//  Turnitin result: recorded by admin / staff, never visible to the researcher
+// ===========================================================================
+test('the Turnitin result is recorded by admin and staff only and the researcher never sees it', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const admin = account('admin');
+    const staff = account('cpri_staff');
+    const adviser = account('adviser');
+    const created = await createStudentInitial(module, student);
+
+    const patch = (as, body, id = created.id) => module.call(as, `/${id}/similarity`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body)
+    });
+
+    // Who may record it.
+    assert.equal((await patch(student, { score: 3 })).status, 403, 'the researcher cannot');
+    assert.equal((await patch(adviser, { score: 3 })).status, 403, 'an adviser only comments');
+    assert.equal((await module.call(null, `/${created.id}/similarity`, { method: 'PATCH' })).status, 401);
+
+    // What is accepted.
+    for (const bad of [{ score: 101 }, { score: -2 }, { score: 'abc' }, { reportUrl: 'javascript:alert(1)' }, { reportUrl: 'ftp://x.test/r' }, {}]) {
+      assert.equal((await patch(admin, bad)).status, 400, JSON.stringify(bad));
+    }
+    assert.equal((await patch(admin, { score: 5 }, 'does-not-exist')).status, 404);
+
+    const url = 'https://school.turnitin.test/report/9';
+    const saved = await module.json(await patch(admin, { score: '21.456%', reportUrl: url }));
+    assert.equal(saved.status, 200);
+    assert.equal(saved.body.submission.similarity_score, 21.46);
+    assert.equal(saved.body.submission.similarity_checked_by, 'admin person');
+    assert.ok(module.audit.at(-1).details.includes(`none -> 21.46% (${url})`), module.audit.at(-1).details);
+    assert.equal(module.inApp.filter(n => n[0] === student.id).length, 0, 'the researcher is not notified');
+    assert.equal((await patch(staff, { score: 21.46 })).status, 400, 'the same value is nothing to change');
+    assert.equal((await patch(staff, { score: 30 })).status, 200, 'staff can update it');
+
+    // The researcher's own views carry no trace of it, in any route that returns a row.
+    const seen = async (res) => JSON.stringify((await module.json(res)).body);
+    assert.ok(!(await seen(await module.call(student, `/${created.id}`))).match(/similarity|turnitin/i), 'detail');
+    assert.ok(!(await seen(await module.call(student, '/'))).match(/similarity|turnitin/i), 'list');
+    const put = await module.call(student, `/${created.id}`, {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: 'Renamed' })
+    });
+    assert.equal(put.status, 200);
+    assert.ok(!(await seen(put)).match(/similarity|turnitin/i), 'edit response');
+
+    // Staff see it.
+    const asAdmin = await module.json(await module.call(admin, `/${created.id}`));
+    assert.equal(asAdmin.body.submission.similarity_score, 30);
+    assert.equal(asAdmin.body.submission.similarity_report_url, url);
+
+    // Advisory: a very high score changes nothing about what can happen next.
+    await patch(admin, { score: 100 });
+    const moved = await module.json(await module.call(admin, `/${created.id}/status`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ status: 'under_initial_checking' })
+    }));
+    assert.equal(moved.status, 200, JSON.stringify(moved.body));
+
+    // Clearing.
+    const cleared = await module.json(await patch(admin, { score: '', reportUrl: '' }));
+    assert.equal(cleared.body.submission.similarity_score, null);
+  } finally {
+    await module.close();
+    await module.cleanup();
+  }
+});
+
+test('a draft cannot have a similarity result recorded', async () => {
+  const module = await startModule();
+  try {
+    const student = account('student_researcher');
+    const admin = account('admin');
+    const created = await createStudentInitial(module, student);
+    module.store.rowsOf('research_submissions').find(r => r.id === created.id).status = 'draft';
+    const res = await module.call(admin, `/${created.id}/similarity`, {
+      method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ score: 4 })
+    });
+    assert.equal(res.status, 409);
   } finally {
     await module.close();
     await module.cleanup();

@@ -256,3 +256,17 @@
 .gala-review-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 6px 0 14px; }
 .gala-review-form { border-top: 1px solid var(--cpri-border); padding-top: 14px; }
 @media (max-width: 820px) { .gala-review-cols { grid-template-columns: 1fr; } }
+
+/* ---- Grammar suggestions (advisory) ---- */
+.gx-grammar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: 8px; }
+.gx-grammar .gx-hint { margin: 0; }
+.gx-issues { list-style: none; margin: 6px 0 0; padding: 0; width: 100%; display: grid; gap: 8px; }
+.gx-issues li { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--cpri-border); border-left: 4px solid var(--gold); background: var(--cpri-card); }
+.gx-issue-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+/* ---- Turnitin result (admin and staff only) ---- */
+.gala-similarity { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--cpri-border); background: var(--cpri-card); margin: 0 0 14px; }
+.gala-similarity h4 { margin: 0 0 8px; }
+.gala-sim-score { font-weight: 700; }
+.gala-sim-score.is-high { color: #b23b32; }
+[data-theme="dark"] .gala-sim-score.is-high { color: #fca5a5; }

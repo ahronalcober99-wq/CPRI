@@ -41,6 +41,7 @@ import {
   normalizePrefs
 } from './auth.js';
 import { notify as defaultNotify } from './notifications.js';
+import { addLog } from './audit.js';
 import { sendNotificationEmail as defaultSendEmail } from './lib/mail.js';
 import { createResearchStorage } from './lib/research-storage.js';
 import { fromModuleSubmission, syncSubmissionVisibility } from './lib/repository-publishing.js';
@@ -95,6 +96,7 @@ import {
   describeField,
   describeSlot,
   CONDITIONAL_FLAGS,
+  isHttpUrl,
   WORD_EXTENSIONS,
   PDF_EXTENSIONS,
   OPEN_DOC_EXTENSIONS,
@@ -141,6 +143,7 @@ export function createResearchSubmissionsRouter(dependencies = {}) {
   // Both halves are injectable so tests can assert on them offline.
   const notifyInApp = dependencies.notify || defaultNotify;
   const sendEmail = dependencies.sendEmail || defaultSendEmail;
+  const log = dependencies.addLog || addLog;
 
   /**
    * In-app notification + optional email copy for one person.
@@ -415,6 +418,25 @@ async function clearFiles(paths) {
 //  Router
 // ---------------------------------------------------------------------------
 const router = Router();
+
+// ---------------------------------------------------------------------------
+//  Turnitin result (advisory, admin and CPRI staff only)
+//
+//  The school checks papers in Turnitin; a person types the score and the report
+//  link in (PATCH /:id/similarity). Nothing here reads the score to allow or
+//  refuse anything. Several routes hand back the raw database row, so every one
+//  of them goes through forViewer(), which removes the four columns for anyone
+//  who may not see them — the researcher never learns the score.
+// ---------------------------------------------------------------------------
+const SIMILARITY_ROLES = new Set(['admin', 'cpri_staff']);
+const SIMILARITY_COLUMNS = ['similarity_score', 'similarity_report_url', 'similarity_checked_at', 'similarity_checked_by'];
+
+function forViewer(user, row) {
+  if (!row || (user && SIMILARITY_ROLES.has(user.role))) return row;
+  const copy = { ...row };
+  for (const column of SIMILARITY_COLUMNS) delete copy[column];
+  return copy;
+}
 
 // ---------------------------------------------------------------------------
 //  GET /api/research-submissions/me
@@ -964,7 +986,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 
   res.json({
     submission: {
-      ...sub,
+      ...forViewer(user, sub),
       ownerCourse,
       // The moves this caller may make from here (PATCH /:id/status), and
       // whether the ethics decision buttons apply (POST /:id/ethics).
@@ -1068,7 +1090,7 @@ router.put('/:id', requireAuth, async (req, res) => {
   const updated = await get('SELECT * FROM research_submissions WHERE id = ?', [sub.id]);
   res.json({
     message: 'Submission updated.',
-    submission: updated
+    submission: forViewer(user, updated)
   });
 });
 
@@ -1504,9 +1526,75 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
   const updated = await get('SELECT * FROM research_submissions WHERE id = ?', [sub.id]);
   res.json({
     message: `Status updated to "${statusLabelFor(targetStatus, sub.stage)}".`,
-    submission: updated,
+    submission: forViewer(user, updated),
     repository: visibility
   });
+});
+
+// ---------------------------------------------------------------------------
+//  PATCH /api/research-submissions/:id/similarity
+//  Record the Turnitin score and report link. Admin and CPRI staff only.
+//  Body: { score?: 0-100 | "", reportUrl?: "http(s)://…" | "" } — empty clears.
+//  Advisory: no status move depends on it, and the owner is not notified.
+// ---------------------------------------------------------------------------
+router.patch('/:id/similarity', requireAuth, async (req, res) => {
+  const user = await callerUser(req);
+  if (!user) return res.status(401).json({ error: 'Not authenticated.' });
+  if (!SIMILARITY_ROLES.has(user.role)) {
+    return res.status(403).json({ error: 'Only an administrator or CPRI staff can record a similarity result.' });
+  }
+  const sub = await get('SELECT * FROM research_submissions WHERE id = ?', [req.params.id]);
+  if (!sub) return res.status(404).json({ error: 'Submission not found.' });
+  if (sub.status === 'draft') {
+    return res.status(409).json({ error: 'This is still a draft. The researcher has not submitted it yet.' });
+  }
+
+  const body = req.body || {};
+  if (body.score === undefined && body.reportUrl === undefined) {
+    return res.status(400).json({ error: 'Send a score, a report link, or both.' });
+  }
+  let score = sub.similarity_score === null || sub.similarity_score === undefined ? null : Number(sub.similarity_score);
+  let url = sub.similarity_report_url || '';
+  if (body.score !== undefined) {
+    const raw = String(body.score).trim().replace(/%$/, '');
+    if (raw === '') {
+      score = null;
+    } else {
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 0 || n > 100) {
+        return res.status(400).json({ error: 'The similarity score must be a number from 0 to 100.' });
+      }
+      score = Math.round(n * 100) / 100;
+    }
+  }
+  if (body.reportUrl !== undefined) {
+    const raw = String(body.reportUrl).trim();
+    if (raw && (!isHttpUrl(raw) || raw.length > 500)) {
+      return res.status(400).json({ error: 'The report link must start with http:// or https://.' });
+    }
+    url = raw;
+  }
+  const beforeScore = sub.similarity_score === null || sub.similarity_score === undefined ? null : Number(sub.similarity_score);
+  if (score === beforeScore && url === (sub.similarity_report_url || '')) {
+    return res.status(400).json({ error: 'Nothing to change.' });
+  }
+
+  const now = new Date().toISOString();
+  await update('research_submissions', sub.id, {
+    similarity_score: score,
+    similarity_report_url: url || null,
+    similarity_checked_at: now,
+    similarity_checked_by: user.fullName || user.username,
+    updated_at: now
+  });
+  const show = (s, u) => (s === null ? 'none' : `${s}%`) + (u ? ` (${u})` : '');
+  console.log(`[research-submissions] similarity ${sub.id}: ${show(beforeScore, sub.similarity_report_url)} -> ${show(score, url)} by ${user.fullName || user.username}`);
+  try {
+    await log('research_similarity',`Research submission ${sub.id} "${sub.title}": Turnitin similarity ${show(beforeScore, sub.similarity_report_url)} -> ${show(score, url)}.`, req);
+  } catch { /* the audit helper logs its own failures */ }
+
+  const updated = await get('SELECT * FROM research_submissions WHERE id = ?', [sub.id]);
+  res.json({ message: 'Similarity result saved.', submission: forViewer(user, updated) });
 });
 
 // ---------------------------------------------------------------------------
@@ -1803,6 +1891,11 @@ export async function ensureResearchSubmissionsSchema(dependencies = {}) {
       name: 'adviser_eval_link',
       sql: "ALTER TABLE research_submissions ADD COLUMN adviser_eval_link VARCHAR(1000) NOT NULL DEFAULT ''"
     },
+    // Turnitin result typed in by admin / staff (migration 009). Advisory only.
+    { table: 'research_submissions', name: 'similarity_score', sql: 'ALTER TABLE research_submissions ADD COLUMN similarity_score DECIMAL(5,2) DEFAULT NULL' },
+    { table: 'research_submissions', name: 'similarity_report_url', sql: 'ALTER TABLE research_submissions ADD COLUMN similarity_report_url VARCHAR(500) DEFAULT NULL' },
+    { table: 'research_submissions', name: 'similarity_checked_at', sql: 'ALTER TABLE research_submissions ADD COLUMN similarity_checked_at DATETIME DEFAULT NULL' },
+    { table: 'research_submissions', name: 'similarity_checked_by', sql: 'ALTER TABLE research_submissions ADD COLUMN similarity_checked_by VARCHAR(160) DEFAULT NULL' },
     {
       table: 'research_submission_files',
       name: 'storage_backend',

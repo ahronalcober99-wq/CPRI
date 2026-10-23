@@ -47,6 +47,8 @@ import { addLog } from './audit.js';
 import { notify as defaultNotify } from './notifications.js';
 import { sendNotificationEmail as defaultSendEmail } from './lib/mail.js';
 import { createResearchStorage } from './lib/research-storage.js';
+import { isHttpUrl } from './lib/research-config.js';
+import { checkGrammar as defaultCheckGrammar, GRAMMAR_MAX_CHARS } from './lib/grammar.js';
 import { loadSchoolYears, offeredSchoolYears, resolveListedFields } from './lib/school-years.js';
 import {
   GALA_STATUS,
@@ -275,6 +277,11 @@ export function createGalaRouter(dependencies = {}) {
   const reviewGate = dependencies.reviewGate || requireRole(...GALA_REVIEW_ROLES);
   const notifyInApp = dependencies.notify || defaultNotify;
   const sendEmail = dependencies.sendEmail || defaultSendEmail;
+  const grammarCheck = dependencies.checkGrammar || defaultCheckGrammar;
+  // One grammar request per presenter every few seconds: LanguageTool's public
+  // API is rate limited, and one noisy client must not use up everyone's turn.
+  const GRAMMAR_GAP_MS = dependencies.grammarGapMs ?? 3000;
+  const lastGrammarCall = new Map();
   const resolveListed = dependencies.resolveListed || ((args) => resolveListedFields({ ...args, all: query.all }));
   const loadSchoolYearList = dependencies.schoolYears || (async () => {
     const config = await loadSchoolYears({ all: query.all });
@@ -395,6 +402,14 @@ export function createGalaRouter(dependencies = {}) {
       withdrawable: owner && WITHDRAWABLE_STATUSES.has(s.status),
       remarks: s.reviewNote || '',
       reviewedBy: reviewer ? (s.reviewedBy || '') : undefined,
+      // Turnitin result recorded by hand. Reviewers only: the presenter's
+      // response does not even carry the keys.
+      similarity: reviewer ? {
+        score: s.similarityScore === null || s.similarityScore === undefined ? null : Number(s.similarityScore),
+        reportUrl: s.similarityReportUrl || '',
+        checkedAt: s.similarityCheckedAt || null,
+        checkedBy: s.similarityCheckedBy || ''
+      } : undefined,
       schedule: showSchedule && hasSchedule ? {
         date: s.scheduleDate,
         time: s.scheduleTime,
@@ -503,8 +518,31 @@ export function createGalaRouter(dependencies = {}) {
       schoolYears: years.years,
       currentSchoolYear: years.current,
       events: events.map(e => ({ id: e.id, title: e.title, dateTime: e.dateTime })),
-      presenterName: isPresenter(me) ? (me.fullName || me.username) : ''
+      presenterName: isPresenter(me) ? (me.fullName || me.username) : '',
+      // Only a colour hint in the admin table; it never blocks anything.
+      similarityWarnPercent: isReviewer(me) ? (Number(process.env.SIMILARITY_WARN_PERCENT) || 25) : undefined
     });
+  }));
+
+  // ---- Grammar suggestions (advisory) ----
+  // Never blocks anything: if the checker is down the answer is simply
+  // { available: false } and the form carries on.
+  router.post('/grammar', authenticate, presenterOnly, handle(async (req, res) => {
+    const text = String((req.body || {}).text ?? '');
+    if (text.length > Math.min(LIMITS.abstractCharsMax, GRAMMAR_MAX_CHARS)) {
+      return res.status(400).json({ error: `Text is too long to check (max ${LIMITS.abstractCharsMax} characters).` });
+    }
+    const now = Date.now();
+    const last = lastGrammarCall.get(req._me.id) || 0;
+    if (now - last < GRAMMAR_GAP_MS) {
+      return res.status(429).json({ error: 'Please wait a few seconds before checking again.' });
+    }
+    lastGrammarCall.set(req._me.id, now);
+    if (lastGrammarCall.size > 2000) {
+      for (const [id, at] of lastGrammarCall) if (now - at > 60000) lastGrammarCall.delete(id);
+    }
+    const result = await grammarCheck(text);
+    return res.json({ available: result.available, reason: result.reason || null, issues: result.issues || [] });
   }));
 
   // ---- Create a draft ----
@@ -1009,6 +1047,34 @@ export function createGalaRouter(dependencies = {}) {
     }
     const scheduleTouched = ['scheduleDate', 'scheduleTime', 'scheduleRoom'].some(k => b[k] !== undefined);
 
+    // Turnitin result, typed in by hand. Advisory: nothing reads it to allow or
+    // refuse a status move. An empty value clears it.
+    const similarityTouched = b.similarityScore !== undefined || b.similarityReportUrl !== undefined;
+    let similarityScore;
+    let similarityUrl;
+    if (b.similarityScore !== undefined) {
+      const raw = String(b.similarityScore).trim().replace(/%$/, '');
+      if (raw === '') {
+        similarityScore = null;
+      } else {
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0 || n > 100) {
+          return res.status(400).json({ error: 'The similarity score must be a number from 0 to 100.' });
+        }
+        similarityScore = Math.round(n * 100) / 100;
+      }
+    }
+    if (b.similarityReportUrl !== undefined) {
+      const raw = String(b.similarityReportUrl).trim();
+      if (raw === '') {
+        similarityUrl = null;
+      } else if (!isHttpUrl(raw) || raw.length > LIMITS.reportUrlMax) {
+        return res.status(400).json({ error: 'The report link must start with http:// or https://.' });
+      } else {
+        similarityUrl = raw;
+      }
+    }
+
     const result = await withLock(req.params.id, async () => {
       const s = await store.get(req.params.id);
       if (!s) return { status: 404, error: 'Submission not found.' };
@@ -1051,7 +1117,12 @@ export function createGalaRouter(dependencies = {}) {
         && (date !== (s.scheduleDate || '') || time !== (s.scheduleTime || '') || room !== (s.scheduleRoom || ''));
       const remarksChange = remarks !== undefined && remarks !== (s.reviewNote || '');
 
-      if (!statusChanges && !scheduleChanges && !remarksChange) {
+      const nextScore = similarityScore !== undefined ? similarityScore : (s.similarityScore ?? null);
+      const nextUrl = similarityUrl !== undefined ? similarityUrl : (s.similarityReportUrl ?? null);
+      const similarityChanges = similarityTouched
+        && (Number(nextScore ?? -1) !== Number(s.similarityScore ?? -1) || (nextUrl || '') !== (s.similarityReportUrl || ''));
+
+      if (!statusChanges && !scheduleChanges && !remarksChange && !similarityChanges) {
         return { status: 400, error: 'Nothing to change.' };
       }
 
@@ -1068,7 +1139,7 @@ export function createGalaRouter(dependencies = {}) {
       const scheduleText = date ? `${formatDay(date)}, ${formatClock(time)}, ${room}` : '';
       if (statusChanges) {
         history.push({ kind: 'status', status: nextStatus, at: now, by: reviewerName, byId: me.id, note: remarks || '' });
-      } else {
+      } else if (scheduleChanges || remarksChange) {
         // `note` is what the presenter may read; `adminNote` is the full record.
         // A schedule that is not announced yet stays out of the presenter's view.
         const scheduleBit = scheduleChanges ? (scheduleText ? `Schedule set to ${scheduleText}.` : 'Schedule cleared.') : '';
@@ -1093,6 +1164,12 @@ export function createGalaRouter(dependencies = {}) {
         updatedAt: now
       };
       if (remarks !== undefined) changes.reviewNote = remarks;
+      if (similarityChanges) {
+        changes.similarityScore = nextScore;
+        changes.similarityReportUrl = nextUrl;
+        changes.similarityCheckedAt = now;
+        changes.similarityCheckedBy = reviewerName;
+      }
       if (scheduleTouched) {
         changes.scheduleDate = date || null;
         changes.scheduleTime = time || null;
@@ -1105,6 +1182,7 @@ export function createGalaRouter(dependencies = {}) {
         statusChanges,
         scheduleChanges,
         remarksChange,
+        similarityChanges,
         nextStatus,
         scheduleText,
         remarks: remarks === undefined ? (s.reviewNote || '') : remarks
@@ -1122,6 +1200,10 @@ export function createGalaRouter(dependencies = {}) {
       trail.push(`schedule ${was} -> ${result.scheduleText || 'none'}`);
     }
     if (result.remarksChange) trail.push(result.remarks ? `remarks "${result.remarks.slice(0, 120)}"` : 'remarks cleared');
+    if (result.similarityChanges) {
+      const show = (score, url) => (score === null || score === undefined ? 'none' : `${Number(score)}%`) + (url ? ` (${url})` : '');
+      trail.push(`Turnitin similarity ${show(before.similarityScore, before.similarityReportUrl)} -> ${show(row.similarityScore, row.similarityReportUrl)}`);
+    }
     await log('gala_reviewed', `Research Gala entry ${ref} "${row.title}": ${trail.join('; ')}.`, req);
 
     // Tell the presenter. A schedule they cannot see yet (entry not Scheduled)
@@ -1211,7 +1293,12 @@ const GALA_ADDED_COLUMNS = [
   ['scheduleTime', 'varchar(5) DEFAULT NULL'],
   ['scheduleRoom', 'varchar(120) DEFAULT NULL'],
   ['draftStep', 'tinyint DEFAULT 1'],
-  ['submittedAt', 'datetime DEFAULT NULL']
+  ['submittedAt', 'datetime DEFAULT NULL'],
+  // Turnitin result typed in by an admin (migration 009). Advisory only.
+  ['similarityScore', 'decimal(5,2) DEFAULT NULL'],
+  ['similarityReportUrl', 'varchar(500) DEFAULT NULL'],
+  ['similarityCheckedAt', 'datetime DEFAULT NULL'],
+  ['similarityCheckedBy', 'varchar(160) DEFAULT NULL']
 ];
 
 export async function ensureGalaSchema(dependencies = {}) {

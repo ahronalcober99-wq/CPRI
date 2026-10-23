@@ -80,6 +80,7 @@ export const LIMITS = Object.freeze({
   personNameMax: 80,
   remarksMax: 1000,
   roomMax: 120,
+  reportUrlMax: 500,
   maxFileBytes: 20 * 1024 * 1024
 });
 

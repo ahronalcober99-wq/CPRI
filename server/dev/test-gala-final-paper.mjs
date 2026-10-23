@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import { Readable } from 'stream';
 import { createGalaRouter, makeRefNo } from '../gala.js';
+import { checkGrammar } from '../lib/grammar.js';
 import {
   wordCount, normalizeTags, detectDocumentKind, checkUpload, validateEntry, slotByKey,
   formatClock, formatDay, LIMITS, GALA_SLOTS
@@ -117,7 +118,7 @@ async function fakeResolveListed({ body, keys }) {
   return { values };
 }
 
-async function startServer({ account = {}, store = memoryStore({ account }), files = memoryFiles() } = {}) {
+async function startServer({ account = {}, store = memoryStore({ account }), files = memoryFiles(), grammar, grammarGapMs = 0 } = {}) {
   const logs = [];
   const notes = [];
   const emails = [];
@@ -135,6 +136,8 @@ async function startServer({ account = {}, store = memoryStore({ account }), fil
     notify: async (userId, action, title, message, link) => { notes.push({ userId, action, title, message, link }); },
     sendEmail: async (to, payload) => { emails.push({ to, ...payload }); },
     resolveListed: fakeResolveListed,
+    checkGrammar: grammar || (async () => ({ available: true, issues: [] })),
+    grammarGapMs,
     schoolYears: async () => ({ current: '2026–2027', years: YEARS.map(y => ({ value: y, label: y, isCurrent: y === '2026–2027' })) })
   });
   app.use('/api/gala', router);
@@ -1028,4 +1031,133 @@ test('exports handle an empty program and awkward characters', () => {
   })));
   const pages = Number(buildProgramPdf(many, {}).toString('latin1').match(/\/Count (\d+)/)[1]);
   assert.ok(pages > 1, `80 rows span ${pages} pages`);
+});
+
+// ---------------------------------------------------------------
+// Grammar suggestions (advisory) and the hand-entered Turnitin result
+// ---------------------------------------------------------------
+const jsonResponse = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
+
+test('checkGrammar shapes LanguageTool matches and caps suggestions', async () => {
+  let sent;
+  const result = await checkGrammar('This are wrong.', {
+    url: 'http://lt.test',
+    fetchImpl: async (url, init) => {
+      sent = { url, body: init.body };
+      return jsonResponse({ matches: [
+        { offset: 5, length: 3, message: 'Use "is".', rule: { id: 'AGREEMENT', category: { name: 'Grammar' } }, replacements: [{ value: 'is' }, { value: 'was' }, { value: 'be' }, { value: 'x' }] },
+        { offset: -1, length: 0, message: 'junk' }
+      ] });
+    }
+  });
+  assert.equal(sent.url, 'http://lt.test/v2/check');
+  assert.match(sent.body, /text=This\+are\+wrong/);
+  assert.equal(result.available, true);
+  assert.equal(result.issues.length, 1, 'malformed matches are dropped');
+  assert.deepEqual(result.issues[0].replacements, ['is', 'was', 'be'], 'at most three suggestions');
+  assert.equal(result.issues[0].ruleId, 'AGREEMENT');
+});
+
+test('checkGrammar never throws: outages become { available: false }', async () => {
+  const down = await checkGrammar('hello', { fetchImpl: async () => { throw new Error('ECONNREFUSED'); } });
+  assert.deepEqual([down.available, down.reason], [false, 'unreachable']);
+  assert.equal((await checkGrammar('hello', { fetchImpl: async () => jsonResponse({}, 429) })).reason, 'rate_limited');
+  assert.equal((await checkGrammar('hello', { fetchImpl: async () => jsonResponse({}, 500) })).reason, 'service_error');
+  const slow = await checkGrammar('hello', {
+    timeoutMs: 20,
+    fetchImpl: (url, init) => new Promise((resolve, reject) => {
+      init.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
+    })
+  });
+  assert.equal(slow.reason, 'timeout');
+  assert.deepEqual((await checkGrammar('   ')).issues, [], 'blank text needs no request');
+  assert.equal((await checkGrammar('x'.repeat(20001))).reason, 'too_long');
+});
+
+test('POST /grammar is presenter-only, bounded and rate limited', async () => {
+  let calls = 0;
+  const api = await startServer({
+    grammarGapMs: 60000,
+    grammar: async () => { calls++; return { available: true, issues: [{ offset: 0, length: 4, message: 'm', replacements: ['r'] }] }; }
+  });
+  assert.equal((await api.as('stu').post('/grammar', { text: 'hello there' })).status, 403);
+  assert.equal((await api.as('admin').post('/grammar', { text: 'hello there' })).status, 403);
+  assert.equal((await api.as(null).post('/grammar', { text: 'hello' })).status, 401);
+  assert.equal(calls, 0, 'nobody else reached the checker');
+
+  const ok = await api.as('pat').post('/grammar', { text: 'This are a test.' });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.available, true);
+  assert.equal(ok.data.issues[0].replacements[0], 'r');
+
+  assert.equal((await api.as('pat').post('/grammar', { text: 'This are a test.' })).status, 429, 'a second request inside the gap waits');
+  assert.equal((await api.as('sam').post('/grammar', { text: 'Another presenter is not held up.' })).status, 200, 'the limit is per presenter');
+  const huge = await api.as('sam').post('/grammar', { text: 'x'.repeat(LIMITS.abstractCharsMax + 1) });
+  assert.equal(huge.status, 400);
+  assert.equal(calls, 2);
+  await api.close();
+});
+
+test('an unavailable grammar service is reported, never an error', async () => {
+  const api = await startServer({ grammar: async () => ({ available: false, issues: [], reason: 'timeout' }) });
+  const res = await api.as('pat').post('/grammar', { text: 'Some text.' });
+  assert.equal(res.status, 200);
+  assert.deepEqual([res.data.available, res.data.reason, res.data.issues], [false, 'timeout', []]);
+  await api.close();
+});
+
+test('the Turnitin result is recorded by reviewers, validated, audited and hidden from the presenter', async () => {
+  const api = await startServer();
+  const id = await submitted(api);
+  const admin = api.as('admin');
+  const pat = api.as('pat');
+
+  assert.equal((await pat.patch(`/${id}/status`, { similarityScore: 5 })).status, 403, 'presenters cannot record it');
+  assert.equal((await admin.patch(`/${id}/status`, { similarityScore: 140 })).status, 400);
+  assert.equal((await admin.patch(`/${id}/status`, { similarityScore: 'abc' })).status, 400);
+  assert.equal((await admin.patch(`/${id}/status`, { similarityScore: -1 })).status, 400);
+  assert.equal((await admin.patch(`/${id}/status`, { similarityReportUrl: 'javascript:alert(1)' })).status, 400);
+  assert.equal((await admin.patch(`/${id}/status`, { similarityReportUrl: 'ftp://x.test/r' })).status, 400);
+
+  const notesBefore = api.notes.length;
+  const url = 'https://school.turnitin.test/report/42';
+  const res = await admin.patch(`/${id}/status`, { similarityScore: '17.456%', similarityReportUrl: url });
+  assert.equal(res.status, 200, JSON.stringify(res.data));
+  assert.equal(res.data.submission.status, 'submitted', 'recording a score changes no status');
+  const sim = res.data.submission.similarity;
+  assert.deepEqual([sim.score, sim.reportUrl, sim.checkedBy], [17.46, url, 'Site Admin']);
+  assert.ok(sim.checkedAt);
+  assert.equal(api.notes.length, notesBefore, 'the presenter is not notified about it');
+  assert.ok(api.logs.at(-1).details.includes(`Turnitin similarity none -> 17.46% (${url})`));
+
+  // The presenter's view carries no trace of it, anywhere in the payload.
+  const seen = (await pat.get(`/${id}`)).data;
+  assert.equal(seen.submission.similarity, undefined);
+  assert.ok(!JSON.stringify(seen).includes('17.46') && !JSON.stringify(seen).includes('turnitin'));
+  assert.ok(!JSON.stringify((await pat.get('/')).data).includes('turnitin'));
+  assert.ok(!JSON.stringify(seen.submission.statusHistory).includes('imilar'), 'and not in their history');
+
+  // Advisory: a very high score never stops the entry moving on.
+  await admin.patch(`/${id}/status`, { similarityScore: 99 });
+  assert.equal((await admin.patch(`/${id}/status`, { status: 'under_checking' })).status, 200);
+  assert.equal((await admin.get('/')).data.submissions[0].similarity.score, 99);
+
+  // The same value again is "nothing to change"; empty values clear it.
+  assert.equal((await admin.patch(`/${id}/status`, { similarityScore: 99 })).status, 400);
+  const cleared = await admin.patch(`/${id}/status`, { similarityScore: '', similarityReportUrl: '' });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.data.submission.similarity.score, null);
+  assert.equal(cleared.data.submission.similarity.reportUrl, '');
+  await api.close();
+});
+
+test('the Excel program carries the similarity score but the PDF program does not', async () => {
+  const api = await startServer();
+  const { a } = await scheduledFixture(api);
+  await api.as('admin').patch(`/${a}/status`, { similarityScore: 31 });
+  const text = (await api.as('admin').get('/export?format=xlsx')).data.toString('utf8');
+  assert.ok(text.includes('Turnitin similarity') && text.includes('31%'));
+  const pdfText = (await api.as('admin').get('/export?format=pdf')).data.toString('latin1');
+  assert.ok(!pdfText.includes('Turnitin') && !pdfText.includes('31%'), 'the printed program stays free of it');
+  await api.close();
 });

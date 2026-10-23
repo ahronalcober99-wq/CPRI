@@ -491,6 +491,21 @@
       </div>
 
       <form id="galaReviewForm" class="gala-review-form" novalidate>
+        <div class="gala-similarity">
+          <h4>Plagiarism check (Turnitin)</h4>
+          <p class="form-note" style="margin:0 0 8px;">Check the paper in Turnitin, then record the result here. It is for admins and staff only: the presenter never sees it, and it never blocks a status change.</p>
+          <div class="gx-grid">
+            <div class="form-group" style="margin-bottom:8px;">
+              <label for="grv-sim-score">Similarity score (%)</label>
+              <input type="number" id="grv-sim-score" min="0" max="100" step="0.01" inputmode="decimal" placeholder="e.g. 18">
+            </div>
+            <div class="form-group" style="margin-bottom:8px;">
+              <label for="grv-sim-url">Turnitin report link</label>
+              <input type="url" id="grv-sim-url" maxlength="500" placeholder="https://…">
+            </div>
+          </div>
+          <p class="gx-hint" id="grv-sim-meta" style="margin:0;"></p>
+        </div>
         <h4 style="margin-top:0;">Decision</h4>
         <div class="gx-grid">
           <div class="form-group">
@@ -2109,6 +2124,17 @@
       return s.schedule ? `${s.schedule.dateLabel}, ${s.schedule.timeLabel} · ${s.schedule.room}` : '';
     }
 
+    // Turnitin result (recorded by hand). The colour is only a hint.
+    function galaSimilarityCell(s) {
+      const sim = s.similarity || {};
+      if (sim.score === null || sim.score === undefined) return '<span class="form-note">—</span>';
+      const high = sim.score >= ((galaCfg && galaCfg.similarityWarnPercent) || 25);
+      const text = '<span class="gala-sim-score' + (high ? ' is-high' : '') + '">' + escapeHtml(String(sim.score)) + '%</span>';
+      return sim.reportUrl
+        ? '<a href="' + escapeHtml(sim.reportUrl) + '" target="_blank" rel="noopener noreferrer">' + text + '</a>'
+        : text;
+    }
+
     async function loadGala() {
       const box = document.getElementById('gala-table');
       if (!box) return;
@@ -2127,7 +2153,7 @@
           return;
         }
         box.innerHTML = `<div class="table-wrap"><table class="data-table">
-          <thead><tr><th>Reference</th><th>Title / presenter</th><th>Program</th><th>Category</th><th>Format</th><th>School year</th><th>Docs</th><th>Status</th><th>Schedule</th><th>Submitted</th><th></th></tr></thead>
+          <thead><tr><th>Reference</th><th>Title / presenter</th><th>Program</th><th>Category</th><th>Format</th><th>School year</th><th>Docs</th><th>Similarity</th><th>Status</th><th>Schedule</th><th>Submitted</th><th></th></tr></thead>
           <tbody>${galaRows.map(s => `<tr>
             <td><code>${escapeHtml(s.refNo || '—')}</code></td>
             <td><b>${escapeHtml(s.title || '')}</b><div class="form-note">${escapeHtml((s.presenters || []).join(', ') || s.submitterName || '')}</div></td>
@@ -2136,6 +2162,7 @@
             <td>${escapeHtml(s.presentationTypeLabel || '—')}</td>
             <td>${escapeHtml(s.schoolYear || '—')}</td>
             <td>${s.docsAttached}/${s.docsRequired}</td>
+            <td>${galaSimilarityCell(s)}</td>
             <td>${GalaUI.pill(s.status, s.statusLabel)}</td>
             <td>${escapeHtml(galaScheduleText(s) || '—')}</td>
             <td>${s.submittedAt ? escapeHtml(GalaUI.fmtDate(s.submittedAt)) : '—'}</td>
@@ -2202,6 +2229,12 @@
         `<option value="${escapeHtml(s.status)}" selected>${escapeHtml(label(s.status))} (current)</option>` +
         allowed.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(label(v))}</option>`).join('');
       document.getElementById('grv-remarks').value = s.remarks || '';
+      const sim = s.similarity || {};
+      document.getElementById('grv-sim-score').value = sim.score === null || sim.score === undefined ? '' : sim.score;
+      document.getElementById('grv-sim-url').value = sim.reportUrl || '';
+      document.getElementById('grv-sim-meta').textContent = sim.checkedAt
+        ? 'Last recorded by ' + (sim.checkedBy || 'someone') + ' on ' + GalaUI.fmtWhen(sim.checkedAt) + '.'
+        : 'Not recorded yet.';
       document.getElementById('grv-date').value = s.schedule ? s.schedule.date : '';
       document.getElementById('grv-time').value = s.schedule ? s.schedule.time : '';
       document.getElementById('grv-room').value = s.schedule ? s.schedule.room : '';
@@ -2234,12 +2267,17 @@
         remarks: document.getElementById('grv-remarks').value,
         scheduleDate: document.getElementById('grv-date').value,
         scheduleTime: document.getElementById('grv-time').value,
-        scheduleRoom: document.getElementById('grv-room').value
+        scheduleRoom: document.getElementById('grv-room').value,
+        similarityScore: document.getElementById('grv-sim-score').value,
+        similarityReportUrl: document.getElementById('grv-sim-url').value
       };
       const sameSchedule = body.scheduleDate === (s.schedule ? s.schedule.date : '')
         && body.scheduleTime === (s.schedule ? s.schedule.time : '')
         && body.scheduleRoom.trim() === (s.schedule ? s.schedule.room : '');
-      if (body.status === s.status && sameSchedule && body.remarks.trim() === (s.remarks || '')) {
+      const was = s.similarity || {};
+      const sameSimilarity = String(body.similarityScore).trim() === (was.score === null || was.score === undefined ? '' : String(was.score))
+        && body.similarityReportUrl.trim() === (was.reportUrl || '');
+      if (body.status === s.status && sameSchedule && sameSimilarity && body.remarks.trim() === (s.remarks || '')) {
         galaDialogMsg('error', 'Nothing has changed yet.');
         return;
       }
